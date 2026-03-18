@@ -27,6 +27,11 @@ const cards = [
     href: "/team-rank",
   },
   {
+    title: "Captaincy Lab",
+    desc: "Compare safe vs upside captain options with risk and ownership signals.",
+    href: "/captaincy",
+  },
+  {
     title: "Weekly Brief",
     desc: "Blended final recommendation from baseline model, ML model, and creator consensus.",
     href: "/brief",

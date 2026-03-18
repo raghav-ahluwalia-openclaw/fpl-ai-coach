@@ -22,12 +22,36 @@ type TopPlayersResponse = {
   last_ingested_at?: string;
 };
 
+type ExplainedPlayer = {
+  id: number;
+  name: string;
+  position: string;
+  price: number;
+  xP: number;
+  breakdown: {
+    form_score: number;
+    fixture_score: number;
+    minutes_security: number;
+    availability_score: number;
+    ownership_risk: number;
+    volatility: number;
+  };
+  reason: string;
+};
+
+type ExplainabilityResponse = {
+  gameweek: number;
+  count: number;
+  players: ExplainedPlayer[];
+};
+
 const API_BASE = "";
 const cardClass = "rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md p-5";
 
 export default function TopPage() {
   const [limit, setLimit] = useState(20);
   const [data, setData] = useState<TopPlayersResponse | null>(null);
+  const [explain, setExplain] = useState<ExplainabilityResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -37,6 +61,10 @@ export default function TopPage() {
         setError(null);
       })
       .catch((e) => setError(e.message || "Failed to load top players"));
+
+    fetchJson<ExplainabilityResponse>(`${API_BASE}/api/fpl/explainability/top?limit=${Math.min(limit, 20)}`)
+      .then(setExplain)
+      .catch(() => null);
   }, [limit]);
 
   return (
@@ -91,6 +119,27 @@ export default function TopPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </section>
+      ) : null}
+
+      {explain ? (
+        <section className={`${cardClass} mt-4`}>
+          <h2 className="font-semibold mb-3 text-[#00ff87]">Explainability Cards</h2>
+          <div className="grid md:grid-cols-2 gap-3">
+            {explain.players.slice(0, 8).map((p) => (
+              <div key={p.id} className="border border-white/10 rounded-lg p-3 bg-black/20 text-sm">
+                <p className="font-semibold">{p.name} <span className="text-white/60">({p.position})</span></p>
+                <p className="text-[#00ff87] font-bold">xP {p.xP.toFixed(2)}</p>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-white/80 mt-1">
+                  <span>Form: {p.breakdown.form_score.toFixed(1)}</span>
+                  <span>Fixture: {p.breakdown.fixture_score.toFixed(1)}</span>
+                  <span>Minutes: {p.breakdown.minutes_security.toFixed(1)}</span>
+                  <span>Availability: {p.breakdown.availability_score.toFixed(1)}</span>
+                </div>
+                <p className="text-white/65 mt-2">{p.reason}</p>
+              </div>
+            ))}
           </div>
         </section>
       ) : null}

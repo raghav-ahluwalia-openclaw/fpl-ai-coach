@@ -196,6 +196,133 @@ def content_consensus(limit: int = Query(default=10, ge=1, le=50), include_video
     }
 
 
+def _explainability_breakdown(player: Player, fixtures: List[Fixture], gw: Optional[int]) -> dict:
+    fixture_factor = _fixture_factor(player, fixtures, gw)
+    availability = _availability_factor(player.chance_of_playing_next_round, player.news)
+    minutes_factor = _minutes_factor(player.minutes)
+
+    form_score = round(min(10.0, player.form * 1.6), 2)
+    fixture_score = round(min(10.0, fixture_factor * 8.5), 2)
+    minutes_security = round(min(10.0, minutes_factor * 8.3), 2)
+    availability_score = round(min(10.0, availability * 10.0), 2)
+
+    ownership = max(0.0, min(player.selected_by_percent, 100.0))
+    ownership_risk = round(max(0.0, min(10.0, ownership / 10.0)), 2)
+    volatility = round(max(0.0, min(10.0, (8.0 - player.form) + (2.0 * (1.0 - availability)))), 2)
+
+    return {
+        "form_score": form_score,
+        "fixture_score": fixture_score,
+        "minutes_security": minutes_security,
+        "availability_score": availability_score,
+        "ownership_risk": ownership_risk,
+        "volatility": volatility,
+    }
+
+
+@router.get("/api/fpl/captaincy-lab")
+def captaincy_lab(
+    gameweek: Optional[int] = Query(default=None, ge=1, le=38),
+    limit: int = Query(default=10, ge=3, le=20),
+):
+    db = SessionLocal()
+    try:
+        players = db.query(Player).all()
+        if not players:
+            raise HTTPException(status_code=400, detail="No data found. Run POST /api/fpl/ingest/bootstrap first.")
+
+        fixtures = db.query(Fixture).all()
+        gw = _resolve_gameweek(db, gameweek)
+
+        pool = [p for p in players if p.element_type in {3, 4}]
+        safe_board = []
+        upside_board = []
+
+        for p in pool:
+            xp1 = _expected_points(p, fixtures, gw)
+            xp3 = _expected_points_horizon(p, fixtures, gw, horizon=3)
+            availability = _availability_factor(p.chance_of_playing_next_round, p.news)
+            minutes_security = _minutes_factor(p.minutes)
+            ownership = max(0.0, min(p.selected_by_percent, 100.0))
+
+            risk = (1 - availability) * 0.6 + (1 - min(minutes_security, 1.0)) * 0.4
+            safe_score = xp3 * (1 - risk * 0.75) + (ownership * 0.01)
+            upside_score = xp3 * (1 - risk * 0.25) + (max(0.0, 25.0 - ownership) / 25.0) * 1.8 + (p.form * 0.12)
+
+            common = {
+                "id": p.id,
+                "name": p.web_name,
+                "position": POSITION_MAP.get(p.element_type, str(p.element_type)),
+                "price": round(p.now_cost / 10.0, 1),
+                "xP_next_1": xp1,
+                "xP_next_3": xp3,
+                "ownership_pct": round(ownership, 1),
+                "risk": round(risk, 2),
+                "form": round(p.form, 2),
+            }
+
+            safe_board.append({**common, "captain_score": round(safe_score, 2)})
+            upside_board.append({**common, "captain_score": round(upside_score, 2)})
+
+        safe_board.sort(key=lambda x: x["captain_score"], reverse=True)
+        upside_board.sort(key=lambda x: x["captain_score"], reverse=True)
+
+        return {
+            "gameweek": gw,
+            "safe_captains": safe_board[:limit],
+            "upside_captains": upside_board[:limit],
+            "summary": "Captaincy lab ranks stable vs upside captain options using xP horizon, risk, and ownership pressure.",
+        }
+    finally:
+        db.close()
+
+
+@router.get("/api/fpl/explainability/top")
+def explainability_top(
+    gameweek: Optional[int] = Query(default=None, ge=1, le=38),
+    limit: int = Query(default=20, ge=5, le=50),
+):
+    db = SessionLocal()
+    try:
+        players = db.query(Player).all()
+        if not players:
+            raise HTTPException(status_code=400, detail="No data found. Run POST /api/fpl/ingest/bootstrap first.")
+
+        fixtures = db.query(Fixture).all()
+        gw = _resolve_gameweek(db, gameweek)
+
+        scored = []
+        for p in players:
+            xp = _expected_points(p, fixtures, gw)
+            breakdown = _explainability_breakdown(p, fixtures, gw)
+            scored.append((xp, p, breakdown))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+
+        out = []
+        for xp, p, breakdown in scored[:limit]:
+            out.append(
+                {
+                    "id": p.id,
+                    "name": p.web_name,
+                    "position": POSITION_MAP.get(p.element_type, str(p.element_type)),
+                    "price": round(p.now_cost / 10.0, 1),
+                    "xP": round(xp, 2),
+                    "breakdown": breakdown,
+                    "reason": _reason(p, xp),
+                }
+            )
+
+        return {
+            "gameweek": gw,
+            "count": len(out),
+            "players": out,
+            "summary": "Top players with explainability factors (form, fixture, minutes, availability, risk, volatility).",
+        }
+    finally:
+        db.close()
+
+
 @router.get("/api/fpl/top")
 def top_players(limit: int = Query(default=20, ge=1, le=100)):
     db = SessionLocal()

@@ -37,27 +37,28 @@
    - Invalid/self/duplicate transfer guardrails in team recommendation
    - Weekly brief ML confidence threshold fallback to baseline
 
-8. What-if transfer simulator (P2 core)
+8. What-if transfer simulator
    - `GET /api/fpl/team/{entry_id}/what-if`
    - Supports 1FT/2FT scenarios, horizon, free transfers, hit cost
    - Returns ranked scenarios by projected net gain
 
-9. Reliability hardening
-   - backend notification endpoint tests: `backend/tests/test_notification_endpoints.py`
-   - integration validation includes `/api/fpl/weekly-brief` + `/api/fpl/notification-status` + what-if
+9. Captaincy lab
+   - `GET /api/fpl/captaincy-lab`
+   - Safe vs upside captain boards with xP, risk, ownership pressure
+   - Frontend page: `/captaincy`
+
+10. Explainability cards
+   - `GET /api/fpl/explainability/top`
+   - Factor-level breakdown per player (form, fixture, minutes, availability, risk)
+   - Rendered in Top Players page
+
+11. Reliability hardening
+   - Backend notification endpoint tests: `backend/tests/test_notification_endpoints.py`
+   - Integration validation includes weekly-brief + notification-status + what-if
 
 ---
 
-## Remaining P2
-
-1. Captaincy lab
-   - Safe vs upside captain board
-   - Include volatility + EO pressure
-
-2. Explainability cards
-   - Per-player factor breakdown: form, fixture, minutes security, availability risk
-
-## P3 (Later)
+## Next Up (P3)
 
 1. Chip planner (WC/FH/BB/TC windows)
 2. Rival/mini-league intelligence
