@@ -4,6 +4,8 @@ import json
 from datetime import timedelta
 from pathlib import Path
 
+from fastapi import Request
+
 from .base import *  # noqa: F403
 from app.services.ml_recommender import (
     DEFAULT_MODEL_VERSION,
@@ -52,6 +54,70 @@ def _meta_bool(value: Optional[str], default: bool = False) -> bool:
     if value is None:
         return default
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _user_scope(request: Request) -> str:
+    raw = (
+        request.headers.get("cf-access-authenticated-user-email")
+        or request.headers.get("x-user-email")
+        or request.headers.get("x-forwarded-user")
+        or "default"
+    )
+    # Keep meta keys safe/short
+    scope = "".join(ch for ch in raw.lower() if ch.isalnum() or ch in {"@", ".", "_", "-"})
+    return scope[:120] or "default"
+
+
+def _settings_key(scope: str, name: str) -> str:
+    return f"settings:{scope}:{name}"
+
+
+@router.get("/api/fpl/settings")
+def app_settings_get(request: Request):
+    scope = _user_scope(request)
+    db = SessionLocal()
+    try:
+        fpl_entry_id = _int(_get_meta(db, _settings_key(scope, "fpl_entry_id")), 0) or None
+        league_id = _int(_get_meta(db, _settings_key(scope, "league_id")), 0) or None
+        rival_entry_id = _int(_get_meta(db, _settings_key(scope, "rival_entry_id")), 0) or None
+        return {
+            "scope": scope,
+            "fpl_entry_id": fpl_entry_id,
+            "league_id": league_id,
+            "rival_entry_id": rival_entry_id,
+        }
+    finally:
+        db.close()
+
+
+@router.post("/api/fpl/settings")
+def app_settings_set(
+    request: Request,
+    fpl_entry_id: Optional[int] = Query(default=None, ge=1),
+    league_id: Optional[int] = Query(default=None, ge=1),
+    rival_entry_id: Optional[int] = Query(default=None, ge=1),
+    clear_missing: bool = Query(default=False),
+):
+    scope = _user_scope(request)
+    db = SessionLocal()
+    try:
+        updates = {
+            "fpl_entry_id": fpl_entry_id,
+            "league_id": league_id,
+            "rival_entry_id": rival_entry_id,
+        }
+        for k, v in updates.items():
+            if v is not None:
+                _set_meta(db, _settings_key(scope, k), str(v))
+            elif clear_missing:
+                _set_meta(db, _settings_key(scope, k), "")
+        db.commit()
+        return app_settings_get(request)
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to save app settings: {e}")
+    finally:
+        db.close()
 
 
 @router.get("/api/fpl/notification-settings")

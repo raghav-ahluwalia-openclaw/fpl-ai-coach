@@ -28,6 +28,7 @@ const secondaryLinks = [
   { label: "Captaincy Lab", href: "/captaincy" },
   { label: "Rank Trend", href: "/team-rank" },
   { label: "Global Picks", href: "/global" },
+  { label: "Settings", href: "/settings" },
 ];
 
 export default function Home() {

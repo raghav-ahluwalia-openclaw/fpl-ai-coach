@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { fetchJson } from "@/lib/api";
 
@@ -17,6 +17,10 @@ type RankHistoryResponse = {
   best_rank?: number;
   worst_rank?: number;
   summary: string;
+};
+
+type AppSettings = {
+  fpl_entry_id: number | null;
 };
 
 const API_BASE = "";
@@ -41,6 +45,16 @@ export default function TeamRankPage() {
 
   const normalizedTeamId = teamId.trim();
   const teamIdValid = /^\d+$/.test(normalizedTeamId);
+
+  useEffect(() => {
+    fetchJson<AppSettings>(`${API_BASE}/api/fpl/settings`)
+      .then((s) => {
+        if (s.fpl_entry_id) {
+          setTeamId((prev) => prev || String(s.fpl_entry_id));
+        }
+      })
+      .catch(() => null);
+  }, []);
 
   async function load() {
     if (!normalizedTeamId || !teamIdValid) {

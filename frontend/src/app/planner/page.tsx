@@ -19,6 +19,11 @@ type ChipPlannerResponse = {
   confidence?: number;
 };
 
+type AppSettings = {
+  fpl_entry_id: number | null;
+  rival_entry_id: number | null;
+};
+
 type RivalIntelResponse = {
   gameweek: number;
   overlap_count: number;
@@ -53,6 +58,13 @@ export default function PlannerPage() {
     fetchJson<ChipPlannerResponse>(`${API_BASE}/api/fpl/chip-planner?horizon=6`)
       .then(setChip)
       .catch((e) => setError(e.message || "Failed to load chip planner"));
+
+    fetchJson<AppSettings>(`${API_BASE}/api/fpl/settings`)
+      .then((s) => {
+        if (s.fpl_entry_id) setEntryId((prev) => prev || String(s.fpl_entry_id));
+        if (s.rival_entry_id) setRivalEntryId((prev) => prev || String(s.rival_entry_id));
+      })
+      .catch(() => null);
   }, []);
 
   async function loadRival() {

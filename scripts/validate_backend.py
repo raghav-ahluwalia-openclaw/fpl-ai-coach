@@ -149,7 +149,14 @@ def main() -> int:
         _assert(code == 200, f"top players failed: {code} {data}")
         _assert(isinstance(data.get("players"), list) and len(data["players"]) > 0, f"top players invalid: {data}")
 
-        # 6) Notification and weekly-brief endpoints
+        # 6) App settings + notification + weekly-brief endpoints
+        code, data = _request("GET", "/api/fpl/settings")
+        _assert(code == 200, f"settings GET failed: {code} {data}")
+
+        code, data = _request("POST", "/api/fpl/settings?fpl_entry_id=538572&league_id=12345&rival_entry_id=538573")
+        _assert(code == 200, f"settings POST failed: {code} {data}")
+        _assert(data.get("fpl_entry_id") == 538572, f"settings response invalid: {data}")
+
         code, data = _request("GET", "/api/fpl/notification-status")
         _assert(code == 200, f"notification-status failed: {code} {data}")
         _assert("preview_message" in data and "status" in data, f"notification-status shape invalid: {data}")

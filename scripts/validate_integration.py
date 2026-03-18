@@ -157,7 +157,7 @@ def main() -> int:
         _wait(f"{BASE_FRONT}/")
 
         # Core pages (smoke set)
-        for path in ["/", "/global", "/team", "/captaincy", "/planner"]:
+        for path in ["/", "/global", "/team", "/captaincy", "/planner", "/settings"]:
             code, _ = _request("GET", f"{BASE_FRONT}{path}")
             _assert(code == 200, f"page load failed {path}: {code}")
 
@@ -168,6 +168,7 @@ def main() -> int:
         for path in [
             "/api/fpl/recommendation",
             "/api/fpl/recommendation-ml",
+            "/api/fpl/settings",
             "/api/fpl/notification-status",
             "/api/fpl/weekly-brief?mode=balanced&model_version=xgb_hist_v1",
             "/api/fpl/top?limit=10",

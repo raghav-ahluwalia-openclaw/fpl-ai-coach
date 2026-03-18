@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { fetchJson } from "@/lib/api";
 
@@ -33,6 +33,10 @@ type TeamRecommendation = {
   summary: string;
 };
 
+type AppSettings = {
+  fpl_entry_id: number | null;
+};
+
 const API_BASE = "";
 const cardClass = "rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md p-5";
 
@@ -45,6 +49,16 @@ export default function TeamPage() {
 
   const normalizedTeamId = teamId.trim();
   const teamIdValid = /^\d+$/.test(normalizedTeamId);
+
+  useEffect(() => {
+    fetchJson<AppSettings>(`${API_BASE}/api/fpl/settings`)
+      .then((s) => {
+        if (s.fpl_entry_id) {
+          setTeamId((prev) => prev || String(s.fpl_entry_id));
+        }
+      })
+      .catch(() => null);
+  }, []);
 
   async function run() {
     if (!normalizedTeamId || !teamIdValid) {

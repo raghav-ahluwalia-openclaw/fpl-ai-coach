@@ -54,6 +54,8 @@ Open `http://localhost:3000`
 - `GET /api/fpl/content-consensus?limit=10&include_videos=true`
 - `GET /api/fpl/deadline-next?lead_hours=6`
 - `GET /api/fpl/deadline-reminder?lead_hours=6&mode=balanced&model_version=xgb_v1|xgb_hist_v1`
+- `GET /api/fpl/settings`
+- `POST /api/fpl/settings?fpl_entry_id=...&league_id=...&rival_entry_id=...&clear_missing=true`
 - `GET /api/fpl/notification-settings`
 - `POST /api/fpl/notification-settings?enabled=true&lead_hours=6&mode=balanced&model_version=xgb_hist_v1`
 - `GET /api/fpl/notification-status`
