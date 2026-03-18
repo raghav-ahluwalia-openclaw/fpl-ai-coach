@@ -164,8 +164,8 @@ export default function WeeklyBriefPage() {
             onChange={(e) => setModelVersion(e.target.value as ModelVersion)}
             className="rounded-md px-3 py-2 bg-black/30 border border-white/20"
           >
-            <option value="xgb_hist_v1">Historical ML</option>
             <option value="xgb_v1">Current ML</option>
+            <option value="xgb_hist_v1">Historical ML</option>
           </select>
         </div>
       </div>

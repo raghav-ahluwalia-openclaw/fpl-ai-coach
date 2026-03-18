@@ -127,13 +127,13 @@ def notification_settings_get():
         enabled = _meta_bool(_get_meta(db, "notif_enabled"), False)
         lead_hours = _int(_get_meta(db, "notif_lead_hours"), 6)
         mode = _get_meta(db, "notif_mode") or "balanced"
-        model_version = _get_meta(db, "notif_model_version") or HISTORICAL_MODEL_VERSION
+        model_version = _get_meta(db, "notif_model_version") or DEFAULT_MODEL_VERSION
 
         return {
             "enabled": enabled,
             "lead_hours": max(1, min(72, lead_hours)),
             "mode": mode if mode in {"safe", "balanced", "aggressive"} else "balanced",
-            "model_version": model_version if model_version in {"xgb_v1", "xgb_hist_v1"} else HISTORICAL_MODEL_VERSION,
+            "model_version": model_version if model_version in {"xgb_v1", "xgb_hist_v1"} else DEFAULT_MODEL_VERSION,
         }
     finally:
         db.close()
@@ -144,7 +144,7 @@ def notification_settings_set(
     enabled: bool = Query(default=True),
     lead_hours: int = Query(default=6, ge=1, le=72),
     mode: str = Query(default="balanced", pattern="^(safe|balanced|aggressive)$"),
-    model_version: str = Query(default=HISTORICAL_MODEL_VERSION, pattern="^(xgb_v1|xgb_hist_v1)$"),
+    model_version: str = Query(default=DEFAULT_MODEL_VERSION, pattern="^(xgb_v1|xgb_hist_v1)$"),
 ):
     db = SessionLocal()
     try:
@@ -613,7 +613,7 @@ def rival_intelligence(
 @router.get("/api/fpl/weekly-digest-card")
 def weekly_digest_card(
     mode: str = Query(default="balanced", pattern="^(safe|balanced|aggressive)$"),
-    model_version: str = Query(default=HISTORICAL_MODEL_VERSION, pattern="^(xgb_v1|xgb_hist_v1)$"),
+    model_version: str = Query(default=DEFAULT_MODEL_VERSION, pattern="^(xgb_v1|xgb_hist_v1)$"),
 ):
     brief = weekly_brief(gameweek=None, mode=mode, model_version=model_version)
     cap = captaincy_lab(gameweek=None, limit=3)
@@ -850,7 +850,7 @@ def recommendation_ml(
 def deadline_reminder(
     lead_hours: int = Query(default=6, ge=1, le=72),
     mode: str = Query(default="balanced", pattern="^(safe|balanced|aggressive)$"),
-    model_version: str = Query(default=HISTORICAL_MODEL_VERSION, pattern="^(xgb_v1|xgb_hist_v1)$"),
+    model_version: str = Query(default=DEFAULT_MODEL_VERSION, pattern="^(xgb_v1|xgb_hist_v1)$"),
 ):
     deadline = deadline_next(lead_hours=lead_hours)
     brief = weekly_brief(gameweek=None, mode=mode, model_version=model_version)
@@ -873,7 +873,7 @@ def deadline_reminder(
 def weekly_brief(
     gameweek: Optional[int] = Query(default=None, ge=1, le=38),
     mode: str = Query(default="balanced", pattern="^(safe|balanced|aggressive)$"),
-    model_version: str = Query(default=HISTORICAL_MODEL_VERSION, pattern="^(xgb_v1|xgb_hist_v1)$"),
+    model_version: str = Query(default=DEFAULT_MODEL_VERSION, pattern="^(xgb_v1|xgb_hist_v1)$"),
 ):
     base = recommendation(gameweek=gameweek)
 
