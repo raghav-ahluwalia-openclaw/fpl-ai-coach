@@ -451,15 +451,22 @@ def rival_intelligence(
         my_payload, my_gw = _fetch_entry_picks_with_fallback(entry_id, gw, [current_gw, gw - 1])
         rival_payload, _ = _fetch_entry_picks_with_fallback(rival_entry_id, my_gw, [current_gw, my_gw - 1])
 
-        my_ids = {_int(p.get("element")) for p in my_payload.get("picks", [])}
-        rival_ids = {_int(p.get("element")) for p in rival_payload.get("picks", [])}
+        my_picks = my_payload.get("picks", [])
+        rival_picks = rival_payload.get("picks", [])
+
+        my_ids = {_int(p.get("element")) for p in my_picks}
+        rival_ids = {_int(p.get("element")) for p in rival_picks}
 
         overlap = sorted(my_ids.intersection(rival_ids))
         my_only = sorted(my_ids - rival_ids)
         rival_only = sorted(rival_ids - my_ids)
 
         players = db.query(Player).all()
+        fixtures = db.query(Fixture).all()
         by_id = {p.id: p for p in players}
+
+        my_captain_id = next((_int(p.get("element")) for p in my_picks if bool(p.get("is_captain", False))), None)
+        rival_captain_id = next((_int(p.get("element")) for p in rival_picks if bool(p.get("is_captain", False))), None)
 
         def names(ids: List[int]) -> List[str]:
             out = []
@@ -468,6 +475,48 @@ def rival_intelligence(
                 if p:
                     out.append(p.web_name)
             return out
+
+        # Differential impact scoring
+        my_diff_scored = []
+        for pid in my_only:
+            p = by_id.get(pid)
+            if not p:
+                continue
+            xp = _expected_points_horizon(p, fixtures, my_gw, horizon=3)
+            eo_pressure = min(1.0, max(0.0, p.selected_by_percent / 100.0))
+            impact = xp * (1.0 - eo_pressure)
+            my_diff_scored.append({
+                "id": p.id,
+                "name": p.web_name,
+                "xP_3": round(xp, 2),
+                "ownership_pct": round(p.selected_by_percent, 1),
+                "impact_score": round(impact, 2),
+            })
+
+        rival_diff_scored = []
+        for pid in rival_only:
+            p = by_id.get(pid)
+            if not p:
+                continue
+            xp = _expected_points_horizon(p, fixtures, my_gw, horizon=3)
+            eo_pressure = min(1.0, max(0.0, p.selected_by_percent / 100.0))
+            impact = xp * (1.0 - eo_pressure)
+            rival_diff_scored.append({
+                "id": p.id,
+                "name": p.web_name,
+                "xP_3": round(xp, 2),
+                "ownership_pct": round(p.selected_by_percent, 1),
+                "impact_score": round(impact, 2),
+            })
+
+        my_diff_scored.sort(key=lambda x: x["impact_score"], reverse=True)
+        rival_diff_scored.sort(key=lambda x: x["impact_score"], reverse=True)
+
+        my_captain_name = by_id.get(my_captain_id).web_name if my_captain_id in by_id else None
+        rival_captain_name = by_id.get(rival_captain_id).web_name if rival_captain_id in by_id else None
+        captain_overlap = my_captain_id is not None and my_captain_id == rival_captain_id
+
+        captain_risk = "high_if_diff" if not captain_overlap else "hedged"
 
         return {
             "gameweek": my_gw,
@@ -479,7 +528,17 @@ def rival_intelligence(
             "overlap_players": names(overlap),
             "my_differentials": names(my_only),
             "rival_differentials": names(rival_only),
-            "summary": "Rival intelligence compares squad overlap and differential exposure for the selected GW.",
+            "captaincy": {
+                "my_captain": my_captain_name,
+                "rival_captain": rival_captain_name,
+                "overlap": captain_overlap,
+                "risk": captain_risk,
+            },
+            "differential_impact": {
+                "my_top": my_diff_scored[:8],
+                "rival_top": rival_diff_scored[:8],
+            },
+            "summary": "Rival intelligence compares overlap, captaincy exposure, and differential impact scores.",
         }
     finally:
         db.close()

@@ -27,6 +27,16 @@ type RivalIntelResponse = {
   overlap_players: string[];
   my_differentials: string[];
   rival_differentials: string[];
+  captaincy: {
+    my_captain: string | null;
+    rival_captain: string | null;
+    overlap: boolean;
+    risk: string;
+  };
+  differential_impact: {
+    my_top: { name: string; xP_3: number; impact_score: number; ownership_pct: number }[];
+    rival_top: { name: string; xP_3: number; impact_score: number; ownership_pct: number }[];
+  };
 };
 
 const API_BASE = "";
@@ -117,10 +127,33 @@ export default function PlannerPage() {
         </div>
 
         {rival ? (
-          <div className="text-sm text-white/85 space-y-2">
+          <div className="text-sm text-white/85 space-y-3">
             <p>GW {rival.gameweek} • Overlap: <strong>{rival.overlap_count}</strong> • My differentials: <strong>{rival.my_only_count}</strong> • Rival differentials: <strong>{rival.rival_only_count}</strong></p>
             <p><strong>My differentials:</strong> {rival.my_differentials.join(", ") || "None"}</p>
             <p><strong>Rival differentials:</strong> {rival.rival_differentials.join(", ") || "None"}</p>
+            <p>
+              <strong>Captaincy:</strong> Me: {rival.captaincy.my_captain || "n/a"} • Rival: {rival.captaincy.rival_captain || "n/a"} •
+              {" "}{rival.captaincy.overlap ? "overlap (hedged)" : "different (high swing)"}
+            </p>
+
+            <div className="grid md:grid-cols-2 gap-3">
+              <div className="border border-white/10 rounded-md p-3 bg-black/20">
+                <p className="font-semibold mb-1">My top impact differentials</p>
+                <ul className="space-y-1">
+                  {rival.differential_impact.my_top.slice(0, 5).map((p, idx) => (
+                    <li key={`${p.name}-${idx}`}>{p.name} • impact {p.impact_score.toFixed(2)} • xP3 {p.xP_3.toFixed(2)}</li>
+                  ))}
+                </ul>
+              </div>
+              <div className="border border-white/10 rounded-md p-3 bg-black/20">
+                <p className="font-semibold mb-1">Rival top impact differentials</p>
+                <ul className="space-y-1">
+                  {rival.differential_impact.rival_top.slice(0, 5).map((p, idx) => (
+                    <li key={`${p.name}-${idx}`}>{p.name} • impact {p.impact_score.toFixed(2)} • xP3 {p.xP_3.toFixed(2)}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
           </div>
         ) : null}
       </section>

@@ -178,7 +178,7 @@ def main() -> int:
 
         code, data = _request("GET", f"/api/fpl/rival-intelligence?entry_id={TEAM_ID}&rival_entry_id={TEAM_ID+1}")
         _assert(code == 200, f"rival-intelligence failed: {code} {data}")
-        _assert("overlap_count" in data, f"rival-intelligence shape invalid: {data}")
+        _assert("overlap_count" in data and "captaincy" in data and "differential_impact" in data, f"rival-intelligence shape invalid: {data}")
 
         code, data = _request("GET", "/api/fpl/weekly-digest-card?mode=balanced&model_version=xgb_hist_v1")
         _assert(code == 200, f"weekly-digest-card failed: {code} {data}")

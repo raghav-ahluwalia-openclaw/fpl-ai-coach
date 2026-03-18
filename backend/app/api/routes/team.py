@@ -35,6 +35,10 @@ def import_user_team(entry_id: int, gameweek: Optional[int] = Query(default=None
         _set_meta(db, f"entry:{entry_id}:last_import", datetime.now(timezone.utc).isoformat())
         db.commit()
 
+        # Persist optional team snapshot metadata for rival context.
+        _set_meta(db, f"entry:{entry_id}:player_name", str(payload.get("player_name") or ""))
+        _set_meta(db, f"entry:{entry_id}:entry_name", str(payload.get("name") or ""))
+
         return {
             "ok": True,
             "entry_id": entry_id,

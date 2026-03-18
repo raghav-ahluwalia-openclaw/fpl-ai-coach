@@ -49,7 +49,7 @@ Open `http://localhost:3000`
 - `GET /api/fpl/explainability/top?limit=20`
 - `GET /api/fpl/captaincy-lab?limit=10`
 - `GET /api/fpl/chip-planner?horizon=6`
-- `GET /api/fpl/rival-intelligence?entry_id=...&rival_entry_id=...`
+- `GET /api/fpl/rival-intelligence?entry_id=...&rival_entry_id=...` (includes captaincy overlap risk + differential impact)
 - `GET /api/fpl/weekly-digest-card?mode=balanced&model_version=xgb_hist_v1`
 - `GET /api/fpl/content-consensus?limit=10&include_videos=true`
 - `GET /api/fpl/deadline-next?lead_hours=6`

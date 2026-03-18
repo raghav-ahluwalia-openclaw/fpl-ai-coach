@@ -67,15 +67,15 @@
    - Chip recommendation now returns confidence + alternative
    - Weekly digest card now provides rich emoji sections + `telegram_text`
 
+14. P3 v2.5 Rival intelligence enhancements
+   - Captaincy overlap risk surfaced in API + planner UI
+   - Differential impact scoring added for both squads
+
 ---
 
 ## Remaining P3
 
-1. Rival intelligence v2
-   - Add captaincy overlap risk and mini-league rank context
-   - Add differential impact scoring
-
-2. Weekly digest card v3
+1. Weekly digest card v3
    - Add optional image renderer payload for richer Telegram card visuals
 
 ## Success metrics
