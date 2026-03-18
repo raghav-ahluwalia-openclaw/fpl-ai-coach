@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+
+echo "[pre-commit] Running validation suite..."
+./scripts/validate_all.sh
+
+echo "[pre-commit] ✅ checks passed"
