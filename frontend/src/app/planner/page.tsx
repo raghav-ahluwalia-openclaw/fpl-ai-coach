@@ -13,7 +13,10 @@ type ChipPlannerResponse = {
     bench_boost: number;
     triple_captain: number;
   };
+  fixture_windows: { gameweek: number; blank_teams: number; double_teams: number }[];
   recommendation: string;
+  alternative?: string;
+  confidence?: number;
 };
 
 type RivalIntelResponse = {
@@ -66,12 +69,27 @@ export default function PlannerPage() {
       {chip ? (
         <section className={cardClass}>
           <h2 className="font-semibold text-[#00ff87] mb-2">Chip Planner • GW {chip.gameweek}</h2>
-          <p className="text-sm text-white/75 mb-3">Recommendation: <strong>{chip.recommendation}</strong></p>
+          <p className="text-sm text-white/75 mb-3">
+            Recommendation: <strong>{chip.recommendation}</strong>
+            {chip.alternative ? <> • Alt: <strong>{chip.alternative}</strong></> : null}
+            {typeof chip.confidence === "number" ? <> • Confidence: <strong>{Math.round(chip.confidence * 100)}%</strong></> : null}
+          </p>
           <div className="grid md:grid-cols-4 gap-3 text-sm">
             <div className="border border-white/10 rounded-md p-3">Wildcard: <strong>{chip.chip_scores.wildcard.toFixed(2)}</strong></div>
             <div className="border border-white/10 rounded-md p-3">Free Hit: <strong>{chip.chip_scores.free_hit.toFixed(2)}</strong></div>
             <div className="border border-white/10 rounded-md p-3">Bench Boost: <strong>{chip.chip_scores.bench_boost.toFixed(2)}</strong></div>
             <div className="border border-white/10 rounded-md p-3">Triple Captain: <strong>{chip.chip_scores.triple_captain.toFixed(2)}</strong></div>
+          </div>
+
+          <div className="mt-3 text-sm text-white/80">
+            <p className="mb-1 font-semibold">Blank/Double window:</p>
+            <div className="flex flex-wrap gap-2">
+              {chip.fixture_windows?.slice(0, 6).map((w) => (
+                <span key={w.gameweek} className="text-xs rounded-full px-3 py-1 border border-white/20 bg-black/20">
+                  GW{w.gameweek}: blank {w.blank_teams}, dbl {w.double_teams}
+                </span>
+              ))}
+            </div>
           </div>
         </section>
       ) : (

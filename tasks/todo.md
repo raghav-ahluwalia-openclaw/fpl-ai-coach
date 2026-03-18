@@ -1,16 +1,13 @@
 # tasks/todo.md
 
-## Active Plan — P3 initial enhancement bundle (2026-03-18)
+## Active Plan — P3 v2 enhancement bundle (2026-03-18)
 
-- [x] Add backend chip planner endpoint
-- [x] Add backend rival intelligence endpoint
-- [x] Add backend weekly digest card endpoint
-- [x] Add frontend planner page (`/planner`)
-- [x] Add nav + homepage links for planner
-- [x] Extend backend + integration validators for new endpoints/routes
-- [x] Update README and roadmap
-- [x] Validate full suite (`validate_all.sh`)
-- [ ] Auto-commit completed P3 initial bundle
+- [x] Improve chip planner with blank/double GW window detection
+- [x] Add chip recommendation confidence + alternative
+- [x] Upgrade weekly digest card to rich emoji/section payload + telegram text
+- [x] Surface chip window details on `/planner`
+- [x] Re-run full validation suite
+- [ ] Auto-commit completed P3 v2 bundle
 
 ## Verification
 
@@ -20,5 +17,5 @@
 
 ## Review
 
-- Outcome: P3 started and first vertical slice shipped (planner + rival + digest payload).
-- Follow-ups: chip planner v2 (blank/double windows), rival impact scoring, richer Telegram card renderer.
+- Outcome: P3 v2 shipped with stronger chip timing intelligence and richer digest card output.
+- Follow-ups: rival intelligence v2 + digest visual renderer payload.

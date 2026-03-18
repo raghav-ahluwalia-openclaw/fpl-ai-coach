@@ -337,9 +337,11 @@ def chip_planner(
         fixtures = db.query(Fixture).all()
         gw = _resolve_gameweek(db, gameweek)
 
+        team_ids = sorted({p.team_id for p in players})
+
         # Team-level fixture strength proxy for upcoming horizon.
         team_strength: Dict[int, float] = {}
-        for team_id in {p.team_id for p in players}:
+        for team_id in team_ids:
             vals = []
             for f in fixtures:
                 if f.event is None or f.event < gw or f.event >= gw + horizon:
@@ -348,40 +350,54 @@ def chip_planner(
                     vals.append(f.team_h_difficulty)
                 elif f.team_a == team_id:
                     vals.append(f.team_a_difficulty)
-            if not vals:
-                team_strength[team_id] = 3.0
-            else:
-                team_strength[team_id] = sum(vals) / len(vals)
+            team_strength[team_id] = (sum(vals) / len(vals)) if vals else 3.0
 
         easy_teams = sorted(team_strength.items(), key=lambda x: x[1])[:5]
         hard_teams = sorted(team_strength.items(), key=lambda x: x[1], reverse=True)[:5]
 
-        # Chip heuristics
+        # Blank/Double GW detection for near-term planning windows.
+        gw_fixture_stats = []
+        for ev in range(gw, gw + min(horizon, 6)):
+            counts = {tid: 0 for tid in team_ids}
+            for f in fixtures:
+                if f.event != ev:
+                    continue
+                counts[f.team_h] = counts.get(f.team_h, 0) + 1
+                counts[f.team_a] = counts.get(f.team_a, 0) + 1
+
+            blank_teams = sum(1 for _, c in counts.items() if c == 0)
+            double_teams = sum(1 for _, c in counts.items() if c >= 2)
+            gw_fixture_stats.append(
+                {
+                    "gameweek": ev,
+                    "blank_teams": blank_teams,
+                    "double_teams": double_teams,
+                }
+            )
+
+        max_blank = max((x["blank_teams"] for x in gw_fixture_stats), default=0)
+        max_double = max((x["double_teams"] for x in gw_fixture_stats), default=0)
+
+        # Chip heuristics (v2): include blank/double structure.
         wildcard_score = max(0.0, min(10.0, (sum(v for _, v in hard_teams) / max(1, len(hard_teams))) * 1.2))
 
-        teams_with_fixture_next = set()
-        for f in fixtures:
-            if f.event == gw:
-                teams_with_fixture_next.add(f.team_h)
-                teams_with_fixture_next.add(f.team_a)
-        blank_teams = max(0, 20 - len(teams_with_fixture_next))
-        free_hit_score = max(0.0, min(10.0, (blank_teams / 2.0) + 2.0))
+        # Free Hit spikes with large blank GW pressure.
+        free_hit_score = max(0.0, min(10.0, 2.0 + (max_blank * 0.45)))
 
-        # Bench boost proxy: number of cheap high-minute players with playable horizon score
+        # Bench boost benefits from doubles and bench depth.
         playable_bench = 0
         for p in players:
-            if p.now_cost / 10.0 <= 5.5 and p.minutes >= 450:
+            if p.now_cost / 10.0 <= 5.8 and p.minutes >= 450:
                 if _expected_points_horizon(p, fixtures, gw, horizon=3) >= 4.2:
                     playable_bench += 1
-        bench_boost_score = max(0.0, min(10.0, playable_bench / 2.2))
+        bench_boost_score = max(0.0, min(10.0, (playable_bench / 2.2) + (max_double * 0.35)))
 
-        # Triple captain proxy: top premium expected points
+        # Triple captain likes elite short-horizon xP + doubles.
         premiums = [p for p in players if p.now_cost / 10.0 >= 10.0]
         top_premium_xp = max((_expected_points_horizon(p, fixtures, gw, horizon=2) for p in premiums), default=0.0)
-        triple_captain_score = max(0.0, min(10.0, top_premium_xp * 1.1))
+        triple_captain_score = max(0.0, min(10.0, (top_premium_xp * 1.0) + (max_double * 0.28)))
 
-        recommendation = "hold"
-        best_chip = max(
+        ranked = sorted(
             [
                 ("wildcard", wildcard_score),
                 ("free_hit", free_hit_score),
@@ -389,9 +405,16 @@ def chip_planner(
                 ("triple_captain", triple_captain_score),
             ],
             key=lambda x: x[1],
+            reverse=True,
         )
+        best_chip = ranked[0]
+        alt_chip = ranked[1]
+
+        recommendation = "hold"
+        confidence = 0.45
         if best_chip[1] >= 7.4:
             recommendation = f"play_{best_chip[0]}"
+            confidence = min(0.9, 0.55 + ((best_chip[1] - alt_chip[1]) / 10.0))
 
         return {
             "gameweek": gw,
@@ -402,10 +425,13 @@ def chip_planner(
                 "bench_boost": round(bench_boost_score, 2),
                 "triple_captain": round(triple_captain_score, 2),
             },
+            "fixture_windows": gw_fixture_stats,
             "easy_fixture_teams": [{"team_id": t, "avg_difficulty": round(s, 2)} for t, s in easy_teams],
             "hard_fixture_teams": [{"team_id": t, "avg_difficulty": round(s, 2)} for t, s in hard_teams],
             "recommendation": recommendation,
-            "summary": "Chip planner scores near-term chip value from fixture swings, premium upside, and bench depth proxies.",
+            "alternative": f"play_{alt_chip[0]}" if alt_chip[1] >= 6.8 else "hold",
+            "confidence": round(confidence, 2),
+            "summary": "Chip planner scores chip timing using fixture swings plus blank/double GW pressure.",
         }
     finally:
         db.close()
@@ -466,15 +492,58 @@ def weekly_digest_card(
 ):
     brief = weekly_brief(gameweek=None, mode=mode, model_version=model_version)
     cap = captaincy_lab(gameweek=None, limit=3)
+    chip = chip_planner(gameweek=brief["gameweek"], horizon=6)
+
+    final = brief["final"]
+    safe_top3 = cap.get("safe_captains", [])[:3]
+    upside_top3 = cap.get("upside_captains", [])[:3]
+
+    lines = [
+        f"📊 GW{brief['gameweek']} Weekly Digest ({mode})",
+        f"🧢 Captain: {final['captain']} | Vice: {final['vice_captain']}",
+        f"🔁 Transfer: {final['transfer_out']} → {final['transfer_in']}",
+        f"🧩 Chip: {chip.get('recommendation')} (alt: {chip.get('alternative')}, conf: {chip.get('confidence')})",
+        "✅ Safe C picks: " + ", ".join(p.get("name", "") for p in safe_top3),
+        "🎯 Upside C picks: " + ", ".join(p.get("name", "") for p in upside_top3),
+    ]
 
     return {
         "title": f"GW{brief['gameweek']} Weekly Digest",
         "mode": mode,
-        "final": brief["final"],
-        "safe_captains_top3": cap.get("safe_captains", [])[:3],
-        "upside_captains_top3": cap.get("upside_captains", [])[:3],
+        "final": final,
+        "safe_captains_top3": safe_top3,
+        "upside_captains_top3": upside_top3,
+        "chip": {
+            "recommendation": chip.get("recommendation"),
+            "alternative": chip.get("alternative"),
+            "confidence": chip.get("confidence"),
+            "scores": chip.get("chip_scores"),
+        },
         "rationale": brief.get("rationale", [])[:4],
-        "summary": "Compact weekly digest payload for messaging cards and reminder notifications.",
+        "card": {
+            "emoji_header": "📊",
+            "sections": {
+                "captaincy": {
+                    "icon": "🧢",
+                    "captain": final["captain"],
+                    "vice": final["vice_captain"],
+                },
+                "transfer": {
+                    "icon": "🔁",
+                    "out": final["transfer_out"],
+                    "in": final["transfer_in"],
+                },
+                "chip": {
+                    "icon": "🧩",
+                    "play": chip.get("recommendation"),
+                    "alternative": chip.get("alternative"),
+                    "confidence": chip.get("confidence"),
+                },
+            },
+            "lines": lines,
+            "telegram_text": "\n".join(lines),
+        },
+        "summary": "Rich weekly digest payload for messaging cards and Telegram reminders.",
     }
 
 
