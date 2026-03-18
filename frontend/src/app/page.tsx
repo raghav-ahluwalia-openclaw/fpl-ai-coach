@@ -28,11 +28,7 @@ const primaryCards = [
   },
 ];
 
-const secondaryLinks = [
-  { label: "Global Picks", href: "/global" },
-  { label: "Rank Trend", href: "/team-rank" },
-  { label: "Captaincy Lab", href: "/captaincy" },
-];
+const secondaryLinks = [{ label: "Global Picks", href: "/global" }];
 
 export default function Home() {
   return (
