@@ -68,7 +68,14 @@ type WeeklyBriefResponse = {
   creator_consensus: {
     generated_at?: string;
     top_topics: { topic: string; score: number }[];
-    top_videos: { creator: string; title: string; url: string }[];
+    top_videos: {
+      creator: string;
+      title: string;
+      url: string;
+      transcript_tags?: string[];
+      summary?: string;
+      transcript_available?: boolean;
+    }[];
   } | null;
   rationale: string[];
 };
@@ -301,6 +308,18 @@ export default function WeeklyBriefPage() {
                       <a href={v.url} target="_blank" rel="noreferrer" className="text-cyan-200 hover:underline">
                         {v.title}
                       </a>
+
+                      {v.transcript_tags && v.transcript_tags.length > 0 ? (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {v.transcript_tags.slice(0, 8).map((t) => (
+                            <span key={t} className="text-[11px] rounded-full px-2 py-0.5 border border-white/20 bg-black/30">
+                              {t}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+
+                      {v.summary ? <p className="text-white/70 mt-2">{v.summary}</p> : null}
                     </li>
                   ))}
                 </ul>
