@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { fetchJson } from "@/lib/api";
 
@@ -61,34 +61,37 @@ export default function TeamPage() {
       .catch(() => null);
   }, []);
 
-  async function run(teamIdOverride?: string) {
-    const effectiveTeamId = (teamIdOverride ?? normalizedTeamId).trim();
-    if (!effectiveTeamId || !/^\d+$/.test(effectiveTeamId)) {
-      setError("Team ID must be numeric.");
-      return;
-    }
+  const run = useCallback(
+    async (teamIdOverride?: string) => {
+      const effectiveTeamId = (teamIdOverride ?? normalizedTeamId).trim();
+      if (!effectiveTeamId || !/^\d+$/.test(effectiveTeamId)) {
+        setError("Team ID must be numeric.");
+        return;
+      }
 
-    setLoading(true);
-    setError(null);
-    try {
-      await fetchJson<{ ok: boolean }>(`${API_BASE}/api/fpl/team/${effectiveTeamId}/import`, { method: "POST" });
-      const recommendation = await fetchJson<TeamRecommendation>(
-        `${API_BASE}/api/fpl/team/${effectiveTeamId}/recommendation?mode=${mode}`,
-      );
-      setData(recommendation);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to load team recommendation");
-    } finally {
-      setLoading(false);
-    }
-  }
+      setLoading(true);
+      setError(null);
+      try {
+        await fetchJson<{ ok: boolean }>(`${API_BASE}/api/fpl/team/${effectiveTeamId}/import`, { method: "POST" });
+        const recommendation = await fetchJson<TeamRecommendation>(
+          `${API_BASE}/api/fpl/team/${effectiveTeamId}/recommendation?mode=${mode}`,
+        );
+        setData(recommendation);
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : "Failed to load team recommendation");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [normalizedTeamId, mode],
+  );
 
   useEffect(() => {
     if (!hasAutoRun.current && normalizedTeamId && teamIdValid) {
       hasAutoRun.current = true;
       void run(normalizedTeamId);
     }
-  }, [normalizedTeamId, teamIdValid]);
+  }, [normalizedTeamId, teamIdValid, run]);
 
   return (
     <main className="min-h-screen p-6 md:p-8 max-w-6xl mx-auto text-white">

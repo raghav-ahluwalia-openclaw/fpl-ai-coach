@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { fetchJson } from "@/lib/api";
 
@@ -57,30 +57,33 @@ export default function TeamRankPage() {
       .catch(() => null);
   }, []);
 
-  async function load(teamIdOverride?: string) {
-    const effectiveTeamId = (teamIdOverride ?? normalizedTeamId).trim();
-    if (!effectiveTeamId || !/^\d+$/.test(effectiveTeamId)) {
-      setError("Team ID must be numeric.");
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const payload = await fetchJson<RankHistoryResponse>(`${API_BASE}/api/fpl/team/${effectiveTeamId}/rank-history`);
-      setData(payload);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to load rank history");
-    } finally {
-      setLoading(false);
-    }
-  }
+  const load = useCallback(
+    async (teamIdOverride?: string) => {
+      const effectiveTeamId = (teamIdOverride ?? normalizedTeamId).trim();
+      if (!effectiveTeamId || !/^\d+$/.test(effectiveTeamId)) {
+        setError("Team ID must be numeric.");
+        return;
+      }
+      setLoading(true);
+      setError(null);
+      try {
+        const payload = await fetchJson<RankHistoryResponse>(`${API_BASE}/api/fpl/team/${effectiveTeamId}/rank-history`);
+        setData(payload);
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : "Failed to load rank history");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [normalizedTeamId],
+  );
 
   useEffect(() => {
     if (!hasAutoRun.current && normalizedTeamId && teamIdValid) {
       hasAutoRun.current = true;
       void load(normalizedTeamId);
     }
-  }, [normalizedTeamId, teamIdValid]);
+  }, [normalizedTeamId, teamIdValid, load]);
 
   const chart = useMemo(() => {
     const points = data?.points ?? [];
