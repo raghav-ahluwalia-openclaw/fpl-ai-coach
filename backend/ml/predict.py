@@ -19,25 +19,33 @@ sys.path.insert(0, str(ROOT))
 
 from app.db import SessionLocal  # noqa: E402
 from app.models import Fixture, Player  # noqa: E402
-from app.services.ml_recommender import load_model, predict_expected_points  # noqa: E402
+from app.services.ml_recommender import DEFAULT_MODEL_VERSION, HISTORICAL_MODEL_VERSION, load_model, predict_expected_points  # noqa: E402
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Preview top FPL ML projections")
     parser.add_argument("--gameweek", type=int, default=None)
     parser.add_argument("--limit", type=int, default=20)
+    parser.add_argument(
+        "--model-version",
+        default=DEFAULT_MODEL_VERSION,
+        choices=[DEFAULT_MODEL_VERSION, HISTORICAL_MODEL_VERSION],
+    )
     args = parser.parse_args()
 
-    model = load_model()
+    model = load_model(args.model_version)
     if model is None:
-        print("❌ No model artifact found. Run backend/ml/train_xgb.py first.")
+        print(
+            "❌ No model artifact found. "
+            f"Train model first (requested: {args.model_version})."
+        )
         return 1
 
     db = SessionLocal()
     try:
         players = db.query(Player).all()
         fixtures = db.query(Fixture).all()
-        scored = predict_expected_points(model, players, fixtures, args.gameweek)
+        scored = predict_expected_points(model, players, fixtures, args.gameweek, model_version=args.model_version)
         out = [
             {
                 "id": p.id,

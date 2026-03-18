@@ -46,8 +46,9 @@ Open `http://localhost:3000`
 - `GET /health`
 - `POST /api/fpl/ingest/bootstrap` (supports `?force=true` to bypass ingest TTL)
 - `GET /api/fpl/top?limit=20`
+- `GET /api/fpl/content-consensus?limit=10&include_videos=true`
 - `GET /api/fpl/recommendation`
-- `GET /api/fpl/recommendation-ml?force_train=false`
+- `GET /api/fpl/recommendation-ml?force_train=false&model_version=xgb_v1|xgb_hist_v1`
 - `POST /api/fpl/team/{entry_id}/import`
 - `GET /api/fpl/team/{entry_id}/recommendation?mode=safe|balanced|aggressive`
 - `GET /api/fpl/targets?mode=safe|balanced|aggressive&horizon=3&limit=10`
@@ -115,11 +116,25 @@ Optional:
 
 ML model helpers:
 ```bash
-# train XGBoost model artifact
+# current-season proxy model (fast)
 ./backend/ml/train_xgb.py --gameweek 29
-
-# preview top ML projections
 ./backend/ml/predict.py --gameweek 29 --limit 15
+
+# historical-season dataset + historical model
+./backend/ml/build_historical_dataset.py --seasons 2022-23 2023-24 2024-25
+./backend/ml/train_xgb_historical.py
+
+# use historical model in API
+# GET /api/fpl/recommendation-ml?model_version=xgb_hist_v1
+```
+
+Creator content digest:
+```bash
+# fetch latest videos from trusted FPL creators
+./scripts/fpl_creator_digest.py --videos-per-creator 4
+
+# then consume via API
+# GET /api/fpl/content-consensus?limit=10&include_videos=true
 ```
 
 What gets validated:
@@ -136,5 +151,5 @@ What gets validated:
 ## Notes
 
 - Baseline recommendation model v1 uses: points-per-game, recent form, minutes proxy, fixture difficulty, and availability/news flags.
-- ML recommendation endpoint uses an XGBoost regressor trained from current-season aggregates and stores artifacts under `backend/model_artifacts/`.
+- ML recommendation endpoint supports `xgb_v1` (current-season proxy) and `xgb_hist_v1` (historical rows) model artifacts under `backend/model_artifacts/`.
 - If you do not want Docker, set `DATABASE_URL=sqlite:///./fpl.db` in `backend/.env`.

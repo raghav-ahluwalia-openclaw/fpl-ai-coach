@@ -1,7 +1,49 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from .base import *  # noqa: F403
-from app.services.ml_recommender import load_model, model_meta, predict_expected_points, train_and_save_model
+from app.services.ml_recommender import (
+    DEFAULT_MODEL_VERSION,
+    HISTORICAL_MODEL_VERSION,
+    load_model,
+    model_meta,
+    predict_expected_points,
+    train_and_save_model,
+)
+
+DIGEST_PATH = Path(__file__).resolve().parents[3] / "data" / "content" / "creator_digest.json"
+
+
+@router.get("/api/fpl/content-consensus")
+def content_consensus(limit: int = Query(default=10, ge=1, le=50), include_videos: bool = Query(default=True)):
+    if not DIGEST_PATH.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "Creator digest not found. "
+                "Run ./scripts/fpl_creator_digest.py from project root first."
+            ),
+        )
+
+    try:
+        payload = json.loads(DIGEST_PATH.read_text(encoding="utf-8"))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Failed to parse creator digest: {e}")
+
+    top_topics = payload.get("top_topics", [])[:limit]
+    videos = payload.get("videos", [])[:limit] if include_videos else []
+
+    return {
+        "generated_at": payload.get("generated_at"),
+        "creator_coverage": payload.get("creator_coverage", {}),
+        "top_topics": top_topics,
+        "top_title_terms": payload.get("top_title_terms", [])[: min(limit, 15)],
+        "videos": videos,
+        "source": str(DIGEST_PATH),
+    }
+
 
 @router.get("/api/fpl/top")
 def top_players(limit: int = Query(default=20, ge=1, le=100)):
@@ -104,6 +146,7 @@ def recommendation(gameweek: Optional[int] = Query(default=None, ge=1, le=38)):
 def recommendation_ml(
     gameweek: Optional[int] = Query(default=None, ge=1, le=38),
     force_train: bool = Query(default=False),
+    model_version: str = Query(default=DEFAULT_MODEL_VERSION, pattern="^(xgb_v1|xgb_hist_v1)$"),
 ):
     db = SessionLocal()
     try:
@@ -114,14 +157,23 @@ def recommendation_ml(
         fixtures = db.query(Fixture).all()
         gw = _resolve_gameweek(db, gameweek)
 
-        model = None if force_train else load_model()
+        model = None if force_train else load_model(model_version)
         if model is None:
-            train_and_save_model(players, fixtures, gw)
-            model = load_model()
+            if model_version == DEFAULT_MODEL_VERSION:
+                train_and_save_model(players, fixtures, gw, model_version=DEFAULT_MODEL_VERSION)
+                model = load_model(DEFAULT_MODEL_VERSION)
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Historical model artifact not found. "
+                        "Run ./backend/ml/build_historical_dataset.py then ./backend/ml/train_xgb_historical.py"
+                    ),
+                )
         if model is None:
             raise HTTPException(status_code=500, detail="Failed to load ML model")
 
-        scored = predict_expected_points(model, players, fixtures, gw)
+        scored = predict_expected_points(model, players, fixtures, gw, model_version=model_version)
         by_pos: Dict[int, List[Tuple[float, Player]]] = {1: [], 2: [], 3: [], 4: []}
         for xpts, p in scored:
             by_pos.setdefault(p.element_type, []).append((xpts, p))
@@ -146,7 +198,7 @@ def recommendation_ml(
         transfer_out = attack_line[0].name if attack_line else "TBD"
 
         confidence = min(0.92, max(0.56, sum(p.expected_points for p in lineup) / 68.0))
-        meta = model_meta() or {}
+        meta = model_meta(model_version) or {}
 
         return Recommendation(
             gameweek=gw,
@@ -159,8 +211,8 @@ def recommendation_ml(
             confidence=round(confidence, 2),
             last_ingested_at=_get_meta(db, "last_ingested_at"),
             summary=(
-                "ML recommendation (XGBoost) trained on current-season aggregates; "
-                f"model={meta.get('model_version', 'xgb_v1')} rows={meta.get('rows', 'n/a')}"
+                "ML recommendation (XGBoost) using selected model artifact; "
+                f"model={meta.get('model_version', model_version)} rows={meta.get('rows', 'n/a')}"
             ),
         )
     finally:

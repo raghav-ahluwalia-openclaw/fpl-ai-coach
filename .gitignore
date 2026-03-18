@@ -18,6 +18,8 @@ backend/.env
 backend/.venv/
 backend/fpl.db
 backend/model_artifacts/
+backend/data/historical/
+backend/data/content/
 
 # Node / Next
 frontend/node_modules/

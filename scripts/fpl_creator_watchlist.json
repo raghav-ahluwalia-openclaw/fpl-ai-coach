@@ -1,0 +1,40 @@
+{
+  "creators": [
+    {
+      "name": "Let's Talk FPL",
+      "query": "Let's Talk FPL FPL Andy Fantasy Premier League",
+      "weight": 1.0,
+      "tier": "core"
+    },
+    {
+      "name": "FPL Focal",
+      "query": "FPL Focal Fantasy Premier League",
+      "weight": 1.0,
+      "tier": "core"
+    },
+    {
+      "name": "FPL Harry",
+      "query": "FPL Harry Fantasy Premier League",
+      "weight": 0.95,
+      "tier": "core"
+    },
+    {
+      "name": "FPL Raptor",
+      "query": "FPL Raptor Fantasy Premier League",
+      "weight": 0.95,
+      "tier": "core"
+    },
+    {
+      "name": "FPL BlackBox",
+      "query": "FPL BlackBox Fantasy Premier League",
+      "weight": 0.9,
+      "tier": "extended"
+    },
+    {
+      "name": "FPL Wire",
+      "query": "FPL Wire Fantasy Premier League",
+      "weight": 0.9,
+      "tier": "extended"
+    }
+  ]
+}
