@@ -47,6 +47,7 @@ Open `http://localhost:3000`
 - `POST /api/fpl/ingest/bootstrap` (supports `?force=true` to bypass ingest TTL)
 - `GET /api/fpl/top?limit=20`
 - `GET /api/fpl/recommendation`
+- `GET /api/fpl/recommendation-ml?force_train=false`
 - `POST /api/fpl/team/{entry_id}/import`
 - `GET /api/fpl/team/{entry_id}/recommendation?mode=safe|balanced|aggressive`
 - `GET /api/fpl/targets?mode=safe|balanced|aggressive&horizon=3&limit=10`
@@ -112,19 +113,28 @@ Optional:
   - `INTEGRATION_BACKEND_PORT=8093`
   - `INTEGRATION_FRONTEND_PORT=3091`
 
+ML model helpers:
+```bash
+# train XGBoost model artifact
+./backend/ml/train_xgb.py --gameweek 29
+
+# preview top ML projections
+./backend/ml/predict.py --gameweek 29 --limit 15
+```
+
 What gets validated:
 - backend startup + health
 - ingest endpoint
-- top players endpoint
 - global recommendation endpoint
-- target radar endpoint
-- team import + team recommendation (balanced/safe/aggressive)
-- team rank history endpoint
+- ML recommendation endpoint (`/api/fpl/recommendation-ml`)
+- top players endpoint
+- team import + team recommendation (balanced)
 - frontend lint + production build
 - frontend↔backend rewrite integration (`/api/*` through Next.js)
-- feature page routes (`/global`, `/targets`, `/team`, `/team-rank`, `/top`)
+- core feature page routes (`/`, `/global`, `/team`)
 
 ## Notes
 
-- Recommendation model v1 uses: points-per-game, recent form, minutes proxy, fixture difficulty, and availability/news flags.
+- Baseline recommendation model v1 uses: points-per-game, recent form, minutes proxy, fixture difficulty, and availability/news flags.
+- ML recommendation endpoint uses an XGBoost regressor trained from current-season aggregates and stores artifacts under `backend/model_artifacts/`.
 - If you do not want Docker, set `DATABASE_URL=sqlite:///./fpl.db` in `backend/.env`.

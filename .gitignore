@@ -17,6 +17,7 @@ __pycache__/
 backend/.env
 backend/.venv/
 backend/fpl.db
+backend/model_artifacts/
 
 # Node / Next
 frontend/node_modules/

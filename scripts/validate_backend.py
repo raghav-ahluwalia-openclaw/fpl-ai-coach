@@ -124,7 +124,13 @@ def main() -> int:
         for key in ["lineup", "captain", "vice_captain", "confidence"]:
             _assert(key in data, f"global recommendation missing key '{key}': {data}")
 
-        # 3) Team import
+        # 3) ML recommendation (auto-trains model artifact if missing)
+        code, data = _request("GET", "/api/fpl/recommendation-ml")
+        _assert(code == 200, f"ml recommendation failed: {code} {data}")
+        for key in ["lineup", "captain", "vice_captain", "confidence"]:
+            _assert(key in data, f"ml recommendation missing key '{key}': {data}")
+
+        # 4) Team import
         path = f"/api/fpl/team/{TEAM_ID}/import"
         code, data = _request("POST", path)
         _assert(code == 200, f"team import failed for team {TEAM_ID}: {code} {data}")

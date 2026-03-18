@@ -168,6 +168,7 @@ def main() -> int:
 
         for path in [
             "/api/fpl/recommendation",
+            "/api/fpl/recommendation-ml",
             "/api/fpl/top?limit=10",
             f"/api/fpl/team/{TEAM_ID}/recommendation?mode=balanced",
         ]:
