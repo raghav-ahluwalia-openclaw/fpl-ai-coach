@@ -26,6 +26,7 @@ const navItems = [
   { href: "/team", label: "My Team" },
   { href: "/team-rank", label: "Rank Trend" },
   { href: "/captaincy", label: "Captaincy Lab" },
+  { href: "/planner", label: "Planner" },
   { href: "/brief", label: "Weekly Brief" },
 ];
 

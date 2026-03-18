@@ -32,6 +32,11 @@ const cards = [
     href: "/captaincy",
   },
   {
+    title: "Planner",
+    desc: "Chip planner + rival intelligence for tactical decision-making.",
+    href: "/planner",
+  },
+  {
     title: "Weekly Brief",
     desc: "Blended final recommendation from baseline model, ML model, and creator consensus.",
     href: "/brief",

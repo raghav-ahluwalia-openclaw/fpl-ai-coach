@@ -56,13 +56,26 @@
    - Backend notification endpoint tests: `backend/tests/test_notification_endpoints.py`
    - Integration validation includes weekly-brief + notification-status + what-if
 
+12. P3 start — Planner + Rival + Digest payload
+   - `GET /api/fpl/chip-planner`
+   - `GET /api/fpl/rival-intelligence`
+   - `GET /api/fpl/weekly-digest-card`
+   - Frontend page: `/planner`
+
 ---
 
-## Next Up (P3)
+## Remaining P3
 
-1. Chip planner (WC/FH/BB/TC windows)
-2. Rival/mini-league intelligence
-3. Auto weekly Telegram digest card with visual summary
+1. Chip planner v2
+   - Add richer chip timing windows by future blank/double detection
+   - Include confidence and alternative recommendation
+
+2. Rival intelligence v2
+   - Add captaincy overlap risk and mini-league rank context
+   - Add differential impact scoring
+
+3. Weekly digest card v2
+   - Add visual card payload for Telegram (compact sections + emojis)
 
 ## Success metrics
 

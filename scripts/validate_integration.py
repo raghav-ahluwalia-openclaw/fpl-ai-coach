@@ -27,7 +27,6 @@ FRONTEND_DIR = ROOT / "frontend"
 VENV_PYTHON = BACKEND_DIR / ".venv" / "bin" / "python"
 
 
-
 def _pick_port(env_key: str, default_hint: int) -> int:  # noqa: ARG001
     env_port = os.getenv(env_key)
     if env_port:
@@ -158,7 +157,7 @@ def main() -> int:
         _wait(f"{BASE_FRONT}/")
 
         # Core pages (smoke set)
-        for path in ["/", "/global", "/team"]:
+        for path in ["/", "/global", "/team", "/captaincy", "/planner"]:
             code, _ = _request("GET", f"{BASE_FRONT}{path}")
             _assert(code == 200, f"page load failed {path}: {code}")
 
@@ -174,10 +173,14 @@ def main() -> int:
             "/api/fpl/top?limit=10",
             f"/api/fpl/team/{TEAM_ID}/recommendation?mode=balanced",
             f"/api/fpl/team/{TEAM_ID}/what-if?horizon=3&max_transfers=2&limit=5",
+            "/api/fpl/captaincy-lab?limit=5",
+            "/api/fpl/explainability/top?limit=10",
+            "/api/fpl/chip-planner?horizon=6",
+            f"/api/fpl/rival-intelligence?entry_id={TEAM_ID}&rival_entry_id={TEAM_ID+1}",
+            "/api/fpl/weekly-digest-card?mode=balanced&model_version=xgb_hist_v1",
         ]:
             code, body = _request("GET", f"{BASE_FRONT}{path}")
             _assert(code == 200, f"frontend rewrite failed {path}: {code} {body[:200]}")
-            # verify json parses for API paths
             try:
                 json.loads(body)
             except Exception as e:  # noqa: BLE001
@@ -188,7 +191,6 @@ def main() -> int:
 
     except Exception as e:  # noqa: BLE001
         print(f"❌ Integration validation failed: {e}")
-        # Avoid blocking reads from live process pipes on failure paths.
         return 1
 
     finally:

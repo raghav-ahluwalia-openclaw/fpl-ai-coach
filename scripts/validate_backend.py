@@ -163,7 +163,28 @@ def main() -> int:
         _assert(code == 200, f"what-if simulator failed: {code} {data}")
         _assert("scenarios" in data and isinstance(data["scenarios"], list), f"what-if response invalid: {data}")
 
-        # 8) Backend unit tests for notification endpoints
+        # 8) Captaincy + explainability + P3 planner endpoints
+        code, data = _request("GET", "/api/fpl/captaincy-lab?limit=5")
+        _assert(code == 200, f"captaincy-lab failed: {code} {data}")
+        _assert("safe_captains" in data and "upside_captains" in data, f"captaincy-lab shape invalid: {data}")
+
+        code, data = _request("GET", "/api/fpl/explainability/top?limit=10")
+        _assert(code == 200, f"explainability failed: {code} {data}")
+        _assert("players" in data and isinstance(data["players"], list), f"explainability shape invalid: {data}")
+
+        code, data = _request("GET", "/api/fpl/chip-planner?horizon=6")
+        _assert(code == 200, f"chip-planner failed: {code} {data}")
+        _assert("chip_scores" in data and "recommendation" in data, f"chip-planner shape invalid: {data}")
+
+        code, data = _request("GET", f"/api/fpl/rival-intelligence?entry_id={TEAM_ID}&rival_entry_id={TEAM_ID+1}")
+        _assert(code == 200, f"rival-intelligence failed: {code} {data}")
+        _assert("overlap_count" in data, f"rival-intelligence shape invalid: {data}")
+
+        code, data = _request("GET", "/api/fpl/weekly-digest-card?mode=balanced&model_version=xgb_hist_v1")
+        _assert(code == 200, f"weekly-digest-card failed: {code} {data}")
+        _assert("final" in data and "title" in data, f"weekly-digest-card shape invalid: {data}")
+
+        # 9) Backend unit tests for notification endpoints
         test_run = subprocess.run(
             [str(VENV_PYTHON), "-m", "unittest", "tests.test_notification_endpoints", "-v"],
             cwd=str(BACKEND_DIR),

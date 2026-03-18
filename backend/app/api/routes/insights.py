@@ -323,6 +323,161 @@ def explainability_top(
         db.close()
 
 
+@router.get("/api/fpl/chip-planner")
+def chip_planner(
+    gameweek: Optional[int] = Query(default=None, ge=1, le=38),
+    horizon: int = Query(default=6, ge=3, le=10),
+):
+    db = SessionLocal()
+    try:
+        players = db.query(Player).all()
+        if not players:
+            raise HTTPException(status_code=400, detail="No data found. Run POST /api/fpl/ingest/bootstrap first.")
+
+        fixtures = db.query(Fixture).all()
+        gw = _resolve_gameweek(db, gameweek)
+
+        # Team-level fixture strength proxy for upcoming horizon.
+        team_strength: Dict[int, float] = {}
+        for team_id in {p.team_id for p in players}:
+            vals = []
+            for f in fixtures:
+                if f.event is None or f.event < gw or f.event >= gw + horizon:
+                    continue
+                if f.team_h == team_id:
+                    vals.append(f.team_h_difficulty)
+                elif f.team_a == team_id:
+                    vals.append(f.team_a_difficulty)
+            if not vals:
+                team_strength[team_id] = 3.0
+            else:
+                team_strength[team_id] = sum(vals) / len(vals)
+
+        easy_teams = sorted(team_strength.items(), key=lambda x: x[1])[:5]
+        hard_teams = sorted(team_strength.items(), key=lambda x: x[1], reverse=True)[:5]
+
+        # Chip heuristics
+        wildcard_score = max(0.0, min(10.0, (sum(v for _, v in hard_teams) / max(1, len(hard_teams))) * 1.2))
+
+        teams_with_fixture_next = set()
+        for f in fixtures:
+            if f.event == gw:
+                teams_with_fixture_next.add(f.team_h)
+                teams_with_fixture_next.add(f.team_a)
+        blank_teams = max(0, 20 - len(teams_with_fixture_next))
+        free_hit_score = max(0.0, min(10.0, (blank_teams / 2.0) + 2.0))
+
+        # Bench boost proxy: number of cheap high-minute players with playable horizon score
+        playable_bench = 0
+        for p in players:
+            if p.now_cost / 10.0 <= 5.5 and p.minutes >= 450:
+                if _expected_points_horizon(p, fixtures, gw, horizon=3) >= 4.2:
+                    playable_bench += 1
+        bench_boost_score = max(0.0, min(10.0, playable_bench / 2.2))
+
+        # Triple captain proxy: top premium expected points
+        premiums = [p for p in players if p.now_cost / 10.0 >= 10.0]
+        top_premium_xp = max((_expected_points_horizon(p, fixtures, gw, horizon=2) for p in premiums), default=0.0)
+        triple_captain_score = max(0.0, min(10.0, top_premium_xp * 1.1))
+
+        recommendation = "hold"
+        best_chip = max(
+            [
+                ("wildcard", wildcard_score),
+                ("free_hit", free_hit_score),
+                ("bench_boost", bench_boost_score),
+                ("triple_captain", triple_captain_score),
+            ],
+            key=lambda x: x[1],
+        )
+        if best_chip[1] >= 7.4:
+            recommendation = f"play_{best_chip[0]}"
+
+        return {
+            "gameweek": gw,
+            "horizon": horizon,
+            "chip_scores": {
+                "wildcard": round(wildcard_score, 2),
+                "free_hit": round(free_hit_score, 2),
+                "bench_boost": round(bench_boost_score, 2),
+                "triple_captain": round(triple_captain_score, 2),
+            },
+            "easy_fixture_teams": [{"team_id": t, "avg_difficulty": round(s, 2)} for t, s in easy_teams],
+            "hard_fixture_teams": [{"team_id": t, "avg_difficulty": round(s, 2)} for t, s in hard_teams],
+            "recommendation": recommendation,
+            "summary": "Chip planner scores near-term chip value from fixture swings, premium upside, and bench depth proxies.",
+        }
+    finally:
+        db.close()
+
+
+@router.get("/api/fpl/rival-intelligence")
+def rival_intelligence(
+    entry_id: int = Query(..., ge=1),
+    rival_entry_id: int = Query(..., ge=1),
+    gameweek: Optional[int] = Query(default=None, ge=1, le=38),
+):
+    db = SessionLocal()
+    try:
+        gw = _resolve_gameweek(db, gameweek)
+        current_gw = _int(_get_meta(db, "current_gw"), 0)
+
+        my_payload, my_gw = _fetch_entry_picks_with_fallback(entry_id, gw, [current_gw, gw - 1])
+        rival_payload, _ = _fetch_entry_picks_with_fallback(rival_entry_id, my_gw, [current_gw, my_gw - 1])
+
+        my_ids = {_int(p.get("element")) for p in my_payload.get("picks", [])}
+        rival_ids = {_int(p.get("element")) for p in rival_payload.get("picks", [])}
+
+        overlap = sorted(my_ids.intersection(rival_ids))
+        my_only = sorted(my_ids - rival_ids)
+        rival_only = sorted(rival_ids - my_ids)
+
+        players = db.query(Player).all()
+        by_id = {p.id: p for p in players}
+
+        def names(ids: List[int]) -> List[str]:
+            out = []
+            for pid in ids:
+                p = by_id.get(pid)
+                if p:
+                    out.append(p.web_name)
+            return out
+
+        return {
+            "gameweek": my_gw,
+            "entry_id": entry_id,
+            "rival_entry_id": rival_entry_id,
+            "overlap_count": len(overlap),
+            "my_only_count": len(my_only),
+            "rival_only_count": len(rival_only),
+            "overlap_players": names(overlap),
+            "my_differentials": names(my_only),
+            "rival_differentials": names(rival_only),
+            "summary": "Rival intelligence compares squad overlap and differential exposure for the selected GW.",
+        }
+    finally:
+        db.close()
+
+
+@router.get("/api/fpl/weekly-digest-card")
+def weekly_digest_card(
+    mode: str = Query(default="balanced", pattern="^(safe|balanced|aggressive)$"),
+    model_version: str = Query(default=HISTORICAL_MODEL_VERSION, pattern="^(xgb_v1|xgb_hist_v1)$"),
+):
+    brief = weekly_brief(gameweek=None, mode=mode, model_version=model_version)
+    cap = captaincy_lab(gameweek=None, limit=3)
+
+    return {
+        "title": f"GW{brief['gameweek']} Weekly Digest",
+        "mode": mode,
+        "final": brief["final"],
+        "safe_captains_top3": cap.get("safe_captains", [])[:3],
+        "upside_captains_top3": cap.get("upside_captains", [])[:3],
+        "rationale": brief.get("rationale", [])[:4],
+        "summary": "Compact weekly digest payload for messaging cards and reminder notifications.",
+    }
+
+
 @router.get("/api/fpl/top")
 def top_players(limit: int = Query(default=20, ge=1, le=100)):
     db = SessionLocal()

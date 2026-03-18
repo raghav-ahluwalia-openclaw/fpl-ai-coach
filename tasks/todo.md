@@ -1,26 +1,24 @@
 # tasks/todo.md
 
-## Active Plan — P1.5 + P2 bundle (2026-03-18)
+## Active Plan — P3 initial enhancement bundle (2026-03-18)
 
-- [x] Review `tasks/lessons.md` before implementation
-- [x] P1.5.1 Add notification polish data in backend (`last_sent`, `next_run_eta`)
-- [x] P1.5.2 Show last-sent + next-run ETA in `/brief`
-- [x] P1.5.3 Add backend tests for notification endpoints
-- [x] P1.5.4 Extend integration validation for `/api/fpl/weekly-brief` + `/api/fpl/notification-status`
-- [x] P1.5.5 Add recommendation consistency guardrails + confidence fallback
-- [x] P2.1 Add What-if transfer simulator endpoint
-- [x] P2.2 Add Captaincy Lab endpoint + frontend page
-- [x] P2.3 Add Explainability endpoint + cards in Top page
-- [x] P2.4 Validate backend/frontend/integration end-to-end
-- [ ] P2.5 Auto-commit completed bundle
+- [x] Add backend chip planner endpoint
+- [x] Add backend rival intelligence endpoint
+- [x] Add backend weekly digest card endpoint
+- [x] Add frontend planner page (`/planner`)
+- [x] Add nav + homepage links for planner
+- [x] Extend backend + integration validators for new endpoints/routes
+- [x] Update README and roadmap
+- [x] Validate full suite (`validate_all.sh`)
+- [ ] Auto-commit completed P3 initial bundle
 
-## Verification steps
+## Verification
 
-- [x] `./scripts/validate_all.sh`
-- [x] Manual route verification in build output (`/captaincy` present)
+- [x] Backend validation
+- [x] Frontend lint/build
+- [x] Integration validation
 
-## Review (post-implementation)
+## Review
 
-- Outcome: P1.5 and full P2 scope delivered (what-if + captaincy + explainability).
-- What passed: full backend/frontend/integration validation suite.
-- Follow-ups: start P3 (chip planner, rival intelligence, weekly digest card).
+- Outcome: P3 started and first vertical slice shipped (planner + rival + digest payload).
+- Follow-ups: chip planner v2 (blank/double windows), rival impact scoring, richer Telegram card renderer.
