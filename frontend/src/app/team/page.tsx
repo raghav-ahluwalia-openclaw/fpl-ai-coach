@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { fetchJson } from "@/lib/api";
 
@@ -46,6 +46,7 @@ export default function TeamPage() {
   const [data, setData] = useState<TeamRecommendation | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const hasAutoRun = useRef(false);
 
   const normalizedTeamId = teamId.trim();
   const teamIdValid = /^\d+$/.test(normalizedTeamId);
@@ -60,8 +61,9 @@ export default function TeamPage() {
       .catch(() => null);
   }, []);
 
-  async function run() {
-    if (!normalizedTeamId || !teamIdValid) {
+  async function run(teamIdOverride?: string) {
+    const effectiveTeamId = (teamIdOverride ?? normalizedTeamId).trim();
+    if (!effectiveTeamId || !/^\d+$/.test(effectiveTeamId)) {
       setError("Team ID must be numeric.");
       return;
     }
@@ -69,9 +71,9 @@ export default function TeamPage() {
     setLoading(true);
     setError(null);
     try {
-      await fetchJson<{ ok: boolean }>(`${API_BASE}/api/fpl/team/${normalizedTeamId}/import`, { method: "POST" });
+      await fetchJson<{ ok: boolean }>(`${API_BASE}/api/fpl/team/${effectiveTeamId}/import`, { method: "POST" });
       const recommendation = await fetchJson<TeamRecommendation>(
-        `${API_BASE}/api/fpl/team/${normalizedTeamId}/recommendation?mode=${mode}`,
+        `${API_BASE}/api/fpl/team/${effectiveTeamId}/recommendation?mode=${mode}`,
       );
       setData(recommendation);
     } catch (e: unknown) {
@@ -80,6 +82,13 @@ export default function TeamPage() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (!hasAutoRun.current && normalizedTeamId && teamIdValid) {
+      hasAutoRun.current = true;
+      void run(normalizedTeamId);
+    }
+  }, [normalizedTeamId, teamIdValid]);
 
   return (
     <main className="min-h-screen p-6 md:p-8 max-w-6xl mx-auto text-white">
@@ -104,7 +113,7 @@ export default function TeamPage() {
             <option value="aggressive">Aggressive</option>
           </select>
           <button
-            onClick={run}
+            onClick={() => void run()}
             disabled={loading || !normalizedTeamId || !teamIdValid}
             className="px-4 py-2 rounded-md bg-[#00ff87] text-[#37003c] font-bold disabled:opacity-60"
           >

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { fetchJson } from "@/lib/api";
 
@@ -42,6 +42,7 @@ export default function TeamRankPage() {
   const [data, setData] = useState<RankHistoryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const hasAutoRun = useRef(false);
 
   const normalizedTeamId = teamId.trim();
   const teamIdValid = /^\d+$/.test(normalizedTeamId);
@@ -56,15 +57,16 @@ export default function TeamRankPage() {
       .catch(() => null);
   }, []);
 
-  async function load() {
-    if (!normalizedTeamId || !teamIdValid) {
+  async function load(teamIdOverride?: string) {
+    const effectiveTeamId = (teamIdOverride ?? normalizedTeamId).trim();
+    if (!effectiveTeamId || !/^\d+$/.test(effectiveTeamId)) {
       setError("Team ID must be numeric.");
       return;
     }
     setLoading(true);
     setError(null);
     try {
-      const payload = await fetchJson<RankHistoryResponse>(`${API_BASE}/api/fpl/team/${normalizedTeamId}/rank-history`);
+      const payload = await fetchJson<RankHistoryResponse>(`${API_BASE}/api/fpl/team/${effectiveTeamId}/rank-history`);
       setData(payload);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load rank history");
@@ -72,6 +74,13 @@ export default function TeamRankPage() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (!hasAutoRun.current && normalizedTeamId && teamIdValid) {
+      hasAutoRun.current = true;
+      void load(normalizedTeamId);
+    }
+  }, [normalizedTeamId, teamIdValid]);
 
   const chart = useMemo(() => {
     const points = data?.points ?? [];
@@ -117,7 +126,7 @@ export default function TeamRankPage() {
             className="rounded-md px-3 py-2 bg-black/30 border border-white/20 min-w-[220px]"
           />
           <button
-            onClick={load}
+            onClick={() => void load()}
             disabled={loading || !normalizedTeamId || !teamIdValid}
             className="px-4 py-2 rounded-md bg-[#00ff87] text-[#37003c] font-bold disabled:opacity-60"
           >

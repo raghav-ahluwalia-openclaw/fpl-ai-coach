@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { fetchJson } from "@/lib/api";
 
@@ -53,6 +53,7 @@ export default function PlannerPage() {
   const [entryId, setEntryId] = useState("");
   const [rivalEntryId, setRivalEntryId] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const autoCompareDone = useRef(false);
 
   useEffect(() => {
     fetchJson<ChipPlannerResponse>(`${API_BASE}/api/fpl/chip-planner?horizon=6`)
@@ -67,14 +68,31 @@ export default function PlannerPage() {
       .catch(() => null);
   }, []);
 
-  async function loadRival() {
-    if (!entryId || !rivalEntryId) {
+  useEffect(() => {
+    if (!autoCompareDone.current && entryId && rivalEntryId) {
+      autoCompareDone.current = true;
+      void fetchJson<RivalIntelResponse>(
+        `${API_BASE}/api/fpl/rival-intelligence?entry_id=${entryId}&rival_entry_id=${rivalEntryId}`,
+      )
+        .then((payload) => {
+          setRival(payload);
+          setError(null);
+        })
+        .catch((e) => setError(e.message || "Failed to load rival intelligence"));
+    }
+  }, [entryId, rivalEntryId]);
+
+  async function loadRival(entryOverride?: string, rivalOverride?: string) {
+    const myId = (entryOverride ?? entryId).trim();
+    const rivalId = (rivalOverride ?? rivalEntryId).trim();
+
+    if (!myId || !rivalId) {
       setError("Enter both your Team ID and Rival Team ID.");
       return;
     }
     try {
       const payload = await fetchJson<RivalIntelResponse>(
-        `${API_BASE}/api/fpl/rival-intelligence?entry_id=${entryId}&rival_entry_id=${rivalEntryId}`,
+        `${API_BASE}/api/fpl/rival-intelligence?entry_id=${myId}&rival_entry_id=${rivalId}`,
       );
       setRival(payload);
       setError(null);
@@ -133,7 +151,7 @@ export default function PlannerPage() {
             placeholder="Rival Team ID"
             className="rounded-md px-3 py-2 bg-black/30 border border-white/20"
           />
-          <button onClick={loadRival} className="px-4 py-2 rounded-md bg-[#00ff87] text-[#37003c] font-bold">
+          <button onClick={() => void loadRival()} className="px-4 py-2 rounded-md bg-[#00ff87] text-[#37003c] font-bold">
             Compare
           </button>
         </div>
