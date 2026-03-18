@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from itertools import combinations
+
 from .base import *  # noqa: F403
 
 @router.post("/api/fpl/team/{entry_id}/import")
@@ -133,6 +135,15 @@ def team_recommendation(
                 f"[{mode}] Estimated +{gain} weighted xP over next 3 GWs (starting GW {gw}) "
                 f"within budget (£{max_affordable:.1f})."
             )
+
+            # Consistency guardrails
+            if best_player.id in squad_id_set or best_player.id == weakest_player.id:
+                transfer_out = "No urgent sale"
+                transfer_in = "Roll transfer"
+                transfer_reason = (
+                    f"[{mode}] Guardrail: suggested transfer was invalid (duplicate/self transfer). "
+                    "Rolled transfer instead."
+                )
         else:
             transfer_out = "No urgent sale"
             transfer_in = "Roll transfer"
@@ -163,6 +174,158 @@ def team_recommendation(
         )
     finally:
         db.close()
+
+@router.get("/api/fpl/team/{entry_id}/what-if")
+def what_if_simulator(
+    entry_id: int,
+    gameweek: Optional[int] = Query(default=None, ge=1, le=38),
+    horizon: int = Query(default=3, ge=1, le=5),
+    max_transfers: int = Query(default=2, ge=1, le=2),
+    free_transfers: int = Query(default=1, ge=0, le=2),
+    hit_cost: int = Query(default=4, ge=0, le=12),
+    per_out_limit: int = Query(default=5, ge=2, le=12),
+    limit: int = Query(default=10, ge=1, le=25),
+):
+    db = SessionLocal()
+    try:
+        players = db.query(Player).all()
+        if not players:
+            raise HTTPException(status_code=400, detail="No player data found. Run POST /api/fpl/ingest/bootstrap first.")
+
+        gw = _resolve_gameweek(db, gameweek)
+        current_gw = _int(_get_meta(db, "current_gw"), 0)
+        payload, resolved_gw = _fetch_entry_picks_with_fallback(entry_id, gw, [current_gw, gw - 1])
+        gw = resolved_gw
+        picks = payload.get("picks", [])
+        hist = payload.get("entry_history", {})
+
+        squad_ids = [_int(p.get("element")) for p in picks]
+        if len(squad_ids) < 11:
+            raise HTTPException(status_code=400, detail="FPL returned incomplete squad data")
+
+        player_by_id = {p.id: p for p in players}
+        fixtures = db.query(Fixture).all()
+
+        squad_players = [player_by_id.get(pid) for pid in squad_ids]
+        squad_players = [p for p in squad_players if p is not None]
+        if len(squad_players) < 11:
+            raise HTTPException(status_code=400, detail="Your squad has players missing from local DB. Re-run bootstrap ingest.")
+
+        bank = _float(hist.get("bank"), 0.0) / 10.0
+        squad_id_set = {p.id for p in squad_players}
+
+        horizon_score = {
+            p.id: _expected_points_horizon(p, fixtures, gw, horizon=horizon)
+            for p in squad_players
+        }
+
+        # Build replacement options for each outbound player.
+        replacements: dict[int, list[tuple[float, Player]]] = {}
+        for out_p in squad_players:
+            budget = (out_p.now_cost / 10.0) + bank
+            options: list[tuple[float, Player]] = []
+            for cand in players:
+                if cand.id in squad_id_set:
+                    continue
+                if cand.element_type != out_p.element_type:
+                    continue
+                if (cand.now_cost / 10.0) > budget:
+                    continue
+                cand_h = _expected_points_horizon(cand, fixtures, gw, horizon=horizon)
+                gain = cand_h - horizon_score[out_p.id]
+                options.append((gain, cand))
+            options.sort(key=lambda x: x[0], reverse=True)
+            replacements[out_p.id] = options[:per_out_limit]
+
+        scenarios: list[dict] = []
+
+        # Single-transfer scenarios
+        for out_p in squad_players:
+            for gain, in_p in replacements.get(out_p.id, []):
+                if in_p.id == out_p.id or in_p.id in squad_id_set:
+                    continue
+                transfers = 1
+                hit = max(0, transfers - free_transfers) * hit_cost
+                net = round(gain - hit, 2)
+                scenarios.append(
+                    {
+                        "transfers": [
+                            {
+                                "out": out_p.web_name,
+                                "out_id": out_p.id,
+                                "in": in_p.web_name,
+                                "in_id": in_p.id,
+                                "position": POSITION_MAP.get(out_p.element_type, str(out_p.element_type)),
+                                "gain": round(gain, 2),
+                            }
+                        ],
+                        "hit": hit,
+                        "projected_gain": round(gain, 2),
+                        "net_gain": net,
+                        "horizon": horizon,
+                    }
+                )
+
+        # Two-transfer scenarios
+        if max_transfers >= 2:
+            for out_a, out_b in combinations(squad_players, 2):
+                for gain_a, in_a in replacements.get(out_a.id, []):
+                    for gain_b, in_b in replacements.get(out_b.id, []):
+                        if in_a.id == in_b.id:
+                            continue
+
+                        total_in_price = (in_a.now_cost + in_b.now_cost) / 10.0
+                        total_out_price = (out_a.now_cost + out_b.now_cost) / 10.0
+                        if total_in_price > total_out_price + bank:
+                            continue
+
+                        projected = gain_a + gain_b
+                        transfers = 2
+                        hit = max(0, transfers - free_transfers) * hit_cost
+                        net = round(projected - hit, 2)
+                        scenarios.append(
+                            {
+                                "transfers": [
+                                    {
+                                        "out": out_a.web_name,
+                                        "out_id": out_a.id,
+                                        "in": in_a.web_name,
+                                        "in_id": in_a.id,
+                                        "position": POSITION_MAP.get(out_a.element_type, str(out_a.element_type)),
+                                        "gain": round(gain_a, 2),
+                                    },
+                                    {
+                                        "out": out_b.web_name,
+                                        "out_id": out_b.id,
+                                        "in": in_b.web_name,
+                                        "in_id": in_b.id,
+                                        "position": POSITION_MAP.get(out_b.element_type, str(out_b.element_type)),
+                                        "gain": round(gain_b, 2),
+                                    },
+                                ],
+                                "hit": hit,
+                                "projected_gain": round(projected, 2),
+                                "net_gain": net,
+                                "horizon": horizon,
+                            }
+                        )
+
+        scenarios.sort(key=lambda x: x["net_gain"], reverse=True)
+
+        return {
+            "entry_id": entry_id,
+            "gameweek": gw,
+            "horizon": horizon,
+            "bank": round(bank, 1),
+            "free_transfers": free_transfers,
+            "hit_cost": hit_cost,
+            "count": min(len(scenarios), limit),
+            "scenarios": scenarios[:limit],
+            "summary": "What-if transfer simulator ranked by projected net gain over selected horizon.",
+        }
+    finally:
+        db.close()
+
 
 @router.get("/api/fpl/team/{entry_id}/rank-history", response_model=RankHistoryResponse)
 def team_rank_history(entry_id: int):

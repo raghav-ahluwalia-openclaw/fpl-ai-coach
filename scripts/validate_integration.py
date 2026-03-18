@@ -169,8 +169,11 @@ def main() -> int:
         for path in [
             "/api/fpl/recommendation",
             "/api/fpl/recommendation-ml",
+            "/api/fpl/notification-status",
+            "/api/fpl/weekly-brief?mode=balanced&model_version=xgb_hist_v1",
             "/api/fpl/top?limit=10",
             f"/api/fpl/team/{TEAM_ID}/recommendation?mode=balanced",
+            f"/api/fpl/team/{TEAM_ID}/what-if?horizon=3&max_transfers=2&limit=5",
         ]:
             code, body = _request("GET", f"{BASE_FRONT}{path}")
             _assert(code == 200, f"frontend rewrite failed {path}: {code} {body[:200]}")

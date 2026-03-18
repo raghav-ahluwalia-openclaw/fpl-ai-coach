@@ -22,7 +22,13 @@ type NotificationStatus = {
     seconds_until_deadline: number;
     deadline_utc: string;
     reminder_utc: string;
+    last_check_utc: string;
+    next_check_utc: string;
   };
+  last_sent?: {
+    lastSentGw?: number;
+    sentAt?: string;
+  } | null;
   preview_message: string;
 };
 
@@ -261,6 +267,15 @@ export default function WeeklyBriefPage() {
                 </p>
                 <p>
                   <strong>Status:</strong> {notifStatus.enabled ? (notifStatus.status.is_due ? "Reminder due now" : "Scheduled") : "Disabled"}
+                </p>
+                <p>
+                  <strong>Next check ETA:</strong> {new Date(notifStatus.status.next_check_utc).toLocaleString()}
+                </p>
+                <p>
+                  <strong>Last sent:</strong>{" "}
+                  {notifStatus.last_sent?.sentAt
+                    ? `${new Date(notifStatus.last_sent.sentAt).toLocaleString()} (GW ${notifStatus.last_sent.lastSentGw ?? "?"})`
+                    : "Not sent yet"}
                 </p>
                 <p className="text-white/70">Preview: {notifStatus.preview_message}</p>
                 {testMessage ? <p className="text-cyan-200">Test: {testMessage}</p> : null}

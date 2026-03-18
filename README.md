@@ -54,6 +54,7 @@ Open `http://localhost:3000`
 - `GET /api/fpl/notification-status`
 - `GET /api/fpl/notification-test` (dry-run preview used by "Send Test Reminder" button)
 - `GET /api/fpl/weekly-brief?mode=safe|balanced|aggressive&model_version=xgb_v1|xgb_hist_v1`
+- `GET /api/fpl/team/{entry_id}/what-if?horizon=3&max_transfers=2&free_transfers=1&hit_cost=4&limit=10`
 - `GET /api/fpl/recommendation`
 - `GET /api/fpl/recommendation-ml?force_train=false&model_version=xgb_v1|xgb_hist_v1`
 - `POST /api/fpl/team/{entry_id}/import`
@@ -159,4 +160,5 @@ What gets validated:
 
 - Baseline recommendation model v1 uses: points-per-game, recent form, minutes proxy, fixture difficulty, and availability/news flags.
 - ML recommendation endpoint supports `xgb_v1` (current-season proxy) and `xgb_hist_v1` (historical rows) model artifacts under `backend/model_artifacts/`.
+- `notification-status` includes `last_check_utc`, `next_check_utc`, and `last_sent` metadata for UI status panels.
 - If you do not want Docker, set `DATABASE_URL=sqlite:///./fpl.db` in `backend/.env`.

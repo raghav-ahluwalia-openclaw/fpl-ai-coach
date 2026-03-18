@@ -15,6 +15,8 @@ from app.services.ml_recommender import (
 )
 
 DIGEST_PATH = Path(__file__).resolve().parents[3] / "data" / "content" / "creator_digest.json"
+REMINDER_STATE_PATH = Path(__file__).resolve().parents[5] / "memory" / "fpl-reminder-state.json"
+NOTIF_CHECK_INTERVAL_MINUTES = int(os.getenv("FPL_NOTIFICATION_CHECK_INTERVAL_MINUTES", "30"))
 
 
 @router.get("/api/fpl/deadline-next")
@@ -107,6 +109,28 @@ def notification_status():
         mode=settings["mode"],
         model_version=settings["model_version"],
     )
+
+    now_dt = datetime.now(timezone.utc)
+    next_check_dt = now_dt + timedelta(minutes=max(1, NOTIF_CHECK_INTERVAL_MINUTES))
+
+    # Keep lightweight runtime metadata for UI status.
+    db = SessionLocal()
+    try:
+        _set_meta(db, "notif_last_check_at", now_dt.isoformat())
+        _set_meta(db, "notif_next_check_eta", next_check_dt.isoformat())
+        db.commit()
+    except Exception:  # noqa: BLE001
+        db.rollback()
+    finally:
+        db.close()
+
+    last_sent = None
+    if REMINDER_STATE_PATH.exists():
+        try:
+            last_sent = json.loads(REMINDER_STATE_PATH.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001
+            last_sent = None
+
     return {
         "enabled": settings["enabled"],
         "settings": settings,
@@ -115,7 +139,10 @@ def notification_status():
             "seconds_until_deadline": reminder.get("seconds_until_deadline"),
             "deadline_utc": reminder.get("deadline_utc"),
             "reminder_utc": reminder.get("reminder_utc"),
+            "last_check_utc": now_dt.isoformat(),
+            "next_check_utc": next_check_dt.isoformat(),
         },
+        "last_sent": last_sent,
         "preview_message": reminder.get("message"),
     }
 
@@ -392,19 +419,22 @@ def weekly_brief(
         except Exception:  # noqa: BLE001
             consensus = None
 
+    min_ml_confidence = 0.62
+    ml_eligible = ml is not None and ml.confidence >= min_ml_confidence
+
     if mode == "safe":
         final_captain = base.captain
         final_vice = base.vice_captain
         transfer_out, transfer_in = base.transfer_out, base.transfer_in
-    elif mode == "aggressive" and ml is not None:
+    elif mode == "aggressive" and ml_eligible:
         final_captain = ml.captain
         final_vice = ml.vice_captain
         transfer_out, transfer_in = ml.transfer_out, ml.transfer_in
     else:
-        final_captain = base.captain if ml is None else (base.captain if base.confidence >= ml.confidence else ml.captain)
-        final_vice = base.vice_captain if ml is None else (base.vice_captain if base.confidence >= ml.confidence else ml.vice_captain)
+        final_captain = base.captain if not ml_eligible else (base.captain if base.confidence >= ml.confidence else ml.captain)
+        final_vice = base.vice_captain if not ml_eligible else (base.vice_captain if base.confidence >= ml.confidence else ml.vice_captain)
         transfer_out, transfer_in = base.transfer_out, base.transfer_in
-        if ml is not None and ml.transfer_in == base.transfer_in:
+        if ml_eligible and ml.transfer_in == base.transfer_in:
             transfer_out, transfer_in = ml.transfer_out, ml.transfer_in
 
     rationale = [
@@ -413,6 +443,8 @@ def weekly_brief(
         f"ML captain: {ml.captain if ml else 'n/a'}",
         f"Creator consensus top topics: {', '.join(t.get('topic', '') for t in (consensus or {}).get('top_topics', [])[:3]) or 'n/a'}",
     ]
+    if ml is not None and not ml_eligible:
+        rationale.append(f"ML confidence below threshold ({ml.confidence:.2f} < {min_ml_confidence:.2f}); baseline fallback applied")
 
     return {
         "gameweek": base.gameweek,

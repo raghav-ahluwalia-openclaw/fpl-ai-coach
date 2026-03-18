@@ -149,6 +149,34 @@ def main() -> int:
         _assert(code == 200, f"top players failed: {code} {data}")
         _assert(isinstance(data.get("players"), list) and len(data["players"]) > 0, f"top players invalid: {data}")
 
+        # 6) Notification and weekly-brief endpoints
+        code, data = _request("GET", "/api/fpl/notification-status")
+        _assert(code == 200, f"notification-status failed: {code} {data}")
+        _assert("preview_message" in data and "status" in data, f"notification-status shape invalid: {data}")
+
+        code, data = _request("GET", "/api/fpl/weekly-brief?mode=balanced&model_version=xgb_hist_v1")
+        _assert(code == 200, f"weekly-brief failed: {code} {data}")
+        _assert("final" in data and "captain" in data["final"], f"weekly-brief shape invalid: {data}")
+
+        # 7) What-if simulator endpoint
+        code, data = _request("GET", f"/api/fpl/team/{TEAM_ID}/what-if?horizon=3&max_transfers=2&limit=5")
+        _assert(code == 200, f"what-if simulator failed: {code} {data}")
+        _assert("scenarios" in data and isinstance(data["scenarios"], list), f"what-if response invalid: {data}")
+
+        # 8) Backend unit tests for notification endpoints
+        test_run = subprocess.run(
+            [str(VENV_PYTHON), "-m", "unittest", "tests.test_notification_endpoints", "-v"],
+            cwd=str(BACKEND_DIR),
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        _assert(
+            test_run.returncode == 0,
+            "notification endpoint tests failed:\n"
+            f"{(test_run.stdout or '')[-1200:]}\n{(test_run.stderr or '')[-1200:]}",
+        )
+
         print("✅ Backend validation passed")
         return 0
 

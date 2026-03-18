@@ -12,55 +12,50 @@
 2. Creator consensus ingest pipeline
    - `scripts/fpl_creator_watchlist.json`
    - `scripts/fpl_creator_digest.py`
+   - Transcript-based tags + summaries + player mention extraction
    - `GET /api/fpl/content-consensus`
 
-3. Weekly blended recommendation backend
+3. Weekly blended recommendation
    - `GET /api/fpl/weekly-brief`
-   - Blends baseline + ML + creator consensus with safe/balanced/aggressive mode.
+   - Blends baseline + ML + creator consensus by mode.
 
-4. Weekly brief frontend UX
-   - `frontend/src/app/brief/page.tsx`
-   - Includes final action, model comparison, rationale, and creator consensus cards.
+4. Weekly brief frontend UX (`/brief`)
+   - Final action, model comparison, rationale, creator consensus
+   - Notification controls + test reminder action
 
-5. Deadline-aware notification system (in app)
+5. Deadline-aware notification system
    - `GET /api/fpl/deadline-next`
    - `GET /api/fpl/deadline-reminder`
    - `GET/POST /api/fpl/notification-settings`
-   - `GET /api/fpl/notification-status`
-   - Brief page notification settings UI (enable, lead time, mode, model).
+   - `GET /api/fpl/notification-status` (includes last/next check + last sent metadata)
 
 6. Automatic pre-deadline reminder dispatch (runtime)
    - Cron job: **FPL Deadline Reminder Dispatcher**
    - 30-minute checks, deduped by GW using `memory/fpl-reminder-state.json`
 
+7. Recommendation consistency guardrails
+   - Invalid/self/duplicate transfer guardrails in team recommendation
+   - Weekly brief ML confidence threshold fallback to baseline
+
+8. What-if transfer simulator (P2 core)
+   - `GET /api/fpl/team/{entry_id}/what-if`
+   - Supports 1FT/2FT scenarios, horizon, free transfers, hit cost
+   - Returns ranked scenarios by projected net gain
+
+9. Reliability hardening
+   - backend notification endpoint tests: `backend/tests/test_notification_endpoints.py`
+   - integration validation includes `/api/fpl/weekly-brief` + `/api/fpl/notification-status` + what-if
+
 ---
 
-## P1.5 (Next 1–3 days)
+## Remaining P2
 
-1. Frontend notification polish
-   - Add “last sent” and “next run ETA” visibility in `/brief`.
-   - Add one-click “send test reminder now”.
+1. Captaincy lab
+   - Safe vs upside captain board
+   - Include volatility + EO pressure
 
-2. Reliability hardening
-   - Add backend tests for notification endpoints.
-   - Add integration assertion for `/api/fpl/weekly-brief` and `/api/fpl/notification-status`.
-
-3. Recommendation consistency checks
-   - Add guardrails for impossible transfers (e.g., player not in squad).
-   - Add minimum confidence threshold fallback to baseline model.
-
-## P2 (Next sprint)
-
-1. What-if transfer simulator
-   - Evaluate 1FT/2FT/-4/-8 scenarios over 1/3/5 GW.
-   - Return best move, downside band, and EV delta vs hold.
-
-2. Captaincy lab
-   - Safe vs upside captain board.
-   - Include volatility and effective ownership pressure.
-
-3. Explainability cards
-   - Per-player factor breakdown: form, fixture, minutes security, availability risk.
+2. Explainability cards
+   - Per-player factor breakdown: form, fixture, minutes security, availability risk
 
 ## P3 (Later)
 
