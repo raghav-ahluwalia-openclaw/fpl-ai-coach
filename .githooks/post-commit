@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+
+# Skip if explicitly disabled.
+if [[ "${SKIP_RUNTIME_SYNC:-0}" == "1" ]]; then
+  exit 0
+fi
+
+# Run in background to avoid blocking commit UX.
+nohup bash -lc "cd '$ROOT' && ./scripts/sync_runtime.sh" >/tmp/fpl-runtime-sync.log 2>&1 &

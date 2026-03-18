@@ -11,10 +11,11 @@ if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   exit 1
 fi
 
-chmod +x .githooks/pre-commit
+chmod +x .githooks/pre-commit .githooks/post-commit
 
 git config core.hooksPath .githooks
 
 echo "✅ Git hooks installed"
 echo "   hooksPath: $(git config core.hooksPath)"
 echo "   pre-commit: .githooks/pre-commit"
+echo "   post-commit: .githooks/post-commit (auto runtime sync)"
