@@ -25,6 +25,7 @@ const navItems = [
   { href: "/top", label: "Top Players" },
   { href: "/team", label: "My Team" },
   { href: "/team-rank", label: "Rank Trend" },
+  { href: "/brief", label: "Weekly Brief" },
 ];
 
 export default function RootLayout({

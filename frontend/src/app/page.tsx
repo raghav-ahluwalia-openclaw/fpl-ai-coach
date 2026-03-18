@@ -26,6 +26,11 @@ const cards = [
     desc: "Visualize overall rank gameweek by gameweek and spot momentum shifts.",
     href: "/team-rank",
   },
+  {
+    title: "Weekly Brief",
+    desc: "Blended final recommendation from baseline model, ML model, and creator consensus.",
+    href: "/brief",
+  },
 ];
 
 export default function Home() {

@@ -47,6 +47,13 @@ Open `http://localhost:3000`
 - `POST /api/fpl/ingest/bootstrap` (supports `?force=true` to bypass ingest TTL)
 - `GET /api/fpl/top?limit=20`
 - `GET /api/fpl/content-consensus?limit=10&include_videos=true`
+- `GET /api/fpl/deadline-next?lead_hours=6`
+- `GET /api/fpl/deadline-reminder?lead_hours=6&mode=balanced&model_version=xgb_v1|xgb_hist_v1`
+- `GET /api/fpl/notification-settings`
+- `POST /api/fpl/notification-settings?enabled=true&lead_hours=6&mode=balanced&model_version=xgb_hist_v1`
+- `GET /api/fpl/notification-status`
+- `GET /api/fpl/notification-test` (dry-run preview used by "Send Test Reminder" button)
+- `GET /api/fpl/weekly-brief?mode=safe|balanced|aggressive&model_version=xgb_v1|xgb_hist_v1`
 - `GET /api/fpl/recommendation`
 - `GET /api/fpl/recommendation-ml?force_train=false&model_version=xgb_v1|xgb_hist_v1`
 - `POST /api/fpl/team/{entry_id}/import`

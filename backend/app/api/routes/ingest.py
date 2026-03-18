@@ -28,6 +28,7 @@ def ingest_bootstrap(force: bool = Query(default=False)):
                 "last_ingested_at": _get_meta(db, "last_ingested_at"),
                 "next_gw": _int(_get_meta(db, "next_gw"), 0) or None,
                 "current_gw": _int(_get_meta(db, "current_gw"), 0) or None,
+                "next_deadline_utc": _get_meta(db, "next_deadline_utc"),
             }
 
         bootstrap = fetch_json(
@@ -95,16 +96,19 @@ def ingest_bootstrap(force: bool = Query(default=False)):
 
         next_gw = None
         current_gw = None
+        next_deadline_utc = None
         for e in events:
             if e.get("is_current"):
                 current_gw = e.get("id")
             if e.get("is_next"):
                 next_gw = e.get("id")
+                next_deadline_utc = e.get("deadline_time")
 
         now_iso = datetime.now(timezone.utc).isoformat()
         _set_meta(db, "last_ingested_at", now_iso)
         _set_meta(db, "next_gw", str(next_gw) if next_gw is not None else "")
         _set_meta(db, "current_gw", str(current_gw) if current_gw is not None else "")
+        _set_meta(db, "next_deadline_utc", str(next_deadline_utc) if next_deadline_utc else "")
 
         db.commit()
         logger.info(
@@ -118,6 +122,7 @@ def ingest_bootstrap(force: bool = Query(default=False)):
             "fixtures": len(fixtures),
             "current_gw": current_gw,
             "next_gw": next_gw,
+            "next_deadline_utc": next_deadline_utc,
             "last_ingested_at": now_iso,
         }
     except SQLAlchemyError as e:

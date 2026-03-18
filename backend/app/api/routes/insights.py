@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 from pathlib import Path
 
 from .base import *  # noqa: F403
@@ -14,6 +15,128 @@ from app.services.ml_recommender import (
 )
 
 DIGEST_PATH = Path(__file__).resolve().parents[3] / "data" / "content" / "creator_digest.json"
+
+
+@router.get("/api/fpl/deadline-next")
+def deadline_next(lead_hours: int = Query(default=6, ge=1, le=72)):
+    db = SessionLocal()
+    try:
+        next_gw = _int(_get_meta(db, "next_gw"), 0) or None
+        next_deadline_utc = _get_meta(db, "next_deadline_utc")
+        if not next_deadline_utc:
+            raise HTTPException(
+                status_code=404,
+                detail="next_deadline_utc not available. Run POST /api/fpl/ingest/bootstrap first.",
+            )
+
+        deadline_dt = datetime.fromisoformat(next_deadline_utc.replace("Z", "+00:00"))
+        reminder_dt = deadline_dt - timedelta(hours=lead_hours)
+        now_dt = datetime.now(timezone.utc)
+
+        return {
+            "next_gw": next_gw,
+            "deadline_utc": deadline_dt.isoformat(),
+            "lead_hours": lead_hours,
+            "reminder_utc": reminder_dt.isoformat(),
+            "seconds_until_deadline": int((deadline_dt - now_dt).total_seconds()),
+            "seconds_until_reminder": int((reminder_dt - now_dt).total_seconds()),
+            "is_reminder_due": reminder_dt <= now_dt,
+        }
+    finally:
+        db.close()
+
+
+def _meta_bool(value: Optional[str], default: bool = False) -> bool:
+    if value is None:
+        return default
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+@router.get("/api/fpl/notification-settings")
+def notification_settings_get():
+    db = SessionLocal()
+    try:
+        enabled = _meta_bool(_get_meta(db, "notif_enabled"), False)
+        lead_hours = _int(_get_meta(db, "notif_lead_hours"), 6)
+        mode = _get_meta(db, "notif_mode") or "balanced"
+        model_version = _get_meta(db, "notif_model_version") or HISTORICAL_MODEL_VERSION
+
+        return {
+            "enabled": enabled,
+            "lead_hours": max(1, min(72, lead_hours)),
+            "mode": mode if mode in {"safe", "balanced", "aggressive"} else "balanced",
+            "model_version": model_version if model_version in {"xgb_v1", "xgb_hist_v1"} else HISTORICAL_MODEL_VERSION,
+        }
+    finally:
+        db.close()
+
+
+@router.post("/api/fpl/notification-settings")
+def notification_settings_set(
+    enabled: bool = Query(default=True),
+    lead_hours: int = Query(default=6, ge=1, le=72),
+    mode: str = Query(default="balanced", pattern="^(safe|balanced|aggressive)$"),
+    model_version: str = Query(default=HISTORICAL_MODEL_VERSION, pattern="^(xgb_v1|xgb_hist_v1)$"),
+):
+    db = SessionLocal()
+    try:
+        _set_meta(db, "notif_enabled", "true" if enabled else "false")
+        _set_meta(db, "notif_lead_hours", str(lead_hours))
+        _set_meta(db, "notif_mode", mode)
+        _set_meta(db, "notif_model_version", model_version)
+        db.commit()
+        return {
+            "ok": True,
+            "enabled": enabled,
+            "lead_hours": lead_hours,
+            "mode": mode,
+            "model_version": model_version,
+        }
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to save notification settings: {e}")
+    finally:
+        db.close()
+
+
+@router.get("/api/fpl/notification-status")
+def notification_status():
+    settings = notification_settings_get()
+    reminder = deadline_reminder(
+        lead_hours=settings["lead_hours"],
+        mode=settings["mode"],
+        model_version=settings["model_version"],
+    )
+    return {
+        "enabled": settings["enabled"],
+        "settings": settings,
+        "status": {
+            "is_due": bool(settings["enabled"] and reminder.get("is_reminder_due")),
+            "seconds_until_deadline": reminder.get("seconds_until_deadline"),
+            "deadline_utc": reminder.get("deadline_utc"),
+            "reminder_utc": reminder.get("reminder_utc"),
+        },
+        "preview_message": reminder.get("message"),
+    }
+
+
+@router.get("/api/fpl/notification-test")
+def notification_test():
+    settings = notification_settings_get()
+    reminder = deadline_reminder(
+        lead_hours=settings["lead_hours"],
+        mode=settings["mode"],
+        model_version=settings["model_version"],
+    )
+    return {
+        "ok": True,
+        "dry_run": True,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "settings": settings,
+        "test_message": reminder.get("message"),
+        "deadline_utc": reminder.get("deadline_utc"),
+        "reminder_utc": reminder.get("reminder_utc"),
+    }
 
 
 @router.get("/api/fpl/content-consensus")
@@ -217,6 +340,110 @@ def recommendation_ml(
         )
     finally:
         db.close()
+
+
+@router.get("/api/fpl/deadline-reminder")
+def deadline_reminder(
+    lead_hours: int = Query(default=6, ge=1, le=72),
+    mode: str = Query(default="balanced", pattern="^(safe|balanced|aggressive)$"),
+    model_version: str = Query(default=HISTORICAL_MODEL_VERSION, pattern="^(xgb_v1|xgb_hist_v1)$"),
+):
+    deadline = deadline_next(lead_hours=lead_hours)
+    brief = weekly_brief(gameweek=None, mode=mode, model_version=model_version)
+
+    return {
+        "next_gw": deadline["next_gw"],
+        "deadline_utc": deadline["deadline_utc"],
+        "reminder_utc": deadline["reminder_utc"],
+        "is_reminder_due": deadline["is_reminder_due"],
+        "seconds_until_deadline": deadline["seconds_until_deadline"],
+        "brief": brief,
+        "message": (
+            f"Reminder: FPL GW{deadline['next_gw']} deadline is approaching. "
+            f"Captain {brief['final']['captain']}, transfer {brief['final']['transfer_out']} -> {brief['final']['transfer_in']}."
+        ),
+    }
+
+
+@router.get("/api/fpl/weekly-brief")
+def weekly_brief(
+    gameweek: Optional[int] = Query(default=None, ge=1, le=38),
+    mode: str = Query(default="balanced", pattern="^(safe|balanced|aggressive)$"),
+    model_version: str = Query(default=HISTORICAL_MODEL_VERSION, pattern="^(xgb_v1|xgb_hist_v1)$"),
+):
+    base = recommendation(gameweek=gameweek)
+
+    ml = None
+    try:
+        ml = recommendation_ml(gameweek=gameweek, force_train=False, model_version=model_version)
+    except HTTPException:
+        ml = None
+
+    consensus = None
+    if DIGEST_PATH.exists():
+        try:
+            payload = json.loads(DIGEST_PATH.read_text(encoding="utf-8"))
+            consensus = {
+                "generated_at": payload.get("generated_at"),
+                "top_topics": payload.get("top_topics", [])[:5],
+                "top_videos": payload.get("videos", [])[:5],
+            }
+        except Exception:  # noqa: BLE001
+            consensus = None
+
+    if mode == "safe":
+        final_captain = base.captain
+        final_vice = base.vice_captain
+        transfer_out, transfer_in = base.transfer_out, base.transfer_in
+    elif mode == "aggressive" and ml is not None:
+        final_captain = ml.captain
+        final_vice = ml.vice_captain
+        transfer_out, transfer_in = ml.transfer_out, ml.transfer_in
+    else:
+        final_captain = base.captain if ml is None else (base.captain if base.confidence >= ml.confidence else ml.captain)
+        final_vice = base.vice_captain if ml is None else (base.vice_captain if base.confidence >= ml.confidence else ml.vice_captain)
+        transfer_out, transfer_in = base.transfer_out, base.transfer_in
+        if ml is not None and ml.transfer_in == base.transfer_in:
+            transfer_out, transfer_in = ml.transfer_out, ml.transfer_in
+
+    rationale = [
+        f"Mode: {mode}",
+        f"Baseline captain: {base.captain}",
+        f"ML captain: {ml.captain if ml else 'n/a'}",
+        f"Creator consensus top topics: {', '.join(t.get('topic', '') for t in (consensus or {}).get('top_topics', [])[:3]) or 'n/a'}",
+    ]
+
+    return {
+        "gameweek": base.gameweek,
+        "mode": mode,
+        "final": {
+            "captain": final_captain,
+            "vice_captain": final_vice,
+            "transfer_out": transfer_out,
+            "transfer_in": transfer_in,
+        },
+        "baseline": {
+            "captain": base.captain,
+            "vice_captain": base.vice_captain,
+            "transfer_out": base.transfer_out,
+            "transfer_in": base.transfer_in,
+            "confidence": base.confidence,
+        },
+        "ml": (
+            {
+                "captain": ml.captain,
+                "vice_captain": ml.vice_captain,
+                "transfer_out": ml.transfer_out,
+                "transfer_in": ml.transfer_in,
+                "confidence": ml.confidence,
+                "model_version": model_version,
+            }
+            if ml is not None
+            else None
+        ),
+        "creator_consensus": consensus,
+        "rationale": rationale,
+    }
 
 
 @router.get("/api/fpl/targets", response_model=TargetsResponse)
