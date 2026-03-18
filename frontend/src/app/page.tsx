@@ -1,46 +1,37 @@
 import Link from "next/link";
 
-const cards = [
+const primaryCards = [
   {
-    title: "Global Picks",
-    desc: "Model-driven XI, captaincy and transfer ideas for the wider player pool.",
-    href: "/global",
+    title: "Weekly Brief",
+    desc: "One-page final plan with captain, transfer, and consensus rationale.",
+    href: "/brief",
   },
   {
-    title: "Target Radar",
-    desc: "Safe targets + differential targets across upcoming gameweeks.",
-    href: "/targets",
-  },
-  {
-    title: "Top Players",
-    desc: "See the highest projected players for the next gameweek.",
-    href: "/top",
-  },
-  {
-    title: "My Team",
-    desc: "Import your FPL team and get personalized lineup + transfer guidance.",
+    title: "My Team Hub",
+    desc: "Import your squad, get personalized recommendations, and track rank trend.",
     href: "/team",
   },
   {
-    title: "Rank Trend",
-    desc: "Visualize overall rank gameweek by gameweek and spot momentum shifts.",
-    href: "/team-rank",
-  },
-  {
-    title: "Captaincy Lab",
-    desc: "Compare safe vs upside captain options with risk and ownership signals.",
-    href: "/captaincy",
+    title: "Transfer Center",
+    desc: "Targets + what-if simulator for 1FT/2FT and hit scenarios.",
+    href: "/targets",
   },
   {
     title: "Planner",
-    desc: "Chip planner + rival intelligence for tactical decision-making.",
+    desc: "Chip planning, rival intelligence, and weekly digest payloads.",
     href: "/planner",
   },
   {
-    title: "Weekly Brief",
-    desc: "Blended final recommendation from baseline model, ML model, and creator consensus.",
-    href: "/brief",
+    title: "Insights",
+    desc: "Top picks, explainability cards, and captaincy lab.",
+    href: "/top",
   },
+];
+
+const secondaryLinks = [
+  { label: "Global Picks", href: "/global" },
+  { label: "Rank Trend", href: "/team-rank" },
+  { label: "Captaincy Lab", href: "/captaincy" },
 ];
 
 export default function Home() {
@@ -50,12 +41,12 @@ export default function Home() {
         <p className="text-xs uppercase tracking-[0.24em] text-cyan-200/90 mb-2">Fantasy Premier League</p>
         <h1 className="text-3xl md:text-4xl font-black">FPL AI Coach</h1>
         <p className="text-sm md:text-base text-white/85 mt-2">
-          Choose a feature page to run team analysis, transfer targets, and ranking insights.
+          Streamlined workflow: start with Weekly Brief, then refine with Team / Transfers / Planner.
         </p>
       </section>
 
       <section className="grid md:grid-cols-2 gap-4">
-        {cards.map((card) => (
+        {primaryCards.map((card) => (
           <Link
             key={card.href}
             href={card.href}
@@ -65,6 +56,21 @@ export default function Home() {
             <p className="text-white/80">{card.desc}</p>
           </Link>
         ))}
+      </section>
+
+      <section className="mt-5 rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md p-4">
+        <p className="text-xs uppercase tracking-widest text-white/60 mb-2">More tools</p>
+        <div className="flex flex-wrap gap-2 text-sm">
+          {secondaryLinks.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              className="rounded-full px-3 py-1 border border-white/20 hover:border-[#00ff87]/60 hover:text-[#00ff87] transition"
+            >
+              {link.label}
+            </Link>
+          ))}
+        </div>
       </section>
     </main>
   );

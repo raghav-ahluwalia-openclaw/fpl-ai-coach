@@ -20,14 +20,11 @@ export const metadata: Metadata = {
 
 const navItems = [
   { href: "/", label: "Dashboard" },
-  { href: "/global", label: "Global Picks" },
-  { href: "/targets", label: "Target Radar" },
-  { href: "/top", label: "Top Players" },
-  { href: "/team", label: "My Team" },
-  { href: "/team-rank", label: "Rank Trend" },
-  { href: "/captaincy", label: "Captaincy Lab" },
-  { href: "/planner", label: "Planner" },
   { href: "/brief", label: "Weekly Brief" },
+  { href: "/team", label: "My Team" },
+  { href: "/targets", label: "Transfers" },
+  { href: "/planner", label: "Planner" },
+  { href: "/top", label: "Insights" },
 ];
 
 export default function RootLayout({
