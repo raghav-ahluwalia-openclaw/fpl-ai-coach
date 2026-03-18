@@ -12,23 +12,23 @@ const primaryCards = [
     href: "/team",
   },
   {
-    title: "Transfer Center",
-    desc: "Targets + what-if simulator for 1FT/2FT and hit scenarios.",
-    href: "/targets",
-  },
-  {
     title: "Planner",
     desc: "Chip planning, rival intelligence, and weekly digest payloads.",
     href: "/planner",
   },
   {
     title: "Insights",
-    desc: "Top picks, explainability cards, and captaincy lab.",
+    desc: "Top picks, explainability cards, and captaincy analysis.",
     href: "/top",
   },
 ];
 
-const secondaryLinks = [{ label: "Global Picks", href: "/global" }];
+const secondaryLinks = [
+  { label: "Transfer Center", href: "/targets" },
+  { label: "Captaincy Lab", href: "/captaincy" },
+  { label: "Rank Trend", href: "/team-rank" },
+  { label: "Global Picks", href: "/global" },
+];
 
 export default function Home() {
   return (
@@ -37,7 +37,7 @@ export default function Home() {
         <p className="text-xs uppercase tracking-[0.24em] text-cyan-200/90 mb-2">Fantasy Premier League</p>
         <h1 className="text-3xl md:text-4xl font-black">FPL AI Coach</h1>
         <p className="text-sm md:text-base text-white/85 mt-2">
-          Streamlined workflow: start with Weekly Brief, then refine with Team / Transfers / Planner.
+          Clean flow: start with Weekly Brief, then refine in My Team and Planner.
         </p>
       </section>
 
@@ -55,7 +55,7 @@ export default function Home() {
       </section>
 
       <section className="mt-5 rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md p-4">
-        <p className="text-xs uppercase tracking-widest text-white/60 mb-2">More tools</p>
+        <p className="text-xs uppercase tracking-widest text-white/60 mb-2">Advanced tools</p>
         <div className="flex flex-wrap gap-2 text-sm">
           {secondaryLinks.map((link) => (
             <Link
