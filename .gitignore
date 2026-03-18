@@ -35,6 +35,9 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# Local runtime helpers
+.run/
+
 # Coverage / build artifacts
 coverage/
 build/

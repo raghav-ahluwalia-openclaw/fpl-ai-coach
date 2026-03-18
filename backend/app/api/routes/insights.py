@@ -163,6 +163,7 @@ def content_consensus(limit: int = Query(default=10, ge=1, le=50), include_video
         "creator_coverage": payload.get("creator_coverage", {}),
         "top_topics": top_topics,
         "top_title_terms": payload.get("top_title_terms", [])[: min(limit, 15)],
+        "top_player_mentions": payload.get("top_player_mentions", [])[: min(limit, 20)],
         "videos": videos,
         "source": str(DIGEST_PATH),
     }

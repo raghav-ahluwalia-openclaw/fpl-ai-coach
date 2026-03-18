@@ -4,7 +4,9 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sqlite3
 import subprocess
+import unicodedata
 import urllib.request
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
@@ -27,6 +29,8 @@ KEYWORDS = {
     "injury": ["injury", "injured", "fitness", "doubt", "flagged"],
     "fixtures": ["fixture", "fixtures", "run of games", "swing"],
 }
+
+PLAYER_DB_PATH = ROOT / "backend" / "fpl.db"
 
 
 def _yt_dlp_json(args: list[str]) -> dict[str, Any] | None:
@@ -120,6 +124,68 @@ def _strip_html_tags(text: str) -> str:
     text = re.sub(r"&[a-zA-Z]+;", " ", text)
     text = re.sub(r"\s+", " ", text)
     return text.strip()
+
+
+def _normalize_text(text: str) -> str:
+    text = unicodedata.normalize("NFKD", text)
+    text = text.encode("ascii", "ignore").decode("ascii")
+    text = text.lower()
+    text = re.sub(r"[^a-z0-9\s\-']", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def _load_player_aliases() -> dict[str, str]:
+    aliases: dict[str, str] = {}
+    if not PLAYER_DB_PATH.exists():
+        return aliases
+
+    try:
+        conn = sqlite3.connect(PLAYER_DB_PATH)
+        cur = conn.cursor()
+        cur.execute("SELECT first_name, second_name, web_name FROM players")
+        for first_name, second_name, web_name in cur.fetchall():
+            first_name = (first_name or "").strip()
+            second_name = (second_name or "").strip()
+            web_name = (web_name or "").strip()
+            canonical = web_name or second_name or (f"{first_name} {second_name}".strip())
+            if not canonical:
+                continue
+
+            candidate_aliases = {
+                web_name,
+                second_name,
+                f"{first_name} {second_name}".strip(),
+            }
+            for alias in candidate_aliases:
+                alias_n = _normalize_text(alias)
+                if len(alias_n) < 3:
+                    continue
+                aliases[alias_n] = canonical
+        conn.close()
+    except Exception:  # noqa: BLE001
+        return {}
+
+    return aliases
+
+
+def _player_mentions(text: str, alias_map: dict[str, str], max_items: int = 8) -> list[dict[str, Any]]:
+    if not text or not alias_map:
+        return []
+    txt = f" {_normalize_text(text)} "
+
+    counts: Counter[str] = Counter()
+    for alias_norm, canonical in alias_map.items():
+        if len(alias_norm) < 3:
+            continue
+        # phrase boundary by spaces after normalization
+        needle = f" {alias_norm} "
+        c = txt.count(needle)
+        if c > 0:
+            counts[canonical] += c
+
+    out = [{"name": name, "mentions": int(cnt)} for name, cnt in counts.most_common(max_items)]
+    return out
 
 
 def _parse_vtt(raw: str) -> str:
@@ -241,9 +307,11 @@ def build_digest(videos_per_creator: int = 5) -> dict[str, Any]:
     all_items: list[dict[str, Any]] = []
     topic_counter: Counter[str] = Counter()
     title_word_counter: Counter[str] = Counter()
+    player_counter: Counter[str] = Counter()
     by_creator_count: dict[str, int] = defaultdict(int)
 
     info_cache: dict[str, dict[str, Any] | None] = {}
+    alias_map = _load_player_aliases()
 
     for c in creators:
         name = c.get("name", "unknown")
@@ -274,6 +342,10 @@ def build_digest(videos_per_creator: int = 5) -> dict[str, Any]:
             for t in tags:
                 topic_counter[t] += weight
 
+            player_mentions = _player_mentions(blob, alias_map, max_items=8)
+            for pm in player_mentions:
+                player_counter[pm["name"]] += float(pm["mentions"]) * weight
+
             for tok in _tokenize_title(title):
                 title_word_counter[tok.lower()] += weight
 
@@ -288,6 +360,7 @@ def build_digest(videos_per_creator: int = 5) -> dict[str, Any]:
                     "view_count": item.get("view_count"),
                     "topics": tags,
                     "transcript_tags": tags,
+                    "player_mentions": player_mentions,
                     "transcript_available": bool(transcript),
                     "summary": summary,
                     "weight": weight,
@@ -309,6 +382,10 @@ def build_digest(videos_per_creator: int = 5) -> dict[str, Any]:
         "creator_coverage": dict(by_creator_count),
         "top_topics": [{"topic": t, "score": round(float(s), 2)} for t, s in topic_counter.most_common(10)],
         "top_title_terms": top_words[:15],
+        "top_player_mentions": [
+            {"name": name, "score": round(float(score), 2)}
+            for name, score in player_counter.most_common(20)
+        ],
         "videos": all_items,
     }
 
@@ -332,6 +409,7 @@ def main() -> int:
     print(f"   videos captured: {len(digest.get('videos', []))}")
     print(f"   transcripts found: {transcript_count}")
     print(f"   top topics: {digest.get('top_topics', [])[:5]}")
+    print(f"   top player mentions: {digest.get('top_player_mentions', [])[:8]}")
     return 0
 
 
