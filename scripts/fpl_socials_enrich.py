@@ -84,6 +84,18 @@ def summarize_text(text: str, max_sentences: int = 4) -> str:
     return out[:520]
 
 
+def _remove_title(text: str, title: str) -> str:
+    t = re.sub(r"\s+", " ", (title or "").strip())
+    out = re.sub(r"\s+", " ", (text or "").strip())
+    if not out:
+        return out
+    if t:
+        out = re.sub(rf"^{re.escape(t)}[:\-–—\s]*", "", out, flags=re.IGNORECASE).strip()
+        out = re.sub(re.escape(t), "", out, flags=re.IGNORECASE).strip()
+    out = re.sub(r"\s{2,}", " ", out)
+    return out
+
+
 def _pick_line(parts: list[str], keywords: list[str], fallback: str = "No strong signal.") -> str:
     for s in parts:
         low = s.lower()
@@ -92,7 +104,7 @@ def _pick_line(parts: list[str], keywords: list[str], fallback: str = "No strong
     return fallback
 
 
-def structured_summary(text: str) -> dict:
+def structured_summary(text: str, *, title: str = "") -> dict:
     parts = _sentences(text)
     if not parts:
         return {
@@ -103,10 +115,10 @@ def structured_summary(text: str) -> dict:
         }
 
     return {
-        "key_calls": _pick_line(parts, ["overall", "plan", "strategy", "approach", "final thoughts", "key"]),
-        "buy_watch": _pick_line(parts, ["buy", "bring", "target", "pick", "consider", "watchlist"]),
-        "sell_watch": _pick_line(parts, ["sell", "avoid", "rotation", "injury", "risk", "doubt", "suspended", "minutes"]),
-        "captain_chips": _pick_line(parts, ["captain", "vice", "triple captain", "wildcard", "free hit", "bench boost"]),
+        "key_calls": _remove_title(_pick_line(parts, ["overall", "plan", "strategy", "approach", "final thoughts", "key"]), title),
+        "buy_watch": _remove_title(_pick_line(parts, ["buy", "bring", "target", "pick", "consider", "watchlist"]), title),
+        "sell_watch": _remove_title(_pick_line(parts, ["sell", "avoid", "rotation", "injury", "risk", "doubt", "suspended", "minutes"]), title),
+        "captain_chips": _remove_title(_pick_line(parts, ["captain", "vice", "triple captain", "wildcard", "free hit", "bench boost"]), title),
     }
 
 
@@ -206,19 +218,21 @@ def main() -> int:
             if transcript_path.exists():
                 transcript = transcript_path.read_text(encoding="utf-8")
 
-        combined = " ".join([v.get("title") or "", v.get("summary") or "", transcript]).strip()
+        title = v.get("title") or ""
+        # Use youtube-watcher transcript + prior short summary; do not inject title into summary body.
+        combined = " ".join([v.get("summary") or "", transcript]).strip()
         s_score = sentiment_score(combined)
 
-        summary_struct = structured_summary(combined)
+        summary_struct = structured_summary(combined, title=title)
         enriched_videos.append(
             {
                 "creator": v.get("creator"),
-                "title": v.get("title"),
+                "title": title,
                 "url": url,
                 "video_id": vid,
                 "upload_date": v.get("upload_date"),
                 "view_count": v.get("view_count"),
-                "summary": summarize_text(combined, max_sentences=4),
+                "summary": _remove_title(summarize_text(combined, max_sentences=4), title),
                 "summary_struct": summary_struct,
                 "transcript_path": str(transcript_path.relative_to(ROOT)),
                 "transcript": transcript,
