@@ -368,10 +368,11 @@ def weekly_cockpit(
         if not players:
             raise HTTPException(status_code=400, detail="No player data found. Run POST /api/fpl/ingest/bootstrap first.")
 
-        gw = _resolve_gameweek(db, gameweek)
+        target_gw = _resolve_gameweek(db, gameweek)
         current_gw = _int(_get_meta(db, "current_gw"), 0)
-        payload, resolved_gw = _fetch_entry_picks_with_fallback(entry_id, gw, [current_gw, gw - 1])
-        gw = resolved_gw
+        payload, picks_source_gw = _fetch_entry_picks_with_fallback(entry_id, target_gw, [current_gw, target_gw - 1])
+        # Keep planning anchored to target_gw (upcoming decision GW), even if picks fallback uses last available squad snapshot.
+        gw = target_gw
         picks = payload.get("picks", [])
 
         if len(picks) < 11:
@@ -623,6 +624,7 @@ def weekly_cockpit(
         return {
             "entry_id": entry_id,
             "gameweek": gw,
+            "picks_source_gw": picks_source_gw,
             "mode": mode,
             "fixture_context": {
                 "gameweek": gw,

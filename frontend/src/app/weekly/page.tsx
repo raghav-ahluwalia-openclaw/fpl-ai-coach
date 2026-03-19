@@ -13,6 +13,7 @@ type FixtureWindow = { counts: number[]; blanks: number; doubles: number; single
 type HealthRow = {
   name: string;
   position: string;
+  projected_points_1: number;
   projected_points_3: number;
   minutes_risk: number;
   availability_risk: number;
@@ -57,6 +58,7 @@ type CaptainCandidate = {
 type WeeklyCockpit = {
   entry_id: number;
   gameweek: number;
+  picks_source_gw?: number;
   mode: Mode;
   fixture_context: {
     gameweek: number;
@@ -88,9 +90,14 @@ type WeeklyCockpit = {
 
 const cardClass = "rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md p-5";
 
+function xpLabel(xpView: "1gw" | "3gw", xp1: number, xp3: number): string {
+  return xpView === "3gw" ? `xP3 ${xp3}` : `xP1 ${xp1}`;
+}
+
 export default function WeeklyPage() {
   const [teamId, setTeamId] = useState("");
   const [mode, setMode] = useState<Mode>("balanced");
+  const [xpView, setXpView] = useState<"1gw" | "3gw">("3gw");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<WeeklyCockpit | null>(null);
@@ -132,7 +139,17 @@ export default function WeeklyPage() {
 
   return (
     <main className="min-h-screen p-6 md:p-8 max-w-6xl mx-auto text-white">
-      <h1 className="text-3xl font-black mb-4">Weekly Cockpit</h1>
+      <h1 className="text-3xl font-black mb-1">Weekly Cockpit</h1>
+      {data ? (
+        <p className="text-sm text-white/75 mb-4">
+          GW {data.gameweek}
+          {typeof data.picks_source_gw === "number" && data.picks_source_gw !== data.gameweek
+            ? ` • using latest available squad snapshot from GW ${data.picks_source_gw}`
+            : ""}
+        </p>
+      ) : (
+        <p className="text-sm text-white/75 mb-4">Planning view for next decision GW.</p>
+      )}
 
       <section className={`${cardClass} mb-6`}>
         <div className="flex gap-3 flex-wrap items-center">
@@ -152,6 +169,23 @@ export default function WeeklyPage() {
             <option value="balanced">Balanced</option>
             <option value="aggressive">Aggressive</option>
           </select>
+
+          <div className="inline-flex rounded-md border border-white/20 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setXpView("1gw")}
+              className={`px-3 py-2 text-sm ${xpView === "1gw" ? "bg-[#00ff87] text-[#37003c]" : "bg-black/30 text-white/80"}`}
+            >
+              xP 1GW
+            </button>
+            <button
+              type="button"
+              onClick={() => setXpView("3gw")}
+              className={`px-3 py-2 text-sm ${xpView === "3gw" ? "bg-[#00ff87] text-[#37003c]" : "bg-black/30 text-white/80"}`}
+            >
+              xP 3GW
+            </button>
+          </div>
           <button
             onClick={() => void run()}
             disabled={loading || !/^\d+$/.test(teamId.trim())}
@@ -184,7 +218,7 @@ export default function WeeklyPage() {
                 <ul className="space-y-1">
                   {data.lineup_optimizer.starting_xi.map((p) => (
                     <li key={`xi-${p.name}`}>
-                      {p.name} ({p.position}) • xP1 {p.xP_next_1} • xP3 {p.xP_next_3} • {p.fixture_badge} • {p.fixture_window_next_3.label}
+                      {p.name} ({p.position}) • {xpLabel(xpView, p.xP_next_1, p.xP_next_3)} • {p.fixture_badge} • {p.fixture_window_next_3.label}
                     </li>
                   ))}
                 </ul>
@@ -194,7 +228,7 @@ export default function WeeklyPage() {
                 <ul className="space-y-1">
                   {data.lineup_optimizer.bench_order.map((p) => (
                     <li key={`bench-${p.name}`}>
-                      {p.bench_rank}. {p.name} ({p.position}) • xP1 {p.xP_next_1} • xP3 {p.xP_next_3} • {p.fixture_badge} • {p.fixture_window_next_3.label}
+                      {p.bench_rank}. {p.name} ({p.position}) • {xpLabel(xpView, p.xP_next_1, p.xP_next_3)} • {p.fixture_badge} • {p.fixture_window_next_3.label}
                     </li>
                   ))}
                 </ul>
@@ -211,7 +245,7 @@ export default function WeeklyPage() {
                   <ul className="space-y-2 text-sm">
                     {(data.team_health[bucket as keyof typeof data.team_health] as HealthRow[]).map((p) => (
                       <li key={`${bucket}-${p.name}`}>
-                        <div className="font-medium">{p.name} ({p.position}) • xP3 {p.projected_points_3}</div>
+                        <div className="font-medium">{p.name} ({p.position}) • {xpLabel(xpView, p.projected_points_1, p.projected_points_3)}</div>
                         <div className="text-white/70">Risk M:{p.minutes_risk} A:{p.availability_risk} • {p.fixture_badge} • {p.fixture_window_next_3.label}</div>
                       </li>
                     ))}
