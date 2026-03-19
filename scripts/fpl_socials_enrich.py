@@ -25,7 +25,7 @@ NEG_WEIGHTS = {
 }
 
 
-def summarize_text(text: str, max_sentences: int = 8) -> str:
+def summarize_text(text: str, max_sentences: int = 4) -> str:
     clean = re.sub(r"\s+", " ", (text or "").strip())
     if not clean:
         return "No detailed summary available yet."
@@ -43,6 +43,10 @@ def summarize_text(text: str, max_sentences: int = 8) -> str:
         low = p.lower()
         if any(b in low for b in blacklist):
             continue
+        # drop overly conversational transcript lines
+        pronouns = len(re.findall(r"\b(i|we|you|my|our|me|i'm|we're|you've)\b", low))
+        if pronouns >= 2:
+            continue
         filtered.append(p)
 
     if not filtered:
@@ -50,36 +54,29 @@ def summarize_text(text: str, max_sentences: int = 8) -> str:
     if not filtered:
         return "No detailed summary available yet."
 
-    # pick representative sentences across the full transcript, but prioritize FPL-relevant content.
     n = len(filtered)
 
     def score_sentence(idx: int, s: str) -> tuple[float, int]:
         low = s.lower()
         kw = sum(1 for k in keyword_pref if k in low)
-        penalty_intro = 1 if idx < max(3, n // 12) else 0
-        return (kw * 2.0 - penalty_intro + min(len(s), 220) / 220.0, len(s))
+        penalty_intro = 1 if idx < max(3, n // 10) else 0
+        return (kw * 2.0 - penalty_intro + min(len(s), 180) / 180.0, len(s))
 
     ranked = sorted([(i, s) for i, s in enumerate(filtered)], key=lambda x: score_sentence(x[0], x[1]), reverse=True)
 
-    # ensure coverage: at most 2 picks per transcript quartile
-    bucket_limits = {0: 2, 1: 2, 2: 2, 3: 2}
     picked = []
     seen = set()
-    for i, s in ranked:
+    for _, s in ranked:
         key = s.lower()
         if key in seen:
             continue
-        bucket = min(3, int((i / max(1, n - 1)) * 4))
-        if bucket_limits[bucket] <= 0:
-            continue
-        bucket_limits[bucket] -= 1
         seen.add(key)
         picked.append(s)
         if len(picked) >= max_sentences:
             break
 
     out = " ".join(picked).strip()
-    return out[:1200]
+    return out[:520]
 
 
 def sentiment_score(text: str) -> int:
