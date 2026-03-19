@@ -12,6 +12,13 @@ from app.services.captaincy_service import build_captaincy_lab, build_explainabi
 
 DIGEST_PATH = Path(__file__).resolve().parents[3] / "data" / "content" / "creator_digest.json"
 
+POS_WORDS = {
+    "great", "good", "best", "nailed", "essential", "must", "strong", "haul", "buy", "start", "captain", "value", "love", "solid", "safe", "upside", "form"
+}
+NEG_WORDS = {
+    "bad", "poor", "awful", "bench", "drop", "sell", "avoid", "injury", "injured", "rotation", "risk", "doubt", "blank", "trap", "weak"
+}
+
 
 def _summarize_text(text: str, max_sentences: int = 3) -> str:
     clean = re.sub(r"\s+", " ", (text or "").strip())
@@ -20,6 +27,36 @@ def _summarize_text(text: str, max_sentences: int = 3) -> str:
     parts = re.split(r"(?<=[.!?])\s+", clean)
     parts = [p.strip() for p in parts if len(p.strip()) > 20]
     return " ".join(parts[:max_sentences]) if parts else clean[:300]
+
+
+def _sentiment_score(text: str) -> int:
+    words = re.findall(r"[a-zA-Z']+", (text or "").lower())
+    pos = sum(1 for w in words if w in POS_WORDS)
+    neg = sum(1 for w in words if w in NEG_WORDS)
+    return pos - neg
+
+
+def _sentiment_label(score: int) -> str:
+    if score >= 2:
+        return "positive"
+    if score <= -2:
+        return "negative"
+    return "neutral"
+
+
+def _extract_player_mentions(text: str, player_names: list[str], max_items: int = 8) -> list[dict]:
+    low = (text or "").lower()
+    mentions = []
+    for name in player_names:
+        n = (name or "").strip()
+        if len(n) < 3:
+            continue
+        if re.search(rf"\b{re.escape(n.lower())}\b", low):
+            score = _sentiment_score(low)
+            mentions.append({"name": n, "sentiment": _sentiment_label(score), "score": score})
+        if len(mentions) >= max_items:
+            break
+    return mentions
 
 
 @router.get("/api/fpl/content-consensus")
@@ -54,6 +91,12 @@ def content_consensus(limit: int = Query(default=10, ge=1, le=50), include_video
 
 @router.get("/api/fpl/socials")
 def fpl_socials(limit: int = Query(default=5, ge=1, le=10), reddit_window: str = Query(default="week", pattern="^(day|week|month|year|all)$")):
+    db = SessionLocal()
+    try:
+        player_names = [p.web_name for p in db.query(Player).all()]
+    finally:
+        db.close()
+
     consensus = {
         "generated_at": None,
         "top_topics": [],
@@ -62,10 +105,33 @@ def fpl_socials(limit: int = Query(default=5, ge=1, le=10), reddit_window: str =
     if DIGEST_PATH.exists():
         try:
             payload = json.loads(DIGEST_PATH.read_text(encoding="utf-8"))
+            raw_videos = payload.get("videos", [])[:limit]
+            videos = []
+            for v in raw_videos:
+                title = v.get("title") or "Untitled"
+                base_summary = v.get("summary") or ""
+                tags = v.get("transcript_tags") or []
+                transcript_hint = " ".join(tags[:20]) if isinstance(tags, list) else ""
+                combined = " ".join([title, base_summary, transcript_hint]).strip()
+                sentiment_score = _sentiment_score(combined)
+                videos.append(
+                    {
+                        "creator": v.get("creator"),
+                        "title": title,
+                        "url": v.get("url"),
+                        "summary": _summarize_text(combined, max_sentences=5),
+                        "player_mentions": _extract_player_mentions(combined, player_names, max_items=8),
+                        "sentiment": {
+                            "label": _sentiment_label(sentiment_score),
+                            "score": sentiment_score,
+                        },
+                    }
+                )
+
             consensus = {
                 "generated_at": payload.get("generated_at"),
                 "top_topics": payload.get("top_topics", [])[: min(limit, 10)],
-                "videos": payload.get("videos", [])[:limit],
+                "videos": videos,
             }
         except Exception:  # noqa: BLE001
             pass
@@ -109,25 +175,37 @@ def fpl_socials(limit: int = Query(default=5, ge=1, le=10), reddit_window: str =
                 except Exception:  # noqa: BLE001
                     pass
 
-            combined = " ".join([selftext] + top_comment_bodies[:2]).strip()
-            summary = _summarize_text(combined or title, max_sentences=3)
-
+            combined = " ".join([title, selftext] + top_comment_bodies[:2]).strip()
+            sentiment_score = _sentiment_score(combined)
             reddit_threads.append(
                 {
                     "title": title,
                     "url": url,
                     "score": score,
                     "num_comments": comments_count,
-                    "summary": summary,
+                    "summary": _summarize_text(combined or title, max_sentences=5),
+                    "player_mentions": _extract_player_mentions(combined, player_names, max_items=8),
+                    "sentiment": {
+                        "label": _sentiment_label(sentiment_score),
+                        "score": sentiment_score,
+                    },
                 }
             )
     except Exception as e:  # noqa: BLE001
-        reddit_threads = [{"title": "Reddit fetch unavailable", "url": None, "score": 0, "num_comments": 0, "summary": str(e)}]
+        reddit_threads = [{
+            "title": "Reddit fetch unavailable",
+            "url": None,
+            "score": 0,
+            "num_comments": 0,
+            "summary": str(e),
+            "player_mentions": [],
+            "sentiment": {"label": "neutral", "score": 0},
+        }]
 
     return {
         "subreddit": "FantasyPL",
         "reddit_window": reddit_window,
-        "creator_consensus": consensus,
+        "youtube_creators": consensus,
         "reddit_threads": reddit_threads,
     }
 

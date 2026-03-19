@@ -18,7 +18,7 @@ const primaryCards = [
   },
   {
     title: "FPL Socials",
-    desc: "Creator consensus + top Reddit FantasyPL threads with summaries.",
+    desc: "YouTube Creators + top Reddit FantasyPL threads with summaries, player mentions, and sentiment.",
     href: "/socials",
   },
 ];
