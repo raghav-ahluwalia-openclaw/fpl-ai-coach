@@ -110,7 +110,8 @@
 
 4. Projection horizon upgrade
    - Goal: explicit 1/3/5 GW projections consistently across outputs.
-   - Status: ⚠️ Partial (implemented in parts of targets/team paths; not standardized everywhere).
+   - Status: ✅ Completed for core APIs.
+   - Delivered in recommendation, recommendation-ml, team recommendation, top players, captaincy lab, and weekly cockpit payloads with explicit 1/3/5 fields (backward compatible).
 
 5. Price-change aware transfer scoring
    - Goal: include rise/fall pressure in transfer ranking.

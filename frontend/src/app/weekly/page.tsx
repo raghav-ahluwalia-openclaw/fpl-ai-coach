@@ -344,7 +344,7 @@ export default function WeeklyPage() {
                 <h3 className="font-semibold mb-2">1FT</h3>
                 {data.top_transfer_plans.one_ft.map((p) => (
                   <div key={`1ft-${p.plan}`} className="rounded-lg border border-white/10 p-3 bg-black/20 mb-2">
-                    <p className="font-medium">{p.plan} • Expected Net Gain {p.ev ?? p.net_gain} • Net {p.net_gain} • Hit {p.hit}</p>
+                    <p className="font-medium">{p.plan} • Expected Net Gain {p.ev ?? p.net_gain} • Hit {p.hit}</p>
                     <p className="text-xs text-white/70">Risk {(p.risk_score ?? 0).toFixed(2)} • <span className={planConfidenceClass(p.confidence)}>Confidence {Math.round((p.confidence ?? 0) * 100)}%</span></p>
                     {p.note ? <p className="text-xs text-white/65 mt-1">{p.note}</p> : null}
                     {p.transfers.map((t, i) => (
@@ -359,7 +359,7 @@ export default function WeeklyPage() {
                 <h3 className="font-semibold mb-2">2FT</h3>
                 {data.top_transfer_plans.two_ft.map((p) => (
                   <div key={`2ft-${p.plan}`} className="rounded-lg border border-white/10 p-3 bg-black/20 mb-2">
-                    <p className="font-medium">{p.plan} • Expected Net Gain {p.ev ?? p.net_gain} • Net {p.net_gain} • Hit {p.hit}</p>
+                    <p className="font-medium">{p.plan} • Expected Net Gain {p.ev ?? p.net_gain} • Hit {p.hit}</p>
                     <p className="text-xs text-white/70">Risk {(p.risk_score ?? 0).toFixed(2)} • <span className={planConfidenceClass(p.confidence)}>Confidence {Math.round((p.confidence ?? 0) * 100)}%</span></p>
                     {p.note ? <p className="text-xs text-white/65 mt-1">{p.note}</p> : null}
                     {p.transfers.map((t, i) => (

@@ -9,8 +9,12 @@ class Pick(BaseModel):
     name: str
     position: str
     price: float
+    # Backwards-compatible baseline field (same value as expected_points_1)
     expected_points: float
+    # Explicit projection horizons for Phase 2 standardization
+    expected_points_1: Optional[float] = None
     expected_points_3: Optional[float] = None
+    expected_points_5: Optional[float] = None
     reason: str
     fixture_count: Optional[int] = None
     fixture_badge: Optional[str] = None

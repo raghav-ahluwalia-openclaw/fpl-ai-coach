@@ -264,17 +264,22 @@ def _pick_to_response(
     player: Player,
     xpts: float,
     *,
+    expected_points_1: Optional[float] = None,
     expected_points_3: Optional[float] = None,
+    expected_points_5: Optional[float] = None,
     fixture_count: Optional[int] = None,
     fixture_badge: Optional[str] = None,
 ) -> Pick:
+    xp1 = expected_points_1 if expected_points_1 is not None else xpts
     return Pick(
         id=player.id,
         name=player.web_name,
         position=POSITION_MAP.get(player.element_type, str(player.element_type)),
         price=round(player.now_cost / 10.0, 1),
         expected_points=xpts,
+        expected_points_1=xp1,
         expected_points_3=expected_points_3,
+        expected_points_5=expected_points_5,
         reason=_reason(player, xpts),
         fixture_count=fixture_count,
         fixture_badge=fixture_badge,

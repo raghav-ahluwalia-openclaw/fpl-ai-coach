@@ -8,7 +8,7 @@
 - [x] XI + Bench optimizer UX with alternate-lineup gain
 
 ### Phase 2 (active)
-- [ ] Standardize explicit 1/3/5 GW projections across APIs
+- [x] Standardize explicit 1/3/5 GW projections across APIs
 - [ ] Add price-change aware transfer scoring
 - [ ] Add confidence calibration + bucketed reliability outputs
 

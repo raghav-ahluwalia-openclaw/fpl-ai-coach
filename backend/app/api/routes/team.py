@@ -134,11 +134,14 @@ def team_recommendation(
         for xpts, p in ordered_starting_pairs:
             fc, fb = _fixture_badge_for_gw(p, fixtures, gw)
             xpts3 = _expected_points_horizon(p, fixtures, gw, horizon=3, weights=horizon_weights)
+            xpts5 = _expected_points_horizon(p, fixtures, gw, horizon=5)
             starting_xi.append(
                 _pick_to_response(
                     p,
                     xpts,
+                    expected_points_1=round(xpts, 2),
                     expected_points_3=round(xpts3, 2),
+                    expected_points_5=round(xpts5, 2),
                     fixture_count=fc,
                     fixture_badge=fb,
                 )
@@ -148,11 +151,14 @@ def team_recommendation(
         for xpts, p in bench_pairs:
             fc, fb = _fixture_badge_for_gw(p, fixtures, gw)
             xpts3 = _expected_points_horizon(p, fixtures, gw, horizon=3, weights=horizon_weights)
+            xpts5 = _expected_points_horizon(p, fixtures, gw, horizon=5)
             bench.append(
                 _pick_to_response(
                     p,
                     xpts,
+                    expected_points_1=round(xpts, 2),
                     expected_points_3=round(xpts3, 2),
+                    expected_points_5=round(xpts5, 2),
                     fixture_count=fc,
                     fixture_badge=fb,
                 )
@@ -480,6 +486,7 @@ def weekly_cockpit(
                     "position": POSITION_MAP.get(p.element_type, str(p.element_type)),
                     "xP_next_1": round(xpts, 2),
                     "xP_next_3": round(_expected_points_horizon(p, fixtures, gw, horizon=3, weights=mode_weights), 2),
+                    "xP_next_5": round(_expected_points_horizon(p, fixtures, gw, horizon=5), 2),
                     "fixture_badge": _fixture_badge_for_gw(p, fixtures, gw)[1],
                     "fixture_window_next_3": _fixture_window_next_3(p),
                 }
@@ -493,6 +500,7 @@ def weekly_cockpit(
                     "bench_rank": idx + 1,
                     "xP_next_1": round(xpts, 2),
                     "xP_next_3": round(_expected_points_horizon(p, fixtures, gw, horizon=3, weights=mode_weights), 2),
+                    "xP_next_5": round(_expected_points_horizon(p, fixtures, gw, horizon=5), 2),
                     "fixture_badge": _fixture_badge_for_gw(p, fixtures, gw)[1],
                     "fixture_window_next_3": _fixture_window_next_3(p),
                 }
@@ -509,6 +517,7 @@ def weekly_cockpit(
         for p in squad_players:
             xp1 = _expected_points(p, fixtures, gw)
             xp3 = _expected_points_horizon(p, fixtures, gw, horizon=3, weights=mode_weights)
+            xp5 = _expected_points_horizon(p, fixtures, gw, horizon=5)
             fc, fb = _fixture_badge_for_gw(p, fixtures, gw)
             fixture_window = _fixture_window_next_3(p)
             availability = _availability_factor(p.chance_of_playing_next_round, p.news)
@@ -533,6 +542,7 @@ def weekly_cockpit(
                     "price": round(p.now_cost / 10.0, 1),
                     "projected_points_1": round(xp1, 2),
                     "projected_points_3": round(xp3, 2),
+                    "projected_points_5": round(xp5, 2),
                     "fixture_count": fc,
                     "fixture_badge": fb,
                     "fixture_window_next_3": fixture_window,
@@ -573,8 +583,12 @@ def weekly_cockpit(
                 in_p = player_by_id.get(_int(t.get("in_id")))
                 if not out_p or not in_p:
                     continue
+                out_xp1 = _expected_points(out_p, fixtures, gw)
+                in_xp1 = _expected_points(in_p, fixtures, gw)
                 out_xp3 = _expected_points_horizon(out_p, fixtures, gw, horizon=3, weights=mode_weights)
                 in_xp3 = _expected_points_horizon(in_p, fixtures, gw, horizon=3, weights=mode_weights)
+                out_xp5 = _expected_points_horizon(out_p, fixtures, gw, horizon=5)
+                in_xp5 = _expected_points_horizon(in_p, fixtures, gw, horizon=5)
                 in_availability_risk = round(max(0.0, 1.0 - _availability_factor(in_p.chance_of_playing_next_round, in_p.news)), 2)
                 in_minutes_risk = round(max(0.0, 1.0 - min(_minutes_factor(in_p.minutes), 1.0)), 2)
                 in_upside_safety = round((in_xp3 - 5.5) - ((in_availability_risk * 0.6 + in_minutes_risk * 0.4) * 2.0), 2)
@@ -584,8 +598,12 @@ def weekly_cockpit(
                 transfers.append(
                     {
                         **t,
+                        "projected_points_1_in": round(in_xp1, 2),
+                        "projected_points_1_out": round(out_xp1, 2),
                         "projected_points_3_in": round(in_xp3, 2),
                         "projected_points_3_out": round(out_xp3, 2),
+                        "projected_points_5_in": round(in_xp5, 2),
+                        "projected_points_5_out": round(out_xp5, 2),
                         "fixture_difficulty_factor_in": round(_fixture_factor(in_p, fixtures, gw), 2),
                         "fixture_window_next_3_in": in_fixture_window,
                         "minutes_risk_in": in_minutes_risk,
@@ -658,7 +676,9 @@ def weekly_cockpit(
         # Captain matrix from likely starters
         matrix = []
         for xpts, p in sorted(starting_pairs, key=lambda x: x[0], reverse=True):
+            xp1 = _expected_points(p, fixtures, gw)
             xp3 = _expected_points_horizon(p, fixtures, gw, horizon=3, weights=mode_weights)
+            xp5 = _expected_points_horizon(p, fixtures, gw, horizon=5)
             ownership = max(0.0, min(p.selected_by_percent, 100.0))
             availability_risk = max(0.0, 1.0 - _availability_factor(p.chance_of_playing_next_round, p.news))
             minutes_risk = max(0.0, 1.0 - min(_minutes_factor(p.minutes), 1.0))
@@ -677,7 +697,9 @@ def weekly_cockpit(
                     "name": p.web_name,
                     "safe_score": safe_score,
                     "differential_score": differential_score,
+                    "projected_points_1": round(xp1, 2),
                     "projected_points_3": round(xp3, 2),
+                    "projected_points_5": round(xp5, 2),
                     "ownership_pct": round(ownership, 1),
                     "fixture_window_next_3": fixture_window,
                     "minutes_risk": round(minutes_risk, 2),

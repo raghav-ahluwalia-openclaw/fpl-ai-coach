@@ -59,7 +59,16 @@ def recommendation(gameweek: Optional[int] = Query(default=None, ge=1, le=38)):
         if len(lineup_pairs) < 11:
             raise HTTPException(status_code=500, detail="Not enough players by position to build lineup")
 
-        lineup = [_pick_to_response(p, xpts) for xpts, p in lineup_pairs]
+        lineup = [
+            _pick_to_response(
+                p,
+                xpts,
+                expected_points_1=round(xpts, 2),
+                expected_points_3=round(_expected_points_horizon(p, fixtures, gw, horizon=3), 2),
+                expected_points_5=round(_expected_points_horizon(p, fixtures, gw, horizon=5), 2),
+            )
+            for xpts, p in lineup_pairs
+        ]
         captain, vice = _choose_captains(lineup_pairs)
 
         lineup_ids = {p.id for p in lineup}
@@ -131,7 +140,16 @@ def recommendation_ml(
         if len(lineup_pairs) < 11:
             raise HTTPException(status_code=500, detail="Not enough players by position to build ML lineup")
 
-        lineup = [_pick_to_response(p, xpts) for xpts, p in lineup_pairs]
+        lineup = [
+            _pick_to_response(
+                p,
+                xpts,
+                expected_points_1=round(xpts, 2),
+                expected_points_3=round(_expected_points_horizon(p, fixtures, gw, horizon=3), 2),
+                expected_points_5=round(_expected_points_horizon(p, fixtures, gw, horizon=5), 2),
+            )
+            for xpts, p in lineup_pairs
+        ]
         captain, vice = _choose_captains(lineup_pairs)
 
         lineup_ids = {p.id for p in lineup}

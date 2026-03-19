@@ -47,6 +47,7 @@ def build_captaincy_lab(players: List[Player], fixtures: List[Fixture], gw: int,
     for p in pool:
         xp1 = _expected_points(p, fixtures, gw)
         xp3 = _expected_points_horizon(p, fixtures, gw, horizon=3)
+        xp5 = _expected_points_horizon(p, fixtures, gw, horizon=5)
         availability = _availability_factor(p.chance_of_playing_next_round, p.news)
         minutes_security = _minutes_factor(p.minutes)
         ownership = max(0.0, min(p.selected_by_percent, 100.0))
@@ -97,6 +98,7 @@ def build_captaincy_lab(players: List[Player], fixtures: List[Fixture], gw: int,
             "price": round(p.now_cost / 10.0, 1),
             "xP_next_1": xp1,
             "xP_next_3": xp3,
+            "xP_next_5": xp5,
             "ownership_pct": round(ownership, 1),
             "risk": round(risk, 2),
             "risk_band": risk_band,

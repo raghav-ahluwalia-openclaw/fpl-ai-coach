@@ -16,6 +16,7 @@ from .base import (
     Player,
     SessionLocal,
     _expected_points,
+    _expected_points_horizon,
     _get_meta,
     _reason,
     _resolve_gameweek,
@@ -548,6 +549,8 @@ def top_players(limit: int = Query(default=20, ge=1, le=100)):
 
         top = []
         for xpts, p in scored[:limit]:
+            xpts3 = _expected_points_horizon(p, fixtures, gw, horizon=3)
+            xpts5 = _expected_points_horizon(p, fixtures, gw, horizon=5)
             top.append(
                 {
                     "id": p.id,
@@ -556,6 +559,9 @@ def top_players(limit: int = Query(default=20, ge=1, le=100)):
                     "price": round(p.now_cost / 10.0, 1),
                     "xP": xpts,
                     "expected_points": xpts,
+                    "expected_points_1": round(xpts, 2),
+                    "expected_points_3": round(xpts3, 2),
+                    "expected_points_5": round(xpts5, 2),
                     "form": round(p.form, 2),
                     "ppg": round(p.points_per_game, 2),
                     "reason": _reason(p, xpts),
