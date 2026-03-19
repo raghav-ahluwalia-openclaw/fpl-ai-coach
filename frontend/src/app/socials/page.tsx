@@ -44,6 +44,13 @@ function sentimentClass(label: string) {
   return "border-white/30 text-white/80";
 }
 
+function shortSummary(text?: string, maxChars = 420): string {
+  const clean = (text || "").replace(/\s+/g, " ").trim();
+  if (!clean) return "Summary unavailable.";
+  if (clean.length <= maxChars) return clean;
+  return `${clean.slice(0, maxChars).trim()}…`;
+}
+
 export default function SocialsPage() {
   const [data, setData] = useState<SocialsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -93,7 +100,7 @@ export default function SocialsPage() {
                       </div>
                     ) : null}
                     <p className="text-white/65 mt-1">👁️ {v.view_count ?? 0} • 📅 {v.upload_date || "unknown"}</p>
-                    {v.summary ? <p className="text-white/75 mt-2">{v.summary}</p> : null}
+                    <p className="text-white/75 mt-2">{shortSummary(v.summary)}</p>
                   </li>
                 ))}
               </ul>
@@ -127,7 +134,7 @@ export default function SocialsPage() {
                       ))}
                     </div>
                   ) : null}
-                  <p className="text-white/80 mt-2">{t.summary}</p>
+                  <p className="text-white/80 mt-2">{shortSummary(t.summary, 360)}</p>
                 </li>
               ))}
             </ul>
