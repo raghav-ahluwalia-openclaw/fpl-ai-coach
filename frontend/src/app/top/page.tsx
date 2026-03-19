@@ -52,7 +52,7 @@ const API_BASE = "";
 const cardClass = "rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md p-5";
 
 const insightTools = [
-  { label: "Transfer Center", href: "/targets" },
+  { label: "Target Radar", href: "/targets" },
   { label: "Captaincy Lab", href: "/captaincy" },
   { label: "Rank Trend", href: "/team-rank" },
 ];
