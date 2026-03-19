@@ -44,6 +44,14 @@ function sentimentClass(label: string) {
   return "border-white/30 text-white/80";
 }
 
+function splitMentions(mentions: Mention[]) {
+  return {
+    positive: mentions.filter((m) => m.sentiment === "positive").map((m) => m.name),
+    neutral: mentions.filter((m) => m.sentiment === "neutral").map((m) => m.name),
+    negative: mentions.filter((m) => m.sentiment === "negative").map((m) => m.name),
+  };
+}
+
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -106,15 +114,16 @@ export default function SocialsPage() {
                         Sentiment: {v.sentiment.label.toUpperCase()} ({v.sentiment.score})
                       </span>
                     </div>
-                    {v.player_mentions?.length ? (
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {v.player_mentions.slice(0, 8).map((m) => (
-                          <span key={`${v.title}-${m.name}`} className={`text-[11px] rounded-full px-2 py-0.5 border ${sentimentClass(m.sentiment)}`}>
-                            {m.name} {m.sentiment === "positive" ? "▲" : m.sentiment === "negative" ? "▼" : "•"}
-                          </span>
-                        ))}
-                      </div>
-                    ) : null}
+                    {v.player_mentions?.length ? (() => {
+                      const g = splitMentions(v.player_mentions);
+                      return (
+                        <div className="mt-2 space-y-1 text-[11px]">
+                          <p><span className="text-emerald-200">Positive:</span> {g.positive.slice(0, 6).join(", ") || "—"}</p>
+                          <p><span className="text-white/80">Neutral:</span> {g.neutral.slice(0, 6).join(", ") || "—"}</p>
+                          <p><span className="text-rose-200">Negative:</span> {g.negative.slice(0, 6).join(", ") || "—"}</p>
+                        </div>
+                      );
+                    })() : null}
                     <p className="text-white/65 mt-1">👁️ {v.view_count ?? 0} • 📅 {v.upload_date || "unknown"}</p>
                     <p className="text-white/75 mt-2">{shortSummary(v.summary, v.title)}</p>
                   </li>
@@ -141,15 +150,16 @@ export default function SocialsPage() {
                       Sentiment: {t.sentiment.label.toUpperCase()} ({t.sentiment.score})
                     </span>
                   </div>
-                  {t.player_mentions?.length ? (
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {t.player_mentions.slice(0, 8).map((m) => (
-                        <span key={`${t.title}-${m.name}`} className={`text-[11px] rounded-full px-2 py-0.5 border ${sentimentClass(m.sentiment)}`}>
-                          {m.name} {m.sentiment === "positive" ? "▲" : m.sentiment === "negative" ? "▼" : "•"}
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
+                  {t.player_mentions?.length ? (() => {
+                    const g = splitMentions(t.player_mentions);
+                    return (
+                      <div className="mt-2 space-y-1 text-[11px]">
+                        <p><span className="text-emerald-200">Positive:</span> {g.positive.slice(0, 6).join(", ") || "—"}</p>
+                        <p><span className="text-white/80">Neutral:</span> {g.neutral.slice(0, 6).join(", ") || "—"}</p>
+                        <p><span className="text-rose-200">Negative:</span> {g.negative.slice(0, 6).join(", ") || "—"}</p>
+                      </div>
+                    );
+                  })() : null}
                   <p className="text-white/80 mt-2">{shortSummary(t.summary, t.title, 360)}</p>
                 </li>
               ))}
