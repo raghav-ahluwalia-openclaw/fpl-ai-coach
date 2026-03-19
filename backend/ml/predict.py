@@ -18,7 +18,7 @@ os.chdir(ROOT)
 sys.path.insert(0, str(ROOT))
 
 from app.db import SessionLocal  # noqa: E402
-from app.models import Fixture, Player  # noqa: E402
+from app.db.models import Fixture, Player  # noqa: E402
 from app.services.ml_recommender import DEFAULT_MODEL_VERSION, HISTORICAL_MODEL_VERSION, load_model, predict_expected_points  # noqa: E402
 
 

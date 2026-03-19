@@ -9,7 +9,6 @@ type TopPlayer = {
   id: number;
   name: string;
   position: string;
-  team_id?: number;
   price: number;
   xP?: number;
   expected_points?: number;
@@ -28,7 +27,6 @@ type TopPlayersResponse = {
   count: number;
   next_gw: number;
   players: TopPlayer[];
-  last_ingested_at?: string;
 };
 
 type ExplainedPlayer = {
@@ -51,7 +49,6 @@ type ExplainedPlayer = {
 };
 
 type ExplainabilityResponse = {
-  gameweek: number;
   count: number;
   players: ExplainedPlayer[];
 };
@@ -62,7 +59,6 @@ const cardClass = "rounded-2xl border border-white/15 bg-white/5 backdrop-blur-m
 const insightTools = [
   { label: "Target Radar", href: "/targets" },
   { label: "Rank Trend", href: "/team-rank" },
-  { label: "Weekly Cockpit", href: "/weekly" },
 ];
 
 function safeNum(value: unknown, fallback = 0): number {

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 from pydantic import BaseModel
 
@@ -89,5 +89,3 @@ class RankHistoryResponse(BaseModel):
     worst_rank: Optional[int] = None
     summary: str
 
-
-POSITION_MAP: Dict[int, str] = {1: "GK", 2: "DEF", 3: "MID", 4: "FWD"}

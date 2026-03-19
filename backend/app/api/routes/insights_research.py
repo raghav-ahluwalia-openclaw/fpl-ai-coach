@@ -8,8 +8,19 @@ from pathlib import Path
 from typing import Optional
 
 import requests
+from fastapi import HTTPException, Query
 
-from .base import *  # noqa: F403
+from .base import (
+    POSITION_MAP,
+    Fixture,
+    Player,
+    SessionLocal,
+    _expected_points,
+    _get_meta,
+    _reason,
+    _resolve_gameweek,
+    router,
+)
 from app.services.captaincy_service import build_captaincy_lab, build_explainability_top
 
 DIGEST_PATH = Path(__file__).resolve().parents[3] / "data" / "content" / "creator_digest.json"

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 from app.api.routes.base import (
     POSITION_MAP,
@@ -12,7 +12,7 @@ from app.api.routes.base import (
     _minutes_factor,
     _reason,
 )
-from app.models import Fixture, Player
+from app.db.models import Fixture, Player
 
 
 def explainability_breakdown(player: Player, fixtures: List[Fixture], gw: Optional[int]) -> dict:

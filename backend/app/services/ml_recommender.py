@@ -7,7 +7,7 @@ from typing import Any, Iterable, List, Optional
 import numpy as np
 from xgboost import XGBRegressor
 
-from app.models import Fixture, Player
+from app.db.models import Fixture, Player
 
 DEFAULT_MODEL_VERSION = "xgb_v1"
 HISTORICAL_MODEL_VERSION = "xgb_hist_v1"

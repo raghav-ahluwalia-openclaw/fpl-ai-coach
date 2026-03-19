@@ -1,8 +1,41 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from itertools import combinations
+from typing import List, Optional, Tuple
 
-from .base import *  # noqa: F403
+from fastapi import HTTPException, Query
+from sqlalchemy.exc import SQLAlchemyError
+
+from .base import (
+    POSITION_MAP,
+    Fixture,
+    Player,
+    RankHistoryPoint,
+    RankHistoryResponse,
+    SessionLocal,
+    TeamRecommendation,
+    UserSquadPick,
+    _availability_factor,
+    _build_lineup_from_squad,
+    _choose_captains,
+    _expected_points,
+    _expected_points_horizon,
+    _fetch_entry_picks_with_fallback,
+    _fixture_badge_for_gw,
+    _fixture_count_for_gw,
+    _fixture_factor,
+    _float,
+    _get_meta,
+    _int,
+    _minutes_factor,
+    _pick_to_response,
+    _resolve_gameweek,
+    _set_meta,
+    _strategy_config,
+    fetch_json,
+    router,
+)
 
 @router.post("/api/fpl/team/{entry_id}/import")
 def import_user_team(entry_id: int, gameweek: Optional[int] = Query(default=None, ge=1, le=38)):

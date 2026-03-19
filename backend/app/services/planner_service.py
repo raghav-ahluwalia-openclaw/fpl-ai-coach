@@ -6,9 +6,8 @@ from app.api.routes.base import (
     _expected_points_horizon,
     _fetch_entry_picks_with_fallback,
     _int,
-    _resolve_gameweek,
 )
-from app.models import Fixture, Player
+from app.db.models import Fixture, Player
 
 
 def build_chip_planner(players: List[Player], fixtures: List[Fixture], gw: int, horizon: int) -> dict:

@@ -2,7 +2,17 @@ from __future__ import annotations
 
 from typing import Optional
 
-from .base import *  # noqa: F403
+from fastapi import HTTPException, Query
+
+from .base import (
+    Fixture,
+    Player,
+    SessionLocal,
+    _get_meta,
+    _int,
+    _resolve_gameweek,
+    router,
+)
 from app.services.planner_service import build_chip_planner, build_rival_intelligence
 
 

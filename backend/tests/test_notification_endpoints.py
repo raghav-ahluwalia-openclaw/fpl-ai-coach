@@ -6,8 +6,8 @@ from datetime import datetime, timedelta, timezone
 from fastapi.testclient import TestClient
 
 from app.db import SessionLocal
+from app.db.models import Meta
 from app.main import app
-from app.models import Meta
 
 
 class NotificationEndpointsTest(unittest.TestCase):

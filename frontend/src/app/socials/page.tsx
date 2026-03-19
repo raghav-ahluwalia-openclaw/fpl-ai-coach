@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { fetchJson } from "@/lib/api";
 
@@ -11,7 +11,6 @@ type SocialsResponse = {
   reddit_window: string;
   youtube_creators: {
     generated_at?: string | null;
-    top_topics: Array<{ topic: string; score: number }>;
     videos: Array<{
       creator: string;
       title: string;
@@ -19,14 +18,6 @@ type SocialsResponse = {
       upload_date?: string;
       view_count?: number;
       summary?: string;
-      summary_struct?: {
-        key_calls?: string;
-        buy_watch?: string;
-        sell_watch?: string;
-        captain_chips?: string;
-      };
-      transcript?: string;
-      transcript_path?: string;
       player_mentions: Mention[];
       sentiment: { label: "positive" | "neutral" | "negative"; score: number };
     }>;
@@ -77,6 +68,26 @@ function splitMentions(mentions: Mention[]) {
   };
 }
 
+function SentimentPill({ sentiment }: { sentiment: { label: "positive" | "neutral" | "negative"; score: number } }) {
+  return (
+    <span className={`text-[11px] rounded-full px-2 py-0.5 border ${sentimentClass(sentiment.label)}`}>
+      Sentiment: {sentiment.label.toUpperCase()} ({sentiment.score})
+    </span>
+  );
+}
+
+function MentionsBlock({ mentions }: { mentions: Mention[] }) {
+  if (!mentions?.length) return null;
+  const g = splitMentions(mentions);
+  return (
+    <div className="mt-2 space-y-1 text-[11px]">
+      <p><span className="text-emerald-200">Positive:</span> {g.positive.slice(0, 6).join(", ") || "—"}</p>
+      <p><span className="text-white/80">Neutral:</span> {g.neutral.slice(0, 6).join(", ") || "—"}</p>
+      <p><span className="text-rose-200">Negative:</span> {g.negative.slice(0, 6).join(", ") || "—"}</p>
+    </div>
+  );
+}
+
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -108,15 +119,92 @@ function shortSummary(text?: string, title?: string): string {
   return clean;
 }
 
+type InjuryItem = NonNullable<SocialsResponse["official_news"]>["injuries"][number];
+type FixtureUpdateItem = NonNullable<SocialsResponse["official_news"]>["fixture_updates"][number];
+
+function OfficialInjuriesCard({ injuries }: { injuries: InjuryItem[] }) {
+  return (
+    <div className="border border-white/10 rounded-md p-3 bg-black/20">
+      <p className="font-medium text-white/90 mb-2">🩺 Player Injury / Availability Flags</p>
+      {injuries.length === 0 ? (
+        <p className="text-white/70">No major official flags right now.</p>
+      ) : (
+        <ul className="space-y-2">
+          {injuries.slice(0, 10).map((n, idx) => (
+            <li key={`${n.player}-${idx}`} className="text-white/80">
+              <p>
+                <span className="text-white/95 font-medium">{n.player}</span>
+                {n.team ? ` (${n.team})` : ""}
+                {typeof n.selected_by_percent === "number" ? ` • owned: ${n.selected_by_percent.toFixed(1)}%` : ""}
+                {n.status ? ` • status: ${String(n.status).toUpperCase()}` : ""}
+                {typeof n.chance_of_playing_next_round === "number" ? ` • chance: ${n.chance_of_playing_next_round}%` : ""}
+              </p>
+              <p className="text-white/65">{n.news}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function OfficialFixtureUpdatesCard({ fixtureUpdates }: { fixtureUpdates: FixtureUpdateItem[] }) {
+  return (
+    <div className="border border-white/10 rounded-md p-3 bg-black/20">
+      <p className="font-medium text-white/90 mb-2">📅 Fixture Rescheduling Signals</p>
+      {fixtureUpdates.length === 0 ? (
+        <p className="text-white/70">No provisional kickoff updates currently flagged.</p>
+      ) : (
+        <ul className="space-y-2">
+          {fixtureUpdates.map((f, idx) => (
+            <li key={`${f.fixture}-${idx}`} className="text-white/80">
+              <p className="text-white/95 font-medium">GW{f.gw ?? "?"} • {f.fixture}</p>
+              <p className="text-white/65">
+                {f.kickoff_time ? new Date(f.kickoff_time).toLocaleString() : "Kickoff TBC"}
+                {f.note ? ` • ${f.note}` : ""}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default function SocialsPage() {
   const [data, setData] = useState<SocialsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  async function loadSocials(opts?: { autoRefreshIfStale?: boolean }) {
+  const fetchSocials = useCallback(async () => {
     const payload = await fetchJson<SocialsResponse>("/api/fpl/socials?limit=5&reddit_window=week");
     setData(payload);
     setError(null);
+    return payload;
+  }, []);
+
+  const refreshSocials = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent ?? false;
+    setRefreshing(true);
+    setError(null);
+    try {
+      const res = await fetchJson<{ ok?: boolean; message?: string; error?: string }>("/api/fpl/socials/refresh?videos_per_creator=4", { method: "POST" });
+      if (res.ok === false) {
+        setError(`${res.message || "Refresh failed"}${res.error ? `: ${res.error}` : ""}`);
+        return;
+      }
+      await fetchSocials();
+    } catch (e: unknown) {
+      if (!silent) {
+        setError(e instanceof Error ? e.message : "Failed to refresh socials");
+      }
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchSocials]);
+
+  const loadSocials = useCallback(async (opts?: { autoRefreshIfStale?: boolean }) => {
+    const payload = await fetchSocials();
 
     const autoRefreshIfStale = opts?.autoRefreshIfStale ?? false;
     if (!autoRefreshIfStale) return;
@@ -132,31 +220,11 @@ export default function SocialsPage() {
     if (!stale) return;
 
     await refreshSocials({ silent: true });
-  }
+  }, [fetchSocials, refreshSocials]);
 
   useEffect(() => {
     loadSocials({ autoRefreshIfStale: true }).catch((e) => setError(e.message || "Failed to load socials"));
-  }, []);
-
-  async function refreshSocials(opts?: { silent?: boolean }) {
-    const silent = opts?.silent ?? false;
-    setRefreshing(true);
-    setError(null);
-    try {
-      const res = await fetchJson<{ ok?: boolean; message?: string; error?: string }>("/api/fpl/socials/refresh?videos_per_creator=4", { method: "POST" });
-      if (res.ok === false) {
-        setError(`${res.message || "Refresh failed"}${res.error ? `: ${res.error}` : ""}`);
-        return;
-      }
-      await loadSocials({ autoRefreshIfStale: false });
-    } catch (e: unknown) {
-      if (!silent) {
-        setError(e instanceof Error ? e.message : "Failed to refresh socials");
-      }
-    } finally {
-      setRefreshing(false);
-    }
-  }
+  }, [loadSocials]);
 
   const refreshedLabel = useMemo(() => {
     const raw = data?.youtube_creators?.generated_at;
@@ -212,20 +280,9 @@ export default function SocialsPage() {
                         {v.title}
                       </a>
                       <div className="mt-2">
-                        <span className={`text-[11px] rounded-full px-2 py-0.5 border ${sentimentClass(v.sentiment.label)}`}>
-                          Sentiment: {v.sentiment.label.toUpperCase()} ({v.sentiment.score})
-                        </span>
+                        <SentimentPill sentiment={v.sentiment} />
                       </div>
-                      {v.player_mentions?.length ? (() => {
-                        const g = splitMentions(v.player_mentions);
-                        return (
-                          <div className="mt-2 space-y-1 text-[11px]">
-                            <p><span className="text-emerald-200">Positive:</span> {g.positive.slice(0, 6).join(", ") || "—"}</p>
-                            <p><span className="text-white/80">Neutral:</span> {g.neutral.slice(0, 6).join(", ") || "—"}</p>
-                            <p><span className="text-rose-200">Negative:</span> {g.negative.slice(0, 6).join(", ") || "—"}</p>
-                          </div>
-                        );
-                      })() : null}
+                      <MentionsBlock mentions={v.player_mentions} />
                       <p className="text-white/65 mt-1">👁️ {v.view_count ?? 0} • 📅 {v.upload_date || "unknown"}</p>
                       <p className="text-white/75 mt-2 whitespace-pre-line">{shortSummary(v.summary, v.title)}</p>
                     </li>
@@ -248,20 +305,9 @@ export default function SocialsPage() {
                     )}
                     <p className="text-white/65 mt-1">👍 {t.score} • 💬 {t.num_comments}</p>
                     <div className="mt-2">
-                      <span className={`text-[11px] rounded-full px-2 py-0.5 border ${sentimentClass(t.sentiment.label)}`}>
-                        Sentiment: {t.sentiment.label.toUpperCase()} ({t.sentiment.score})
-                      </span>
+                      <SentimentPill sentiment={t.sentiment} />
                     </div>
-                    {t.player_mentions?.length ? (() => {
-                      const g = splitMentions(t.player_mentions);
-                      return (
-                        <div className="mt-2 space-y-1 text-[11px]">
-                          <p><span className="text-emerald-200">Positive:</span> {g.positive.slice(0, 6).join(", ") || "—"}</p>
-                          <p><span className="text-white/80">Neutral:</span> {g.neutral.slice(0, 6).join(", ") || "—"}</p>
-                          <p><span className="text-rose-200">Negative:</span> {g.negative.slice(0, 6).join(", ") || "—"}</p>
-                        </div>
-                      );
-                    })() : null}
+                    <MentionsBlock mentions={t.player_mentions} />
                     <p className="text-white/80 mt-2">{shortSummary(t.summary, t.title)}</p>
                   </li>
                 ))}
@@ -281,46 +327,8 @@ export default function SocialsPage() {
                 <p className="text-red-300 text-sm">Could not load official updates: {data.official_news.error}</p>
               ) : (
                 <div className="grid md:grid-cols-2 gap-3 text-sm">
-                  <div className="border border-white/10 rounded-md p-3 bg-black/20">
-                    <p className="font-medium text-white/90 mb-2">🩺 Player Injury / Availability Flags</p>
-                    {(data.official_news?.injuries || []).length === 0 ? (
-                      <p className="text-white/70">No major official flags right now.</p>
-                    ) : (
-                      <ul className="space-y-2">
-                        {(data.official_news?.injuries || []).slice(0, 10).map((n, idx) => (
-                          <li key={`${n.player}-${idx}`} className="text-white/80">
-                            <p>
-                              <span className="text-white/95 font-medium">{n.player}</span>
-                              {n.team ? ` (${n.team})` : ""}
-                              {typeof n.selected_by_percent === "number" ? ` • owned: ${n.selected_by_percent.toFixed(1)}%` : ""}
-                              {n.status ? ` • status: ${String(n.status).toUpperCase()}` : ""}
-                              {typeof n.chance_of_playing_next_round === "number" ? ` • chance: ${n.chance_of_playing_next_round}%` : ""}
-                            </p>
-                            <p className="text-white/65">{n.news}</p>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-
-                  <div className="border border-white/10 rounded-md p-3 bg-black/20">
-                    <p className="font-medium text-white/90 mb-2">📅 Fixture Rescheduling Signals</p>
-                    {(data.official_news?.fixture_updates || []).length === 0 ? (
-                      <p className="text-white/70">No provisional kickoff updates currently flagged.</p>
-                    ) : (
-                      <ul className="space-y-2">
-                        {(data.official_news?.fixture_updates || []).map((f, idx) => (
-                          <li key={`${f.fixture}-${idx}`} className="text-white/80">
-                            <p className="text-white/95 font-medium">GW{f.gw ?? "?"} • {f.fixture}</p>
-                            <p className="text-white/65">
-                              {f.kickoff_time ? new Date(f.kickoff_time).toLocaleString() : "Kickoff TBC"}
-                              {f.note ? ` • ${f.note}` : ""}
-                            </p>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
+                  <OfficialInjuriesCard injuries={data.official_news?.injuries || []} />
+                  <OfficialFixtureUpdatesCard fixtureUpdates={data.official_news?.fixture_updates || []} />
                 </div>
               )}
             </div>

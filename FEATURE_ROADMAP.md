@@ -84,3 +84,45 @@
 - Product utility: weekly brief open rate before deadline
 - Notification quality: on-time send rate, duplicate send rate
 - Trust: % users opening explainability panels and following final recommendation
+
+---
+
+## Product upgrade plan (saved from chat, 2026-03-19)
+
+### Phase 1 — highest ROI
+
+1. Transfer Planner Engine v2
+   - Goal: Top 1FT + Top 2FT Plan A/B/C with EV, risk, confidence.
+   - Status: ⚠️ Partial (what-if simulator exists; no unified Plan A/B/C optimizer output yet).
+
+2. Weekly Cockpit page (single screen)
+   - Goal: Team Health + Transfer Plans A/B/C + Captain Matrix + What changed.
+   - Status: ⚠️ Partial (`/planner`, `/brief`, `/captaincy`, `/team` exist but not unified single cockpit page).
+
+3. XI + Bench Optimizer in my-team context
+   - Goal: optimize XI + bench order with expected gain deltas.
+   - Status: ⚠️ Partial (team recommendation already returns starting XI + bench; dedicated optimizer UX and alt-lineup gain surfacing still pending).
+
+### Phase 2 — engine quality
+
+4. Projection horizon upgrade
+   - Goal: explicit 1/3/5 GW projections consistently across outputs.
+   - Status: ⚠️ Partial (implemented in parts of targets/team paths; not standardized everywhere).
+
+5. Price-change aware transfer scoring
+   - Goal: include rise/fall pressure in transfer ranking.
+   - Status: ⛔ Not started.
+
+6. Calibration + reliability
+   - Goal: confidence calibration + bucketed confidence reporting.
+   - Status: ⚠️ Partial (guardrails exist; no explicit calibration layer yet).
+
+### Phase 3 — measurement loop
+
+7. Weekly evaluation module
+   - Goal: recommendation hit-rate, no-transfer baseline, calibration report, performance API/card.
+   - Status: ⛔ Not started.
+
+### Completed since this plan was drafted
+
+- ✅ Backend modularization phase 2 completed (DB models package, schemas package, scoring service extraction).

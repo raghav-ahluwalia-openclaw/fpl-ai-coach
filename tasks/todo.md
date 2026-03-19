@@ -1,21 +1,31 @@
 # tasks/todo.md
 
-## Active Plan — P3 v2 enhancement bundle (2026-03-18)
+## Active Plan — Product upgrade phases (saved 2026-03-19)
 
-- [x] Improve chip planner with blank/double GW window detection
-- [x] Add chip recommendation confidence + alternative
-- [x] Upgrade weekly digest card to rich emoji/section payload + telegram text
-- [x] Surface chip window details on `/planner`
-- [x] Re-run full validation suite
-- [ ] Auto-commit completed P3 v2 bundle
+### Phase 1 (next execution target)
+- [ ] Transfer Planner Engine v2 (Top 1FT/2FT Plan A/B/C with EV/risk/confidence)
+- [ ] Weekly Cockpit single-screen page (Team Health + Plans + Captain Matrix + changes)
+- [ ] XI + Bench optimizer UX with alternate-lineup gain
+
+### Phase 2
+- [ ] Standardize explicit 1/3/5 GW projections across APIs
+- [ ] Add price-change aware transfer scoring
+- [ ] Add confidence calibration + bucketed reliability outputs
+
+### Phase 3
+- [ ] Weekly evaluation module (hit-rate, no-transfer baseline, calibration report)
+- [ ] `/api/fpl/performance/weekly` + dashboard card
+
+## Recently completed (2026-03-19)
+
+- [x] Backend modularization phase 2
+  - [x] Move models into `app/db/models.py`
+  - [x] Move schemas into `app/schemas/`
+  - [x] Extract scoring helpers into `app/services/scoring.py`
+  - [x] Re-run full validation suite
 
 ## Verification
 
 - [x] Backend validation
 - [x] Frontend lint/build
 - [x] Integration validation
-
-## Review
-
-- Outcome: P3 v2 shipped with stronger chip timing intelligence and richer digest card output.
-- Follow-ups: rival intelligence v2 + digest visual renderer payload.

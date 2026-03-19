@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import SQLAlchemyError
 
-import app.models  # noqa: F401  # ensure models are imported before create_all
+import app.db.models  # noqa: F401  # ensure models are imported before create_all
 from app.api.routes import router as fpl_router
 from app.core.errors import register_error_handlers
 from app.db import Base, engine

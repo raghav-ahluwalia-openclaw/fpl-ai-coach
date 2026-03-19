@@ -1,15 +1,31 @@
 from __future__ import annotations
 
-import json
-from datetime import timedelta
+import os
 from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
-from fastapi import Request
+from fastapi import HTTPException, Query
 
-from .base import *  # noqa: F403
+from .base import (
+    Fixture,
+    Player,
+    Recommendation,
+    SessionLocal,
+    TargetPlayer,
+    TargetsResponse,
+    _build_target_player,
+    _choose_captains,
+    _expected_points,
+    _expected_points_horizon,
+    _get_meta,
+    _pick_to_response,
+    _resolve_gameweek,
+    _strategy_config,
+    _target_tier,
+    router,
+)
 from app.services.ml_recommender import (
     DEFAULT_MODEL_VERSION,
-    HISTORICAL_MODEL_VERSION,
     load_model,
     model_meta,
     predict_expected_points,
