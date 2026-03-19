@@ -325,13 +325,6 @@ export default function WeeklyBriefPage() {
             <h2 className="font-semibold text-[#00ff87] mb-3">Creator Consensus</h2>
             {data.creator_consensus ? (
               <>
-                <div className="flex flex-wrap gap-2 mb-4">
-                  {data.creator_consensus.top_topics.map((t) => (
-                    <span key={t.topic} className="text-xs rounded-full px-3 py-1 border border-white/20 bg-black/20">
-                      {t.topic} ({t.score})
-                    </span>
-                  ))}
-                </div>
                 <ul className="space-y-2 text-sm text-white/80">
                   {data.creator_consensus.top_videos.map((v, idx) => (
                     <li key={`${v.url}-${idx}`} className="border border-white/10 rounded-md p-3 bg-black/20">

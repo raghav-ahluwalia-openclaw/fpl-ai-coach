@@ -11,6 +11,8 @@ class Pick(BaseModel):
     price: float
     expected_points: float
     reason: str
+    fixture_count: Optional[int] = None
+    fixture_badge: Optional[str] = None
 
 
 class Recommendation(BaseModel):

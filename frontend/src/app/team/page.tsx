@@ -13,6 +13,8 @@ type Pick = {
   price: number;
   expected_points: number;
   reason: string;
+  fixture_count?: number;
+  fixture_badge?: "DGW" | "SGW" | "BLANK";
 };
 
 type TeamRecommendation = {
@@ -39,6 +41,12 @@ type AppSettings = {
 
 const API_BASE = "";
 const cardClass = "rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md p-5";
+
+function badgeClass(badge?: "DGW" | "SGW" | "BLANK") {
+  if (badge === "DGW") return "border-emerald-300 text-emerald-200";
+  if (badge === "BLANK") return "border-rose-300 text-rose-200";
+  return "border-white/30 text-white/80";
+}
 
 export default function TeamPage() {
   const [teamId, setTeamId] = useState("");
@@ -140,7 +148,12 @@ export default function TeamPage() {
           <ul className="space-y-2 mb-5">
             {data.starting_xi.map((p) => (
               <li key={p.id} className="pb-2 border-b border-white/10 last:border-b-0">
-                <div className="font-medium">{p.name} ({p.position}) — £{p.price.toFixed(1)} — {p.expected_points} xP</div>
+                <div className="font-medium">
+                  {p.name} ({p.position}) — £{p.price.toFixed(1)} — {p.expected_points} xP
+                  <span className={`ml-2 text-[11px] rounded-full px-2 py-0.5 border ${badgeClass(p.fixture_badge)}`}>
+                    {p.fixture_badge || "SGW"}
+                  </span>
+                </div>
                 <div className="text-sm text-white/70">{p.reason}</div>
               </li>
             ))}
@@ -150,7 +163,12 @@ export default function TeamPage() {
           <ul className="space-y-2 mb-5">
             {data.bench.map((p) => (
               <li key={p.id} className="pb-2 border-b border-white/10 last:border-b-0">
-                <div className="font-medium">{p.name} ({p.position}) — {p.expected_points} xP</div>
+                <div className="font-medium">
+                  {p.name} ({p.position}) — {p.expected_points} xP
+                  <span className={`ml-2 text-[11px] rounded-full px-2 py-0.5 border ${badgeClass(p.fixture_badge)}`}>
+                    {p.fixture_badge || "SGW"}
+                  </span>
+                </div>
               </li>
             ))}
           </ul>

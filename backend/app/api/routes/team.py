@@ -97,8 +97,15 @@ def team_recommendation(
         starting_pairs, bench_pairs, formation = _build_lineup_from_squad(squad_scored)
 
         ordered_starting_pairs = sorted(starting_pairs, key=lambda x: x[0], reverse=True)
-        starting_xi = [_pick_to_response(p, xpts) for xpts, p in ordered_starting_pairs]
-        bench = [_pick_to_response(p, xpts) for xpts, p in bench_pairs]
+        starting_xi = []
+        for xpts, p in ordered_starting_pairs:
+            fc, fb = _fixture_badge_for_gw(p, fixtures, gw)
+            starting_xi.append(_pick_to_response(p, xpts, fixture_count=fc, fixture_badge=fb))
+
+        bench = []
+        for xpts, p in bench_pairs:
+            fc, fb = _fixture_badge_for_gw(p, fixtures, gw)
+            bench.append(_pick_to_response(p, xpts, fixture_count=fc, fixture_badge=fb))
 
         captain, vice = _choose_captains(ordered_starting_pairs)
 

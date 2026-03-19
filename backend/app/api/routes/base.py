@@ -341,7 +341,22 @@ def _build_lineup_from_squad(scored: List[Tuple[float, Player]]) -> Tuple[List[T
     return selected, bench, formation
 
 
-def _pick_to_response(player: Player, xpts: float) -> Pick:
+def _fixture_badge_for_gw(player: Player, fixtures: List[Fixture], gw: Optional[int]) -> tuple[int, str]:
+    count = _fixture_count_for_gw(player, fixtures, gw)
+    if count >= 2:
+        return count, "DGW"
+    if count == 0:
+        return count, "BLANK"
+    return count, "SGW"
+
+
+def _pick_to_response(
+    player: Player,
+    xpts: float,
+    *,
+    fixture_count: Optional[int] = None,
+    fixture_badge: Optional[str] = None,
+) -> Pick:
     return Pick(
         id=player.id,
         name=player.web_name,
@@ -349,6 +364,8 @@ def _pick_to_response(player: Player, xpts: float) -> Pick:
         price=round(player.now_cost / 10.0, 1),
         expected_points=xpts,
         reason=_reason(player, xpts),
+        fixture_count=fixture_count,
+        fixture_badge=fixture_badge,
     )
 
 
