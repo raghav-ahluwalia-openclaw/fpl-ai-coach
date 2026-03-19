@@ -567,7 +567,8 @@ def weekly_cockpit(
             )
 
         safe_caps = sorted(matrix, key=lambda x: x["safe_score"], reverse=True)[:5]
-        diff_caps = sorted(matrix, key=lambda x: x["differential_score"], reverse=True)[:5]
+        safe_ids = {c["id"] for c in safe_caps}
+        diff_caps = [c for c in sorted(matrix, key=lambda x: x["differential_score"], reverse=True) if c["id"] not in safe_ids][:5]
 
         # What changed since last week
         changes = []
