@@ -4,7 +4,7 @@
 
 ### Phase 1 (completed)
 - [x] Transfer Planner Engine v2 (Top 1FT/2FT Plan A/B/C with EV/risk/confidence)
-- [x] Weekly Cockpit single-screen page (Team Health + Plans + Captain Matrix + changes)
+- [x] Gameweek Hub single-screen page (Team Health + Plans + Captain Matrix + changes)
 - [x] XI + Bench optimizer UX with alternate-lineup gain
 
 ### Phase 2 (active)
@@ -23,6 +23,11 @@
   - [x] Move schemas into `app/schemas/`
   - [x] Extract scoring helpers into `app/services/scoring.py`
   - [x] Re-run full validation suite
+- [x] Leagues feature MVP shipped (`/leagues`) with standings, gaps, and insights
+- [x] Overall rank trend moved into Leagues page; standalone Rank Trend page removed
+- [x] Target Radar removed from frontend/backend (`/targets`, `/api/fpl/targets`)
+- [x] Gameweek Hub naming migration completed across UI/API aliasing
+- [x] Chip planner usage visibility improved (used chips state + recommendation excludes used-up chips)
 
 ## Verification
 

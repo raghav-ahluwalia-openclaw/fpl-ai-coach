@@ -96,10 +96,10 @@
    - Status: ✅ Completed.
    - Delivered in `/api/fpl/team/{entry_id}/weekly-cockpit` as A/B/C plans for 1FT and 2FT with `ev`, `risk_score`, `confidence`, and `confidence_bucket`.
 
-2. Weekly Cockpit page (single screen)
+2. Gameweek Hub page (single screen)
    - Goal: Team Health + Transfer Plans A/B/C + Captain Matrix + What changed.
    - Status: ✅ Completed.
-   - Delivered in frontend `/weekly` as one-screen workflow for weekly decisions.
+   - Delivered in frontend `/weekly` (renamed UI label: **Gameweek Hub**) as one-screen workflow for weekly decisions.
 
 3. XI + Bench Optimizer in my-team context
    - Goal: optimize XI + bench order with expected gain deltas.
@@ -130,3 +130,6 @@
 ### Completed since this plan was drafted
 
 - ✅ Backend modularization phase 2 completed (DB models package, schemas package, scoring service extraction).
+- ✅ Leagues feature MVP shipped (`/leagues`) with classic + H2H standings, rank/gap insights, and embedded overall rank trend.
+- ✅ "Weekly Cockpit" terminology migrated to **Gameweek Hub** across frontend and backend API aliasing.
+- ✅ Target Radar removed from frontend and backend (`/targets`, `/api/fpl/targets`) to simplify product surface.
