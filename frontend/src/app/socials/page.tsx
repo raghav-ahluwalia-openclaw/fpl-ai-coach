@@ -78,19 +78,43 @@ function shortSummary(text?: string, title?: string, maxChars = 420): string {
 export default function SocialsPage() {
   const [data, setData] = useState<SocialsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  async function loadSocials() {
+    const payload = await fetchJson<SocialsResponse>("/api/fpl/socials?limit=5&reddit_window=week");
+    setData(payload);
+    setError(null);
+  }
 
   useEffect(() => {
-    fetchJson<SocialsResponse>("/api/fpl/socials?limit=5&reddit_window=week")
-      .then((payload) => {
-        setData(payload);
-        setError(null);
-      })
-      .catch((e) => setError(e.message || "Failed to load socials"));
+    loadSocials().catch((e) => setError(e.message || "Failed to load socials"));
   }, []);
+
+  async function refreshSocials() {
+    setRefreshing(true);
+    setError(null);
+    try {
+      await fetchJson("/api/fpl/socials/refresh?videos_per_creator=4", { method: "POST" });
+      await loadSocials();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to refresh socials");
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   return (
     <main className="min-h-screen p-6 md:p-8 max-w-6xl mx-auto text-white">
-      <h1 className="text-3xl font-black mb-4">FPL Socials</h1>
+      <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+        <h1 className="text-3xl font-black">FPL Socials</h1>
+        <button
+          onClick={() => void refreshSocials()}
+          disabled={refreshing}
+          className="px-4 py-2 rounded-md bg-[#00ff87] text-[#37003c] font-bold disabled:opacity-60"
+        >
+          {refreshing ? "Refreshing..." : "Regenerate Summaries"}
+        </button>
+      </div>
 
       {error ? <p className="text-red-300 mb-3">{error}</p> : null}
       {!data && !error ? <p className="text-white/75">Loading...</p> : null}

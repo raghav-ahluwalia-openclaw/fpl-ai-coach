@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from pathlib import Path
 from typing import Optional
 
@@ -105,6 +106,51 @@ def content_consensus(limit: int = Query(default=10, ge=1, le=50), include_video
         "videos": videos,
         "source": str(DIGEST_PATH),
     }
+
+
+@router.post("/api/fpl/socials/refresh")
+def fpl_socials_refresh(videos_per_creator: int = Query(default=4, ge=1, le=8)):
+    project_root = Path(__file__).resolve().parents[4]
+    digest_script = project_root / "scripts" / "fpl_creator_digest.py"
+    enrich_script = project_root / "scripts" / "fpl_socials_enrich.py"
+
+    if not digest_script.exists() or not enrich_script.exists():
+        raise HTTPException(status_code=500, detail="Socials refresh scripts are missing")
+
+    try:
+        digest = subprocess.run(
+            ["python3", str(digest_script), "--videos-per-creator", str(videos_per_creator)],
+            cwd=str(project_root),
+            text=True,
+            capture_output=True,
+            timeout=900,
+            check=False,
+        )
+        if digest.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"Digest refresh failed: {digest.stderr.strip() or digest.stdout.strip()}")
+
+        enrich = subprocess.run(
+            ["python3", str(enrich_script)],
+            cwd=str(project_root),
+            text=True,
+            capture_output=True,
+            timeout=900,
+            check=False,
+        )
+        if enrich.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"Enrichment refresh failed: {enrich.stderr.strip() or enrich.stdout.strip()}")
+
+        return {
+            "ok": True,
+            "videos_per_creator": videos_per_creator,
+            "digest": digest.stdout.strip().splitlines()[-3:],
+            "enrich": enrich.stdout.strip().splitlines()[-3:],
+            "message": "Socials data refreshed successfully",
+        }
+    except HTTPException:
+        raise
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=504, detail="Socials refresh timed out")
 
 
 @router.get("/api/fpl/socials")
