@@ -437,6 +437,40 @@ def weekly_cockpit(
         scored = [(_expected_points(p, fixtures, gw), p) for p in squad_players]
         starting_pairs, bench_pairs, formation = _build_lineup_from_squad(scored)
 
+        picked_by_pos = sorted(
+            [p for p in picks if _int(p.get("position"), 0) > 0],
+            key=lambda r: _int(r.get("position"), 99),
+        )
+        current_start_ids = [_int(p.get("element")) for p in picked_by_pos if _int(p.get("position"), 0) <= 11]
+        current_bench_ids = [_int(p.get("element")) for p in picked_by_pos if _int(p.get("position"), 0) > 11]
+
+        rec_start_ids = [p.id for _, p in sorted(starting_pairs, key=lambda x: x[0], reverse=True)]
+        rec_bench_ids = [p.id for _, p in bench_pairs]
+
+        def _lineup_points(player_ids: list[int], horizon_points: bool = False) -> float:
+            total = 0.0
+            for pid in player_ids:
+                p = player_by_id.get(pid)
+                if not p:
+                    continue
+                if horizon_points:
+                    total += _expected_points_horizon(p, fixtures, gw, horizon=3, weights=mode_weights)
+                else:
+                    total += _expected_points(p, fixtures, gw)
+            return round(total, 2)
+
+        def _bench_weighted_score(player_ids: list[int], horizon_points: bool = False) -> float:
+            # Approximate autosub importance: bench 1 matters most.
+            weights = [1.0, 0.65, 0.35, 0.15]
+            total = 0.0
+            for idx, pid in enumerate(player_ids[:4]):
+                p = player_by_id.get(pid)
+                if not p:
+                    continue
+                xp = _expected_points_horizon(p, fixtures, gw, horizon=3, weights=mode_weights) if horizon_points else _expected_points(p, fixtures, gw)
+                total += xp * weights[idx]
+            return round(total, 2)
+
         lineup_optimizer = {
             "formation": formation,
             "starting_xi": [
@@ -464,6 +498,10 @@ def weekly_cockpit(
                 }
                 for idx, (xpts, p) in enumerate(bench_pairs)
             ],
+            "expected_gain_vs_current_xi_1": round(_lineup_points(rec_start_ids, horizon_points=False) - _lineup_points(current_start_ids, horizon_points=False), 2),
+            "expected_gain_vs_current_xi_3": round(_lineup_points(rec_start_ids, horizon_points=True) - _lineup_points(current_start_ids, horizon_points=True), 2),
+            "bench_order_gain_1": round(_bench_weighted_score(rec_bench_ids, horizon_points=False) - _bench_weighted_score(current_bench_ids, horizon_points=False), 2),
+            "bench_order_gain_3": round(_bench_weighted_score(rec_bench_ids, horizon_points=True) - _bench_weighted_score(current_bench_ids, horizon_points=True), 2),
         }
 
         # Team health
@@ -529,6 +567,7 @@ def weekly_cockpit(
 
         def enrich_plan(plan: dict, label: str):
             transfers = []
+            risk_components = []
             for t in plan.get("transfers", []):
                 out_p = player_by_id.get(_int(t.get("out_id")))
                 in_p = player_by_id.get(_int(t.get("in_id")))
@@ -540,6 +579,8 @@ def weekly_cockpit(
                 in_minutes_risk = round(max(0.0, 1.0 - min(_minutes_factor(in_p.minutes), 1.0)), 2)
                 in_upside_safety = round((in_xp3 - 5.5) - ((in_availability_risk * 0.6 + in_minutes_risk * 0.4) * 2.0), 2)
                 in_fixture_window = _fixture_window_next_3(in_p)
+                transfer_risk = min(1.0, (in_availability_risk * 0.6) + (in_minutes_risk * 0.25) + (0.15 if in_fixture_window["blanks"] > 0 else 0.0))
+                risk_components.append(transfer_risk)
                 transfers.append(
                     {
                         **t,
@@ -551,19 +592,64 @@ def weekly_cockpit(
                         "availability_risk_in": in_availability_risk,
                         "injury_news_in": in_p.news or "",
                         "upside_safety_score_in": in_upside_safety,
+                        "risk_score_in": round(transfer_risk, 2),
                     }
                 )
+
+            projected_gain = float(plan.get("projected_gain", 0.0) or 0.0)
+            net_gain = float(plan.get("net_gain", 0.0) or 0.0)
+            hit = int(plan.get("hit", 0) or 0)
+            avg_risk = sum(risk_components) / len(risk_components) if risk_components else 0.0
+            risk_score = min(1.0, avg_risk + (0.08 if hit > 0 else 0.0))
+
+            gain_signal = max(0.0, min(1.0, net_gain / 6.0))
+            confidence = max(0.25, min(0.92, (0.35 + (gain_signal * 0.55)) - (risk_score * 0.28)))
+            if confidence >= 0.75:
+                confidence_bucket = "high"
+            elif confidence >= 0.55:
+                confidence_bucket = "medium"
+            else:
+                confidence_bucket = "low"
+
             return {
                 "plan": label,
                 "transfer_count": len(transfers),
-                "projected_gain": plan.get("projected_gain", 0.0),
-                "net_gain": plan.get("net_gain", 0.0),
-                "hit": plan.get("hit", 0),
+                "projected_gain": round(projected_gain, 2),
+                "net_gain": round(net_gain, 2),
+                "hit": hit,
+                "ev": round(net_gain, 2),
+                "risk_score": round(risk_score, 2),
+                "confidence": round(confidence, 2),
+                "confidence_bucket": confidence_bucket,
                 "transfers": transfers,
             }
 
         one_ft_plans = [enrich_plan(p, f"Plan {chr(65 + idx)}") for idx, p in enumerate(one_ft)]
         two_ft_plans = [enrich_plan(p, f"Plan {chr(65 + idx)}") for idx, p in enumerate(two_ft)]
+
+        def _pad_plans(plans: list[dict], transfer_count: int) -> list[dict]:
+            out = plans[:]
+            while len(out) < 3:
+                label = f"Plan {chr(65 + len(out))}"
+                out.append(
+                    {
+                        "plan": label,
+                        "transfer_count": transfer_count,
+                        "projected_gain": 0.0,
+                        "net_gain": 0.0,
+                        "hit": 0,
+                        "ev": 0.0,
+                        "risk_score": 0.0,
+                        "confidence": 0.65,
+                        "confidence_bucket": "medium",
+                        "transfers": [],
+                        "note": "No higher-edge move found; rolling transfer is viable.",
+                    }
+                )
+            return out[:3]
+
+        one_ft_plans = _pad_plans(one_ft_plans, transfer_count=1)
+        two_ft_plans = _pad_plans(two_ft_plans, transfer_count=2)
 
         bank = _float(hist.get("bank"), 0.0) / 10.0
         squad_value = _float(hist.get("value"), 0.0) / 10.0

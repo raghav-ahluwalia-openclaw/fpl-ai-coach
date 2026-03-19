@@ -92,6 +92,23 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function formatTimestampWithTimezone(raw?: string | null): string {
+  if (!raw) return "Unknown";
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw;
+
+  const fmt = new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZoneName: "short",
+  });
+  return fmt.format(d);
+}
+
 function shortSummary(text?: string, title?: string): string {
   let clean = (text || "")
     .split("\n")
@@ -226,13 +243,10 @@ export default function SocialsPage() {
     loadSocials({ autoRefreshIfStale: true }).catch((e) => setError(e.message || "Failed to load socials"));
   }, [loadSocials]);
 
-  const refreshedLabel = useMemo(() => {
-    const raw = data?.youtube_creators?.generated_at;
-    if (!raw) return "Unknown";
-    const d = new Date(raw);
-    if (Number.isNaN(d.getTime())) return raw;
-    return d.toLocaleString();
-  }, [data?.youtube_creators?.generated_at]);
+  const refreshedLabel = useMemo(
+    () => formatTimestampWithTimezone(data?.youtube_creators?.generated_at),
+    [data?.youtube_creators?.generated_at],
+  );
 
   return (
     <main className="min-h-screen p-6 md:p-8 max-w-6xl mx-auto text-white">
@@ -320,7 +334,7 @@ export default function SocialsPage() {
               <h2 className="font-semibold text-[#00ff87] mb-1">Official Premier League Updates</h2>
               <p className="text-xs text-white/60 mb-3">
                 Source: {data.official_news?.source || "Official FPL API"}
-                {data.official_news?.generated_at ? ` • Updated: ${new Date(data.official_news.generated_at).toLocaleString()}` : ""}
+                {data.official_news?.generated_at ? ` • Updated: ${formatTimestampWithTimezone(data.official_news.generated_at)}` : ""}
               </p>
 
               {data.official_news?.error ? (

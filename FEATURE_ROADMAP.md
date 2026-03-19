@@ -93,15 +93,18 @@
 
 1. Transfer Planner Engine v2
    - Goal: Top 1FT + Top 2FT Plan A/B/C with EV, risk, confidence.
-   - Status: ⚠️ Partial (what-if simulator exists; no unified Plan A/B/C optimizer output yet).
+   - Status: ✅ Completed.
+   - Delivered in `/api/fpl/team/{entry_id}/weekly-cockpit` as A/B/C plans for 1FT and 2FT with `ev`, `risk_score`, `confidence`, and `confidence_bucket`.
 
 2. Weekly Cockpit page (single screen)
    - Goal: Team Health + Transfer Plans A/B/C + Captain Matrix + What changed.
-   - Status: ⚠️ Partial (`/planner`, `/brief`, `/captaincy`, `/team` exist but not unified single cockpit page).
+   - Status: ✅ Completed.
+   - Delivered in frontend `/weekly` as one-screen workflow for weekly decisions.
 
 3. XI + Bench Optimizer in my-team context
    - Goal: optimize XI + bench order with expected gain deltas.
-   - Status: ⚠️ Partial (team recommendation already returns starting XI + bench; dedicated optimizer UX and alt-lineup gain surfacing still pending).
+   - Status: ✅ Completed.
+   - Delivered with optimizer output plus `expected_gain_vs_current_xi_1/3` and `bench_order_gain_1/3`.
 
 ### Phase 2 — engine quality
 

@@ -2,12 +2,12 @@
 
 ## Active Plan — Product upgrade phases (saved 2026-03-19)
 
-### Phase 1 (next execution target)
-- [ ] Transfer Planner Engine v2 (Top 1FT/2FT Plan A/B/C with EV/risk/confidence)
-- [ ] Weekly Cockpit single-screen page (Team Health + Plans + Captain Matrix + changes)
-- [ ] XI + Bench optimizer UX with alternate-lineup gain
+### Phase 1 (completed)
+- [x] Transfer Planner Engine v2 (Top 1FT/2FT Plan A/B/C with EV/risk/confidence)
+- [x] Weekly Cockpit single-screen page (Team Health + Plans + Captain Matrix + changes)
+- [x] XI + Bench optimizer UX with alternate-lineup gain
 
-### Phase 2
+### Phase 2 (active)
 - [ ] Standardize explicit 1/3/5 GW projections across APIs
 - [ ] Add price-change aware transfer scoring
 - [ ] Add confidence calibration + bucketed reliability outputs
