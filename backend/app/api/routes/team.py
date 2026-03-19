@@ -374,6 +374,7 @@ def weekly_cockpit(
         # Keep planning anchored to target_gw (upcoming decision GW), even if picks fallback uses last available squad snapshot.
         gw = target_gw
         picks = payload.get("picks", [])
+        hist = payload.get("entry_history", {})
 
         if len(picks) < 11:
             raise HTTPException(status_code=400, detail="FPL returned incomplete squad data")
@@ -531,6 +532,10 @@ def weekly_cockpit(
         one_ft_plans = [enrich_plan(p, f"Plan {chr(65 + idx)}") for idx, p in enumerate(one_ft)]
         two_ft_plans = [enrich_plan(p, f"Plan {chr(65 + idx)}") for idx, p in enumerate(two_ft)]
 
+        bank = _float(hist.get("bank"), 0.0) / 10.0
+        squad_value = _float(hist.get("value"), 0.0) / 10.0
+        confidence = min(0.9, max(0.55, sum(x for x, _ in starting_pairs) / 70.0))
+
         # Captain matrix from likely starters
         matrix = []
         for xpts, p in sorted(starting_pairs, key=lambda x: x[0], reverse=True):
@@ -626,6 +631,15 @@ def weekly_cockpit(
             "gameweek": gw,
             "picks_source_gw": picks_source_gw,
             "mode": mode,
+            "team_overview": {
+                "entry_id": entry_id,
+                "gameweek": gw,
+                "formation": formation,
+                "strategy_mode": mode,
+                "confidence": round(confidence, 2),
+                "bank": round(bank, 1),
+                "squad_value": round(squad_value, 1),
+            },
             "fixture_context": {
                 "gameweek": gw,
                 "considered": True,

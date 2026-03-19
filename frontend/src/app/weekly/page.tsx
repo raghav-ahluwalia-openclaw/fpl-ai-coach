@@ -16,10 +16,7 @@ type HealthRow = {
   position: string;
   projected_points_1: number;
   projected_points_3: number;
-  minutes_risk: number;
-  availability_risk: number;
   fixture_badge: "DGW" | "SGW" | "BLANK";
-  fixture_window_next_3: FixtureWindow;
   injury_news: string;
   upside_safety_score: number;
 };
@@ -56,6 +53,15 @@ type WeeklyCockpit = {
   gameweek: number;
   picks_source_gw?: number;
   mode: Mode;
+  team_overview: {
+    entry_id: number;
+    gameweek: number;
+    formation: string;
+    strategy_mode: Mode;
+    confidence: number;
+    bank: number;
+    squad_value: number;
+  };
   fixture_context: {
     gameweek: number;
     considered: boolean;
@@ -187,14 +193,6 @@ export default function WeeklyPage() {
           >
             {loading ? "Loading..." : "Run Weekly Plan"}
           </button>
-          {data ? (
-            <p className="text-sm text-white/75">
-              GW {data.gameweek}
-              {typeof data.picks_source_gw === "number" && data.picks_source_gw !== data.gameweek
-                ? ` • using latest available squad snapshot from GW ${data.picks_source_gw}`
-                : ""}
-            </p>
-          ) : null}
         </div>
       </section>
 
@@ -203,10 +201,13 @@ export default function WeeklyPage() {
       {data ? (
         <div className="grid gap-4">
           <section className={cardClass}>
-            <p className="text-sm text-white/80">{data.fixture_context.method}</p>
-            <p className="text-sm text-white/70 mt-1">
-              Next-3-GW squad flags: DGW windows {data.fixture_context.squad_window.double_flags_next_3} • BLANK windows {data.fixture_context.squad_window.blank_flags_next_3}
+            <p className="text-sm text-white/75 mb-2">
+              Entry #{data.team_overview.entry_id} • GW {data.team_overview.gameweek} • {data.team_overview.formation} • {data.team_overview.strategy_mode.toUpperCase()} • Confidence {(data.team_overview.confidence * 100).toFixed(0)}%
             </p>
+            <p className="text-sm text-white/75">Bank: £{data.team_overview.bank.toFixed(1)} • Squad value: £{data.team_overview.squad_value.toFixed(1)}</p>
+            {typeof data.picks_source_gw === "number" && data.picks_source_gw !== data.team_overview.gameweek ? (
+              <p className="text-xs text-white/60 mt-2">Using latest available squad snapshot from GW {data.picks_source_gw}.</p>
+            ) : null}
           </section>
 
           <section className={cardClass}>
@@ -256,7 +257,6 @@ export default function WeeklyPage() {
                     <th className="py-2 whitespace-nowrap">Pos</th>
                     <th className="py-2 whitespace-nowrap">{xpView === "1gw" ? "xP (1GW)" : "xP (3GW)"}</th>
                     <th className="py-2 whitespace-nowrap">GW</th>
-                    <th className="py-2 whitespace-nowrap">Risks</th>
                     <th className="py-2 whitespace-nowrap">Action</th>
                   </tr>
                 </thead>
@@ -269,7 +269,6 @@ export default function WeeklyPage() {
                         <td className="py-2">{p.position}</td>
                         <td className="py-2">{xpVal(xpView, p.projected_points_1, p.projected_points_3).toFixed(2)}</td>
                         <td className="py-2"><span className={`text-xs rounded-full px-2 py-0.5 border ${badgeClass(p.fixture_badge)}`}>{p.fixture_badge}</span></td>
-                        <td className="py-2 text-white/75">M {p.minutes_risk.toFixed(2)} / A {p.availability_risk.toFixed(2)}</td>
                         <td className="py-2">
                           <span className={`text-xs rounded-full px-2 py-0.5 border ${action === "sell" ? "border-rose-300 text-rose-200" : action === "watch" ? "border-amber-300 text-amber-200" : "border-emerald-300 text-emerald-200"}`}>
                             {action.toUpperCase()}
