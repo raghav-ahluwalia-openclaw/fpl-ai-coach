@@ -356,6 +356,234 @@ def what_if_simulator(
         db.close()
 
 
+@router.get("/api/fpl/team/{entry_id}/weekly-cockpit")
+def weekly_cockpit(
+    entry_id: int,
+    gameweek: Optional[int] = Query(default=None, ge=1, le=38),
+    mode: str = Query(default="balanced", pattern="^(safe|balanced|aggressive)$"),
+):
+    db = SessionLocal()
+    try:
+        players = db.query(Player).all()
+        if not players:
+            raise HTTPException(status_code=400, detail="No player data found. Run POST /api/fpl/ingest/bootstrap first.")
+
+        gw = _resolve_gameweek(db, gameweek)
+        current_gw = _int(_get_meta(db, "current_gw"), 0)
+        payload, resolved_gw = _fetch_entry_picks_with_fallback(entry_id, gw, [current_gw, gw - 1])
+        gw = resolved_gw
+        picks = payload.get("picks", [])
+
+        if len(picks) < 11:
+            raise HTTPException(status_code=400, detail="FPL returned incomplete squad data")
+
+        fixtures = db.query(Fixture).all()
+        player_by_id = {p.id: p for p in players}
+        squad_ids = [_int(p.get("element")) for p in picks]
+        squad_players = [player_by_id.get(pid) for pid in squad_ids if player_by_id.get(pid) is not None]
+        if len(squad_players) < 11:
+            raise HTTPException(status_code=400, detail="Your squad has players missing from local DB. Re-run bootstrap ingest.")
+
+        mode_weights, _ = _strategy_config(mode)
+
+        scored = [(_expected_points(p, fixtures, gw), p) for p in squad_players]
+        starting_pairs, _, _formation = _build_lineup_from_squad(scored)
+
+        # Team health
+        health_rows = []
+        for p in squad_players:
+            xp1 = _expected_points(p, fixtures, gw)
+            xp3 = _expected_points_horizon(p, fixtures, gw, horizon=3, weights=mode_weights)
+            fc, fb = _fixture_badge_for_gw(p, fixtures, gw)
+            availability = _availability_factor(p.chance_of_playing_next_round, p.news)
+            minutes_factor = _minutes_factor(p.minutes)
+            minutes_risk = round(max(0.0, 1.0 - min(minutes_factor, 1.0)), 2)
+            availability_risk = round(max(0.0, 1.0 - availability), 2)
+            risk = round(min(1.0, availability_risk * 0.6 + minutes_risk * 0.4), 2)
+            upside_safety = round(max(-2.5, min(2.5, (xp3 - 5.5) - (risk * 2.0))), 2)
+            action = "hold"
+            if risk >= 0.45 and xp3 < 4.8:
+                action = "sell"
+            elif risk >= 0.3 or xp3 < 5.3:
+                action = "watch"
+
+            health_rows.append(
+                {
+                    "id": p.id,
+                    "name": p.web_name,
+                    "position": POSITION_MAP.get(p.element_type, str(p.element_type)),
+                    "price": round(p.now_cost / 10.0, 1),
+                    "projected_points_1": round(xp1, 2),
+                    "projected_points_3": round(xp3, 2),
+                    "fixture_count": fc,
+                    "fixture_badge": fb,
+                    "fixture_difficulty_factor": round(_fixture_factor(p, fixtures, gw), 2),
+                    "minutes_risk": minutes_risk,
+                    "availability_risk": availability_risk,
+                    "injury_news": p.news or "",
+                    "upside_safety_score": upside_safety,
+                    "action": action,
+                }
+            )
+
+        sells = sorted([x for x in health_rows if x["action"] == "sell"], key=lambda x: (x["projected_points_3"], -x["minutes_risk"]))[:5]
+        holds = sorted([x for x in health_rows if x["action"] == "hold"], key=lambda x: x["projected_points_3"], reverse=True)[:6]
+        watch = sorted([x for x in health_rows if x["action"] == "watch"], key=lambda x: (x["minutes_risk"] + x["availability_risk"]), reverse=True)[:6]
+
+        # Transfer plans (1FT + 2FT)
+        sim = what_if_simulator(
+            entry_id=entry_id,
+            gameweek=gw,
+            horizon=3,
+            max_transfers=2,
+            free_transfers=1,
+            hit_cost=4,
+            per_out_limit=6,
+            limit=30,
+        )
+        scenarios = sim.get("scenarios", [])
+
+        one_ft = [s for s in scenarios if len(s.get("transfers", [])) == 1 and s.get("hit", 0) == 0][:3]
+        two_ft = [s for s in scenarios if len(s.get("transfers", [])) == 2][:3]
+
+        def enrich_plan(plan: dict, label: str):
+            transfers = []
+            for t in plan.get("transfers", []):
+                out_p = player_by_id.get(_int(t.get("out_id")))
+                in_p = player_by_id.get(_int(t.get("in_id")))
+                if not out_p or not in_p:
+                    continue
+                out_xp3 = _expected_points_horizon(out_p, fixtures, gw, horizon=3, weights=mode_weights)
+                in_xp3 = _expected_points_horizon(in_p, fixtures, gw, horizon=3, weights=mode_weights)
+                in_availability_risk = round(max(0.0, 1.0 - _availability_factor(in_p.chance_of_playing_next_round, in_p.news)), 2)
+                in_minutes_risk = round(max(0.0, 1.0 - min(_minutes_factor(in_p.minutes), 1.0)), 2)
+                in_upside_safety = round((in_xp3 - 5.5) - ((in_availability_risk * 0.6 + in_minutes_risk * 0.4) * 2.0), 2)
+                transfers.append(
+                    {
+                        **t,
+                        "projected_points_3_in": round(in_xp3, 2),
+                        "projected_points_3_out": round(out_xp3, 2),
+                        "fixture_difficulty_factor_in": round(_fixture_factor(in_p, fixtures, gw), 2),
+                        "minutes_risk_in": in_minutes_risk,
+                        "availability_risk_in": in_availability_risk,
+                        "injury_news_in": in_p.news or "",
+                        "upside_safety_score_in": in_upside_safety,
+                    }
+                )
+            return {
+                "plan": label,
+                "transfer_count": len(transfers),
+                "projected_gain": plan.get("projected_gain", 0.0),
+                "net_gain": plan.get("net_gain", 0.0),
+                "hit": plan.get("hit", 0),
+                "transfers": transfers,
+            }
+
+        one_ft_plans = [enrich_plan(p, f"Plan {chr(65 + idx)}") for idx, p in enumerate(one_ft)]
+        two_ft_plans = [enrich_plan(p, f"Plan {chr(65 + idx)}") for idx, p in enumerate(two_ft)]
+
+        # Captain matrix from likely starters
+        matrix = []
+        for xpts, p in sorted(starting_pairs, key=lambda x: x[0], reverse=True):
+            xp3 = _expected_points_horizon(p, fixtures, gw, horizon=3, weights=mode_weights)
+            ownership = max(0.0, min(p.selected_by_percent, 100.0))
+            availability_risk = max(0.0, 1.0 - _availability_factor(p.chance_of_playing_next_round, p.news))
+            minutes_risk = max(0.0, 1.0 - min(_minutes_factor(p.minutes), 1.0))
+            risk = min(1.0, availability_risk * 0.6 + minutes_risk * 0.4)
+            safe_score = round(xp3 * (1.0 - risk * 0.65) + (ownership * 0.01), 2)
+            differential_score = round(xp3 * (1.0 - risk * 0.2) + (max(0.0, 30.0 - ownership) / 30.0) * 1.6, 2)
+            matrix.append(
+                {
+                    "id": p.id,
+                    "name": p.web_name,
+                    "safe_score": safe_score,
+                    "differential_score": differential_score,
+                    "projected_points_3": round(xp3, 2),
+                    "ownership_pct": round(ownership, 1),
+                    "minutes_risk": round(minutes_risk, 2),
+                    "availability_risk": round(availability_risk, 2),
+                }
+            )
+
+        safe_caps = sorted(matrix, key=lambda x: x["safe_score"], reverse=True)[:5]
+        diff_caps = sorted(matrix, key=lambda x: x["differential_score"], reverse=True)[:5]
+
+        # What changed since last week
+        changes = []
+        if gw > 1:
+            try:
+                prev_payload, _ = _fetch_entry_picks_with_fallback(entry_id, gw - 1, [gw - 1, gw - 2])
+                prev_ids = {_int(p.get("element")) for p in prev_payload.get("picks", [])}
+                curr_ids = set(squad_ids)
+                out_ids = list(prev_ids - curr_ids)
+                in_ids = list(curr_ids - prev_ids)
+                if out_ids or in_ids:
+                    changes.append(
+                        {
+                            "type": "squad_changes",
+                            "summary": "Transfers since last GW",
+                            "out": [player_by_id[i].web_name for i in out_ids if i in player_by_id],
+                            "in": [player_by_id[i].web_name for i in in_ids if i in player_by_id],
+                        }
+                    )
+            except HTTPException:
+                pass
+
+        injury_flags = [h for h in health_rows if h["injury_news"]][:5]
+        if injury_flags:
+            changes.append(
+                {
+                    "type": "injury_news",
+                    "summary": "Current injury/news flags",
+                    "players": [{"name": h["name"], "news": h["injury_news"]} for h in injury_flags],
+                }
+            )
+
+        fixture_swings = []
+        for p in squad_players:
+            now_count = _fixture_count_for_gw(p, fixtures, gw)
+            prev_count = _fixture_count_for_gw(p, fixtures, gw - 1)
+            if now_count != prev_count:
+                fixture_swings.append(
+                    {
+                        "name": p.web_name,
+                        "from": "DGW" if prev_count >= 2 else ("BLANK" if prev_count == 0 else "SGW"),
+                        "to": "DGW" if now_count >= 2 else ("BLANK" if now_count == 0 else "SGW"),
+                    }
+                )
+        if fixture_swings:
+            changes.append(
+                {
+                    "type": "fixture_swings",
+                    "summary": "Fixture context changes",
+                    "players": fixture_swings[:8],
+                }
+            )
+
+        return {
+            "entry_id": entry_id,
+            "gameweek": gw,
+            "mode": mode,
+            "team_health": {
+                "sell": sells,
+                "watch": watch,
+                "hold": holds,
+            },
+            "top_transfer_plans": {
+                "one_ft": one_ft_plans,
+                "two_ft": two_ft_plans,
+            },
+            "captain_matrix": {
+                "safe": safe_caps,
+                "differential": diff_caps,
+            },
+            "what_changed": changes,
+            "summary": "Weekly cockpit with team health, top transfer plans (1FT/2FT), captain matrix, and latest changes.",
+        }
+    finally:
+        db.close()
+
+
 @router.get("/api/fpl/team/{entry_id}/rank-history", response_model=RankHistoryResponse)
 def team_rank_history(entry_id: int):
     url = f"https://fantasy.premierleague.com/api/entry/{entry_id}/history/"

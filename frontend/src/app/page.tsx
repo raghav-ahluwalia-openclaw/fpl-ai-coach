@@ -2,6 +2,11 @@ import Link from "next/link";
 
 const primaryCards = [
   {
+    title: "Weekly Cockpit",
+    desc: "One screen per GW: team health, Plan A/B/C transfers, captain matrix, and key changes.",
+    href: "/weekly",
+  },
+  {
     title: "Weekly Brief",
     desc: "One-page final plan with captain, transfer, and consensus rationale.",
     href: "/brief",

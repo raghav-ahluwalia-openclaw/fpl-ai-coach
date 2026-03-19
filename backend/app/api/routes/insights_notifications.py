@@ -1,6 +1,15 @@
 from __future__ import annotations
 
-from .insights import *  # noqa: F403
+import json
+from datetime import datetime, timedelta, timezone
+
+from fastapi import HTTPException, Query
+
+from .base import SessionLocal, _get_meta, _int, _set_meta, router
+from .insights import NOTIF_CHECK_INTERVAL_MINUTES, REMINDER_STATE_PATH
+from .insights_settings import notification_settings_get
+from app.services.ml_recommender import DEFAULT_MODEL_VERSION
+
 
 @router.get("/api/fpl/deadline-next")
 def deadline_next(lead_hours: int = Query(default=6, ge=1, le=72)):
@@ -31,27 +40,6 @@ def deadline_next(lead_hours: int = Query(default=6, ge=1, le=72)):
         db.close()
 
 
-def _meta_bool(value: Optional[str], default: bool = False) -> bool:
-    if value is None:
-        return default
-    return str(value).strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _user_scope(request: Request) -> str:
-    raw = (
-        request.headers.get("cf-access-authenticated-user-email")
-        or request.headers.get("x-user-email")
-        or request.headers.get("x-forwarded-user")
-        or "default"
-    )
-    # Keep meta keys safe/short
-    scope = "".join(ch for ch in raw.lower() if ch.isalnum() or ch in {"@", ".", "_", "-"})
-    return scope[:120] or "default"
-
-
-def _settings_key(scope: str, name: str) -> str:
-    return f"settings:{scope}:{name}"
-
 @router.get("/api/fpl/notification-status")
 def notification_status():
     settings = notification_settings_get()
@@ -64,7 +52,6 @@ def notification_status():
     now_dt = datetime.now(timezone.utc)
     next_check_dt = now_dt + timedelta(minutes=max(1, NOTIF_CHECK_INTERVAL_MINUTES))
 
-    # Keep lightweight runtime metadata for UI status.
     db = SessionLocal()
     try:
         _set_meta(db, "notif_last_check_at", now_dt.isoformat())
@@ -97,6 +84,7 @@ def notification_status():
         "preview_message": reminder.get("message"),
     }
 
+
 @router.get("/api/fpl/notification-test")
 def notification_test():
     settings = notification_settings_get()
@@ -115,12 +103,15 @@ def notification_test():
         "reminder_utc": reminder.get("reminder_utc"),
     }
 
+
 @router.get("/api/fpl/deadline-reminder")
 def deadline_reminder(
     lead_hours: int = Query(default=6, ge=1, le=72),
     mode: str = Query(default="balanced", pattern="^(safe|balanced|aggressive)$"),
     model_version: str = Query(default=DEFAULT_MODEL_VERSION, pattern="^(xgb_v1|xgb_hist_v1)$"),
 ):
+    from .insights_brief import weekly_brief
+
     deadline = deadline_next(lead_hours=lead_hours)
     brief = weekly_brief(gameweek=None, mode=mode, model_version=model_version)
 
@@ -136,4 +127,3 @@ def deadline_reminder(
             f"Captain {brief['final']['captain']}, transfer {brief['final']['transfer_out']} -> {brief['final']['transfer_in']}."
         ),
     }
-

@@ -1,6 +1,25 @@
 from __future__ import annotations
 
-from .insights import *  # noqa: F403
+import json
+from pathlib import Path
+from typing import Optional
+
+from fastapi import HTTPException, Query
+
+from .base import (
+    Fixture,
+    Player,
+    SessionLocal,
+    _fixture_count_for_gw,
+    router,
+)
+from .insights import recommendation, recommendation_ml
+from .insights_planner import chip_planner
+from .insights_research import captaincy_lab
+from app.services.ml_recommender import DEFAULT_MODEL_VERSION
+
+DIGEST_PATH = Path(__file__).resolve().parents[3] / "data" / "content" / "creator_digest.json"
+
 
 @router.get("/api/fpl/weekly-digest-card")
 def weekly_digest_card(
@@ -63,6 +82,7 @@ def weekly_digest_card(
         "summary": "Rich weekly digest payload for messaging cards and Telegram reminders.",
     }
 
+
 @router.get("/api/fpl/weekly-brief")
 def weekly_brief(
     gameweek: Optional[int] = Query(default=None, ge=1, le=38),
@@ -116,7 +136,6 @@ def weekly_brief(
     if ml is not None and not ml_eligible:
         rationale.append(f"ML confidence below threshold ({ml.confidence:.2f} < {min_ml_confidence:.2f}); baseline fallback applied")
 
-    # Fixture badges for final picks (DGW / SGW / BLANK)
     badge_map = {
         "captain": "SGW",
         "vice_captain": "SGW",
@@ -184,4 +203,3 @@ def weekly_brief(
         "creator_consensus": consensus,
         "rationale": rationale,
     }
-

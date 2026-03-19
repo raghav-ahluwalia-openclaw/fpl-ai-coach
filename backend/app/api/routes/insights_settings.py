@@ -1,6 +1,34 @@
 from __future__ import annotations
 
-from .insights import *  # noqa: F403
+from typing import Optional
+
+from fastapi import HTTPException, Query, Request
+from sqlalchemy.exc import SQLAlchemyError
+
+from .base import SessionLocal, _get_meta, _int, _set_meta, router
+from app.services.ml_recommender import DEFAULT_MODEL_VERSION
+
+
+def _meta_bool(value: Optional[str], default: bool = False) -> bool:
+    if value is None:
+        return default
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _user_scope(request: Request) -> str:
+    raw = (
+        request.headers.get("cf-access-authenticated-user-email")
+        or request.headers.get("x-user-email")
+        or request.headers.get("x-forwarded-user")
+        or "default"
+    )
+    scope = "".join(ch for ch in raw.lower() if ch.isalnum() or ch in {"@", ".", "_", "-"})
+    return scope[:120] or "default"
+
+
+def _settings_key(scope: str, name: str) -> str:
+    return f"settings:{scope}:{name}"
+
 
 @router.get("/api/fpl/settings")
 def app_settings_get(request: Request):
@@ -18,6 +46,7 @@ def app_settings_get(request: Request):
         }
     finally:
         db.close()
+
 
 @router.post("/api/fpl/settings")
 def app_settings_set(
@@ -48,6 +77,7 @@ def app_settings_set(
     finally:
         db.close()
 
+
 @router.get("/api/fpl/notification-settings")
 def notification_settings_get():
     db = SessionLocal()
@@ -65,6 +95,7 @@ def notification_settings_get():
         }
     finally:
         db.close()
+
 
 @router.post("/api/fpl/notification-settings")
 def notification_settings_set(
@@ -92,4 +123,3 @@ def notification_settings_set(
         raise HTTPException(status_code=500, detail=f"Failed to save notification settings: {e}")
     finally:
         db.close()
-
