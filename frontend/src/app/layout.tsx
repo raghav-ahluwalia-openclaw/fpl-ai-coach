@@ -50,9 +50,9 @@ export default function RootLayout({
                   />
                 </svg>
               </Link>
-              <nav className="flex items-center gap-4 text-sm text-white/85 flex-wrap">
+              <nav className="flex items-center gap-4 text-sm text-[#00ff87] flex-wrap">
                 {navItems.map((item) => (
-                  <Link key={item.href} href={item.href} className="hover:text-[#00ff87] transition-colors">
+                  <Link key={item.href} href={item.href} className="hover:text-[#7effb8] transition-colors">
                     {item.label}
                   </Link>
                 ))}
