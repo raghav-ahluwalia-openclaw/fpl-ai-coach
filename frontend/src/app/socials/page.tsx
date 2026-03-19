@@ -16,6 +16,8 @@ type SocialsResponse = {
       creator: string;
       title: string;
       url: string;
+      upload_date?: string;
+      view_count?: number;
       summary?: string;
       transcript?: string;
       transcript_path?: string;
@@ -65,7 +67,7 @@ export default function SocialsPage() {
       {data ? (
         <section className="grid md:grid-cols-2 gap-4">
           <div className={cardClass}>
-            <h2 className="font-semibold text-[#00ff87] mb-3">YouTube Creators</h2>
+            <h2 className="font-semibold text-[#00ff87] mb-3">YouTube Creators (Top 5 by views + upload date)</h2>
             {data.youtube_creators.videos.length === 0 ? (
               <p className="text-white/70">No creator digest found yet.</p>
             ) : (
@@ -85,18 +87,13 @@ export default function SocialsPage() {
                       <div className="flex flex-wrap gap-1 mt-2">
                         {v.player_mentions.slice(0, 8).map((m) => (
                           <span key={`${v.title}-${m.name}`} className={`text-[11px] rounded-full px-2 py-0.5 border ${sentimentClass(m.sentiment)}`}>
-                            {m.name}
+                            {m.name} {m.sentiment === "positive" ? "▲" : m.sentiment === "negative" ? "▼" : "•"}
                           </span>
                         ))}
                       </div>
                     ) : null}
+                    <p className="text-white/65 mt-1">👁️ {v.view_count ?? 0} • 📅 {v.upload_date || "unknown"}</p>
                     {v.summary ? <p className="text-white/75 mt-2">{v.summary}</p> : null}
-                    {v.transcript ? (
-                      <details className="mt-2">
-                        <summary className="cursor-pointer text-white/70">View transcript</summary>
-                        <p className="text-white/70 mt-2 whitespace-pre-wrap max-h-64 overflow-auto">{v.transcript}</p>
-                      </details>
-                    ) : null}
                   </li>
                 ))}
               </ul>
@@ -125,7 +122,7 @@ export default function SocialsPage() {
                     <div className="flex flex-wrap gap-1 mt-2">
                       {t.player_mentions.slice(0, 8).map((m) => (
                         <span key={`${t.title}-${m.name}`} className={`text-[11px] rounded-full px-2 py-0.5 border ${sentimentClass(m.sentiment)}`}>
-                          {m.name}
+                          {m.name} {m.sentiment === "positive" ? "▲" : m.sentiment === "negative" ? "▼" : "•"}
                         </span>
                       ))}
                     </div>

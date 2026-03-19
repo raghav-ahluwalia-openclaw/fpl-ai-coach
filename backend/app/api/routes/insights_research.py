@@ -111,7 +111,13 @@ def fpl_socials(limit: int = Query(default=5, ge=1, le=10), reddit_window: str =
             # Prefer transcript-enriched dataset if present.
             if ENRICHED_SOCIALS_PATH.exists():
                 enriched = json.loads(ENRICHED_SOCIALS_PATH.read_text(encoding="utf-8"))
-                evideos = enriched.get("videos", [])[:limit]
+                evideos_all = enriched.get("videos", [])
+                evideos_all = sorted(
+                    evideos_all,
+                    key=lambda x: (int(x.get("view_count") or 0), str(x.get("upload_date") or "")),
+                    reverse=True,
+                )
+                evideos = evideos_all[:limit]
                 videos = []
                 for v in evideos:
                     videos.append(
@@ -119,6 +125,8 @@ def fpl_socials(limit: int = Query(default=5, ge=1, le=10), reddit_window: str =
                             "creator": v.get("creator"),
                             "title": v.get("title"),
                             "url": v.get("url"),
+                            "upload_date": v.get("upload_date"),
+                            "view_count": int(v.get("view_count") or 0),
                             "summary": v.get("summary") or "",
                             "transcript": v.get("transcript") or "",
                             "player_mentions": v.get("player_mentions") or [],
@@ -132,7 +140,12 @@ def fpl_socials(limit: int = Query(default=5, ge=1, le=10), reddit_window: str =
                     "videos": videos,
                 }
             else:
-                raw_videos = payload.get("videos", [])[:limit]
+                raw_videos = payload.get("videos", [])
+                raw_videos = sorted(
+                    raw_videos,
+                    key=lambda x: (int(x.get("view_count") or 0), str(x.get("upload_date") or "")),
+                    reverse=True,
+                )[:limit]
                 videos = []
                 for v in raw_videos:
                     title = v.get("title") or "Untitled"
@@ -146,6 +159,8 @@ def fpl_socials(limit: int = Query(default=5, ge=1, le=10), reddit_window: str =
                             "creator": v.get("creator"),
                             "title": title,
                             "url": v.get("url"),
+                            "upload_date": v.get("upload_date"),
+                            "view_count": int(v.get("view_count") or 0),
                             "summary": _summarize_text(combined, max_sentences=5),
                             "transcript": "",
                             "player_mentions": _extract_player_mentions(combined, player_names, max_items=8),

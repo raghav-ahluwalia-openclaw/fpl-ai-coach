@@ -121,6 +121,8 @@ def main() -> int:
                 "title": v.get("title"),
                 "url": url,
                 "video_id": vid,
+                "upload_date": v.get("upload_date"),
+                "view_count": v.get("view_count"),
                 "summary": summarize_text(combined, max_sentences=8),
                 "transcript_path": str(transcript_path.relative_to(ROOT)),
                 "transcript": transcript,

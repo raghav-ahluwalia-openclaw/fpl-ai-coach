@@ -35,6 +35,24 @@
       "query": "FPL Wire Fantasy Premier League",
       "weight": 0.9,
       "tier": "extended"
+    },
+    {
+      "name": "FPL Mate",
+      "query": "FPL Mate Fantasy Premier League",
+      "weight": 0.9,
+      "tier": "extended"
+    },
+    {
+      "name": "Fantasy Football Hub",
+      "query": "Fantasy Football Hub FPL",
+      "weight": 0.85,
+      "tier": "extended"
+    },
+    {
+      "name": "Fantasy Football Scout",
+      "query": "Fantasy Football Scout FPL",
+      "weight": 0.85,
+      "tier": "extended"
     }
   ]
 }

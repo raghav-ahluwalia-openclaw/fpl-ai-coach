@@ -24,6 +24,7 @@ type HealthRow = {
 type TransferMove = {
   out: string;
   in: string;
+  position?: string;
   gain: number;
   projected_points_3_in: number;
   projected_points_3_out: number;
@@ -291,7 +292,7 @@ export default function WeeklyPage() {
                   <div key={`1ft-${p.plan}`} className="rounded-lg border border-white/10 p-3 bg-black/20 mb-2">
                     <p className="font-medium">{p.plan} • Net {p.net_gain} • Hit {p.hit}</p>
                     {p.transfers.map((t, i) => (
-                      <p key={`${p.plan}-1-${i}`} className="text-white/80">{t.out} → {t.in}</p>
+                      <p key={`${p.plan}-1-${i}`} className="text-white/80">[{t.position || "POS"}] {t.out} (xP3 {t.projected_points_3_out}) → {t.in} (xP3 {t.projected_points_3_in})</p>
                     ))}
                   </div>
                 ))}
@@ -302,7 +303,7 @@ export default function WeeklyPage() {
                   <div key={`2ft-${p.plan}`} className="rounded-lg border border-white/10 p-3 bg-black/20 mb-2">
                     <p className="font-medium">{p.plan} • Net {p.net_gain} • Hit {p.hit}</p>
                     {p.transfers.map((t, i) => (
-                      <p key={`${p.plan}-2-${i}`} className="text-white/80">{t.out} → {t.in}</p>
+                      <p key={`${p.plan}-2-${i}`} className="text-white/80">[{t.position || "POS"}] {t.out} (xP3 {t.projected_points_3_out}) → {t.in} (xP3 {t.projected_points_3_in})</p>
                     ))}
                   </div>
                 ))}
