@@ -23,7 +23,7 @@ const navItems = [
   { href: "/brief", label: "Weekly Brief" },
   { href: "/team", label: "My Team" },
   { href: "/planner", label: "Planner" },
-  { href: "/top", label: "Top Picks" },
+  { href: "/top", label: "Research" },
 ];
 
 export default function RootLayout({
