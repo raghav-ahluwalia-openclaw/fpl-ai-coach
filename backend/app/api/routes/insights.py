@@ -315,6 +315,9 @@ def captaincy_lab(
             safe_score = xp3 * (1 - risk * 0.75) + (ownership * 0.01)
             upside_score = xp3 * (1 - risk * 0.25) + (max(0.0, 25.0 - ownership) / 25.0) * 1.8 + (p.form * 0.12)
 
+            fixture_count = _fixture_count_for_gw(p, fixtures, gw)
+            fixture_badge = "DGW" if fixture_count >= 2 else ("BLANK" if fixture_count == 0 else "SGW")
+
             common = {
                 "id": p.id,
                 "name": p.web_name,
@@ -325,6 +328,8 @@ def captaincy_lab(
                 "ownership_pct": round(ownership, 1),
                 "risk": round(risk, 2),
                 "form": round(p.form, 2),
+                "fixture_count": fixture_count,
+                "fixture_badge": fixture_badge,
             }
 
             safe_board.append({**common, "captain_score": round(safe_score, 2)})
@@ -367,6 +372,9 @@ def explainability_top(
 
         out = []
         for xp, p, breakdown in scored[:limit]:
+            fixture_count = _fixture_count_for_gw(p, fixtures, gw)
+            fixture_badge = "DGW" if fixture_count >= 2 else ("BLANK" if fixture_count == 0 else "SGW")
+
             out.append(
                 {
                     "id": p.id,
@@ -374,6 +382,8 @@ def explainability_top(
                     "position": POSITION_MAP.get(p.element_type, str(p.element_type)),
                     "price": round(p.now_cost / 10.0, 1),
                     "xP": round(xp, 2),
+                    "fixture_count": fixture_count,
+                    "fixture_badge": fixture_badge,
                     "breakdown": breakdown,
                     "reason": _reason(p, xp),
                 }

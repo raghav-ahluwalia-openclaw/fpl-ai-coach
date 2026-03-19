@@ -14,6 +14,8 @@ type CaptainOption = {
   ownership_pct: number;
   risk: number;
   form: number;
+  fixture_count: number;
+  fixture_badge: "DGW" | "SGW" | "BLANK";
   captain_score: number;
 };
 
@@ -39,6 +41,7 @@ function CaptainTable({ title, rows }: { title: string; rows: CaptainOption[] })
               <th className="py-2">Player</th>
               <th className="py-2">xP(1)</th>
               <th className="py-2">xP(3)</th>
+              <th className="py-2">GW</th>
               <th className="py-2">Risk</th>
               <th className="py-2">Own%</th>
               <th className="py-2">Score</th>
@@ -51,6 +54,19 @@ function CaptainTable({ title, rows }: { title: string; rows: CaptainOption[] })
                 <td className="py-2 font-medium">{r.name}</td>
                 <td className="py-2">{r.xP_next_1.toFixed(2)}</td>
                 <td className="py-2">{r.xP_next_3.toFixed(2)}</td>
+                <td className="py-2">
+                  <span
+                    className={`text-xs rounded-full px-2 py-0.5 border ${
+                      r.fixture_badge === "DGW"
+                        ? "border-emerald-300 text-emerald-200"
+                        : r.fixture_badge === "BLANK"
+                          ? "border-rose-300 text-rose-200"
+                          : "border-white/30 text-white/80"
+                    }`}
+                  >
+                    {r.fixture_badge}
+                  </span>
+                </td>
                 <td className="py-2">{r.risk.toFixed(2)}</td>
                 <td className="py-2">{r.ownership_pct.toFixed(1)}</td>
                 <td className="py-2 text-[#00ff87] font-semibold">{r.captain_score.toFixed(2)}</td>

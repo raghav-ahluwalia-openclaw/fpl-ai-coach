@@ -28,6 +28,8 @@ type ExplainedPlayer = {
   position: string;
   price: number;
   xP: number;
+  fixture_count: number;
+  fixture_badge: "DGW" | "SGW" | "BLANK";
   breakdown: {
     form_score: number;
     fixture_score: number;
@@ -129,7 +131,20 @@ export default function TopPage() {
           <div className="grid md:grid-cols-2 gap-3">
             {explain.players.slice(0, 8).map((p) => (
               <div key={p.id} className="border border-white/10 rounded-lg p-3 bg-black/20 text-sm">
-                <p className="font-semibold">{p.name} <span className="text-white/60">({p.position})</span></p>
+                <p className="font-semibold">
+                  {p.name} <span className="text-white/60">({p.position})</span>
+                  <span
+                    className={`ml-2 text-[11px] rounded-full px-2 py-0.5 border ${
+                      p.fixture_badge === "DGW"
+                        ? "border-emerald-300 text-emerald-200"
+                        : p.fixture_badge === "BLANK"
+                          ? "border-rose-300 text-rose-200"
+                          : "border-white/30 text-white/80"
+                    }`}
+                  >
+                    {p.fixture_badge}
+                  </span>
+                </p>
                 <p className="text-[#00ff87] font-bold">xP {p.xP.toFixed(2)}</p>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-white/80 mt-1">
                   <span>Form: {p.breakdown.form_score.toFixed(1)}</span>

@@ -32,28 +32,43 @@ def _availability_factor(chance: Optional[int], news: str) -> float:
     return 1.0
 
 
-def _fixture_row_for_gw(player: Player, fixture_rows: List[Fixture], target_gw: Optional[int]) -> Fixture | None:
+def _fixture_rows_for_gw(player: Player, fixture_rows: List[Fixture], target_gw: Optional[int]) -> list[Fixture]:
     if target_gw is None:
-        return None
+        return []
+    out: list[Fixture] = []
     for row in fixture_rows:
         if row.event != target_gw:
             continue
         if row.team_h == player.team_id or row.team_a == player.team_id:
-            return row
-    return None
+            out.append(row)
+    return out
+
+
+def _fixture_row_for_gw(player: Player, fixture_rows: List[Fixture], target_gw: Optional[int]) -> Fixture | None:
+    rows = _fixture_rows_for_gw(player, fixture_rows, target_gw)
+    return rows[0] if rows else None
 
 
 def _fixture_factor(player: Player, fixture_rows: List[Fixture], target_gw: Optional[int]) -> float:
     if target_gw is None:
         return 1.0
 
-    selected = _fixture_row_for_gw(player, fixture_rows, target_gw)
-    if selected is None:
+    rows = _fixture_rows_for_gw(player, fixture_rows, target_gw)
+    if not rows:
         # Blank GW hard penalty: model should not rank non-playing players highly.
         return 0.03
 
-    difficulty = selected.team_h_difficulty if selected.team_h == player.team_id else selected.team_a_difficulty
-    return {1: 1.12, 2: 1.06, 3: 1.0, 4: 0.94, 5: 0.88}.get(difficulty, 1.0)
+    diffs = []
+    for row in rows:
+        diff = row.team_h_difficulty if row.team_h == player.team_id else row.team_a_difficulty
+        diffs.append(diff)
+
+    avg_diff = sum(diffs) / max(1, len(diffs))
+    base = {1: 1.12, 2: 1.06, 3: 1.0, 4: 0.94, 5: 0.88}.get(round(avg_diff), 1.0)
+
+    count = len(rows)
+    dgw_boost = min(1.45, 1.0 + max(0, count - 1) * 0.28)
+    return base * dgw_boost
 
 
 def _position_one_hot(element_type: int) -> list[float]:
