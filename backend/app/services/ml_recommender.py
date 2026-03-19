@@ -32,20 +32,25 @@ def _availability_factor(chance: Optional[int], news: str) -> float:
     return 1.0
 
 
-def _fixture_factor(player: Player, fixture_rows: List[Fixture], target_gw: Optional[int]) -> float:
+def _fixture_row_for_gw(player: Player, fixture_rows: List[Fixture], target_gw: Optional[int]) -> Fixture | None:
     if target_gw is None:
-        return 1.0
-
-    selected = None
+        return None
     for row in fixture_rows:
         if row.event != target_gw:
             continue
         if row.team_h == player.team_id or row.team_a == player.team_id:
-            selected = row
-            break
+            return row
+    return None
 
-    if selected is None:
+
+def _fixture_factor(player: Player, fixture_rows: List[Fixture], target_gw: Optional[int]) -> float:
+    if target_gw is None:
         return 1.0
+
+    selected = _fixture_row_for_gw(player, fixture_rows, target_gw)
+    if selected is None:
+        # Blank GW hard penalty: model should not rank non-playing players highly.
+        return 0.03
 
     difficulty = selected.team_h_difficulty if selected.team_h == player.team_id else selected.team_a_difficulty
     return {1: 1.12, 2: 1.06, 3: 1.0, 4: 0.94, 5: 0.88}.get(difficulty, 1.0)
@@ -192,16 +197,12 @@ def load_model(model_version: str = DEFAULT_MODEL_VERSION) -> XGBRegressor | Non
 
 
 def _next_opponent_team_id(player: Player, fixtures: List[Fixture], target_gw: Optional[int]) -> int:
-    if target_gw is None:
+    row = _fixture_row_for_gw(player, fixtures, target_gw)
+    if row is None:
         return 0
-    for row in fixtures:
-        if row.event != target_gw:
-            continue
-        if row.team_h == player.team_id:
-            return int(row.team_a)
-        if row.team_a == player.team_id:
-            return int(row.team_h)
-    return 0
+    if row.team_h == player.team_id:
+        return int(row.team_a)
+    return int(row.team_h)
 
 
 def _historical_style_features(player: Player, fixtures: List[Fixture], target_gw: Optional[int]) -> list[float]:
@@ -242,7 +243,11 @@ def predict_expected_points(
 
     out: list[tuple[float, Player]] = []
     for pred, (_, player) in zip(preds, rows):
-        out.append((round(float(max(0.0, pred)), 2), player))
+        score = float(max(0.0, pred))
+        if target_gw is not None and _fixture_row_for_gw(player, fixtures, target_gw) is None:
+            # Additional hard clamp in case model still over-predicts blanks.
+            score *= 0.03
+        out.append((round(score, 2), player))
 
     out.sort(key=lambda x: x[0], reverse=True)
     return out
