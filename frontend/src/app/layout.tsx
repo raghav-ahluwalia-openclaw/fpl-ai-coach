@@ -39,10 +39,16 @@ export default function RootLayout({
               <Link
                 href="/"
                 aria-label="Home"
-                className="text-white/85 text-xl leading-none hover:text-white transition-colors"
+                className="text-white/85 hover:text-white transition-colors"
                 title="Home"
               >
-                ⌂
+                <svg viewBox="0 0 24 24" aria-hidden="true" className="h-6 w-6">
+                  <rect x="2.25" y="2.25" width="19.5" height="19.5" rx="5" ry="5" fill="none" stroke="currentColor" strokeWidth="1.75" />
+                  <path
+                    d="M12 7.2l5 4.3v6.1a1 1 0 0 1-1 1h-2.8a1 1 0 0 1-1-1v-2.8h-1.4v2.8a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-6.1l5-4.3z"
+                    fill="currentColor"
+                  />
+                </svg>
               </Link>
               <nav className="flex items-center gap-4 text-sm text-white/85 flex-wrap">
                 {navItems.map((item) => (
