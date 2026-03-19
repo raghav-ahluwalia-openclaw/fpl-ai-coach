@@ -387,7 +387,34 @@ def weekly_cockpit(
         mode_weights, _ = _strategy_config(mode)
 
         scored = [(_expected_points(p, fixtures, gw), p) for p in squad_players]
-        starting_pairs, _, _formation = _build_lineup_from_squad(scored)
+        starting_pairs, bench_pairs, formation = _build_lineup_from_squad(scored)
+
+        lineup_optimizer = {
+            "formation": formation,
+            "starting_xi": [
+                {
+                    "id": p.id,
+                    "name": p.web_name,
+                    "position": POSITION_MAP.get(p.element_type, str(p.element_type)),
+                    "xP_next_1": round(xpts, 2),
+                    "xP_next_3": round(_expected_points_horizon(p, fixtures, gw, horizon=3, weights=mode_weights), 2),
+                    "fixture_badge": _fixture_badge_for_gw(p, fixtures, gw)[1],
+                }
+                for xpts, p in sorted(starting_pairs, key=lambda x: x[0], reverse=True)
+            ],
+            "bench_order": [
+                {
+                    "id": p.id,
+                    "name": p.web_name,
+                    "position": POSITION_MAP.get(p.element_type, str(p.element_type)),
+                    "bench_rank": idx + 1,
+                    "xP_next_1": round(xpts, 2),
+                    "xP_next_3": round(_expected_points_horizon(p, fixtures, gw, horizon=3, weights=mode_weights), 2),
+                    "fixture_badge": _fixture_badge_for_gw(p, fixtures, gw)[1],
+                }
+                for idx, (xpts, p) in enumerate(bench_pairs)
+            ],
+        }
 
         # Team health
         health_rows = []
@@ -564,6 +591,7 @@ def weekly_cockpit(
             "entry_id": entry_id,
             "gameweek": gw,
             "mode": mode,
+            "lineup_optimizer": lineup_optimizer,
             "team_health": {
                 "sell": sells,
                 "watch": watch,

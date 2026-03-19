@@ -53,6 +53,11 @@ type WeeklyCockpit = {
   entry_id: number;
   gameweek: number;
   mode: Mode;
+  lineup_optimizer: {
+    formation: string;
+    starting_xi: Array<{ name: string; position: string; xP_next_1: number; xP_next_3: number; fixture_badge: "DGW" | "SGW" | "BLANK" }>;
+    bench_order: Array<{ name: string; position: string; bench_rank: number; xP_next_1: number; xP_next_3: number; fixture_badge: "DGW" | "SGW" | "BLANK" }>;
+  };
   team_health: {
     sell: HealthRow[];
     watch: HealthRow[];
@@ -151,6 +156,33 @@ export default function WeeklyPage() {
       {data ? (
         <div className="space-y-6">
           <section className={cardClass}>
+            <h2 className="text-xl font-bold text-[#00ff87] mb-3">Lineup Optimizer</h2>
+            <p className="text-sm text-white/75 mb-3">Recommended formation: <span className="font-semibold text-white">{data.lineup_optimizer.formation}</span></p>
+            <div className="grid md:grid-cols-2 gap-4 text-sm">
+              <div className="rounded-lg border border-white/10 p-3 bg-black/20">
+                <h3 className="font-semibold mb-2">Starting XI</h3>
+                <ul className="space-y-1">
+                  {data.lineup_optimizer.starting_xi.map((p) => (
+                    <li key={`xi-${p.name}`}>
+                      {p.name} ({p.position}) • xP1 {p.xP_next_1} • xP3 {p.xP_next_3} • {p.fixture_badge}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="rounded-lg border border-white/10 p-3 bg-black/20">
+                <h3 className="font-semibold mb-2">Bench Order</h3>
+                <ul className="space-y-1">
+                  {data.lineup_optimizer.bench_order.map((p) => (
+                    <li key={`bench-${p.name}`}>
+                      {p.bench_rank}. {p.name} ({p.position}) • xP1 {p.xP_next_1} • xP3 {p.xP_next_3} • {p.fixture_badge}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </section>
+
+          <section className={cardClass}>
             <h2 className="text-xl font-bold text-[#00ff87] mb-3">Your Team Health</h2>
             <div className="grid md:grid-cols-3 gap-4">
               {["sell", "watch", "hold"].map((bucket) => (
@@ -225,7 +257,57 @@ export default function WeeklyPage() {
 
           <section className={cardClass}>
             <h2 className="text-xl font-bold text-[#00ff87] mb-3">What Changed Since Last Week</h2>
-            <pre className="text-xs text-white/80 whitespace-pre-wrap">{JSON.stringify(data.what_changed, null, 2)}</pre>
+            <div className="space-y-3 text-sm">
+              {data.what_changed.length === 0 ? <p className="text-white/70">No major changes detected.</p> : null}
+              {data.what_changed.map((item, idx) => {
+                const type = String(item.type ?? "update");
+                const summary = String(item.summary ?? "Update");
+                if (type === "squad_changes") {
+                  const outs = Array.isArray(item.out) ? (item.out as string[]) : [];
+                  const ins = Array.isArray(item.in) ? (item.in as string[]) : [];
+                  return (
+                    <div key={`chg-${idx}`} className="rounded-lg border border-white/10 p-3 bg-black/20">
+                      <p className="font-medium">{summary}</p>
+                      <p className="text-white/80">Out: {outs.join(", ") || "—"}</p>
+                      <p className="text-white/80">In: {ins.join(", ") || "—"}</p>
+                    </div>
+                  );
+                }
+                if (type === "injury_news") {
+                  const players = Array.isArray(item.players) ? (item.players as Array<{ name?: string; news?: string }>) : [];
+                  return (
+                    <div key={`chg-${idx}`} className="rounded-lg border border-white/10 p-3 bg-black/20">
+                      <p className="font-medium">{summary}</p>
+                      <ul className="mt-1 space-y-1 text-white/80">
+                        {players.map((p, i) => (
+                          <li key={`inj-${idx}-${i}`}>{p.name || "Player"}: {p.news || "No details"}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                }
+                if (type === "fixture_swings") {
+                  const players = Array.isArray(item.players)
+                    ? (item.players as Array<{ name?: string; from?: string; to?: string }>)
+                    : [];
+                  return (
+                    <div key={`chg-${idx}`} className="rounded-lg border border-white/10 p-3 bg-black/20">
+                      <p className="font-medium">{summary}</p>
+                      <ul className="mt-1 space-y-1 text-white/80">
+                        {players.map((p, i) => (
+                          <li key={`fix-${idx}-${i}`}>{p.name || "Player"}: {p.from || "?"} → {p.to || "?"}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                }
+                return (
+                  <div key={`chg-${idx}`} className="rounded-lg border border-white/10 p-3 bg-black/20">
+                    <p className="font-medium">{summary}</p>
+                  </div>
+                );
+              })}
+            </div>
           </section>
         </div>
       ) : null}
