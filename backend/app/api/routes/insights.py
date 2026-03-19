@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import Request
 
 from .base import *  # noqa: F403
+from app.services.captaincy_service import build_captaincy_lab, build_explainability_top
 from app.services.ml_recommender import (
     DEFAULT_MODEL_VERSION,
     HISTORICAL_MODEL_VERSION,
@@ -15,6 +16,7 @@ from app.services.ml_recommender import (
     predict_expected_points,
     train_and_save_model,
 )
+from app.services.planner_service import build_chip_planner, build_rival_intelligence
 
 DIGEST_PATH = Path(__file__).resolve().parents[3] / "data" / "content" / "creator_digest.json"
 REMINDER_STATE_PATH = Path(__file__).resolve().parents[5] / "memory" / "fpl-reminder-state.json"
@@ -299,89 +301,7 @@ def captaincy_lab(
 
         fixtures = db.query(Fixture).all()
         gw = _resolve_gameweek(db, gameweek)
-
-        pool = [p for p in players if p.element_type in {3, 4}]
-        safe_board = []
-        upside_board = []
-
-        for p in pool:
-            xp1 = _expected_points(p, fixtures, gw)
-            xp3 = _expected_points_horizon(p, fixtures, gw, horizon=3)
-            availability = _availability_factor(p.chance_of_playing_next_round, p.news)
-            minutes_security = _minutes_factor(p.minutes)
-            ownership = max(0.0, min(p.selected_by_percent, 100.0))
-
-            fixture_count = _fixture_count_for_gw(p, fixtures, gw)
-            fixture_factor = _fixture_factor(p, fixtures, gw)
-            fixture_volatility = max(0.0, min(1.0, abs(1.0 - fixture_factor)))
-
-            role_uncertainty = 0.0
-            if p.element_type in {1, 2}:  # GK/DEF captain roles usually lower upside certainty
-                role_uncertainty += 0.06
-            if p.form < 2.5:
-                role_uncertainty += 0.08
-
-            rotation_proxy = max(0.0, min(1.0, 1.0 - min(minutes_security, 1.0)))
-            availability_risk = max(0.0, min(1.0, 1.0 - availability))
-
-            # Composite risk: availability + rotation + fixture volatility + role uncertainty.
-            risk = (
-                availability_risk * 0.38
-                + rotation_proxy * 0.30
-                + fixture_volatility * 0.20
-                + role_uncertainty * 0.12
-            )
-
-            # DGW slight de-risking due to multiple opportunities, blank hard risk.
-            if fixture_count >= 2:
-                risk *= 0.82
-            if fixture_count == 0:
-                risk = min(1.0, risk + 0.55)
-
-            safe_score = xp3 * (1 - risk * 0.78) + (ownership * 0.01)
-            upside_score = xp3 * (1 - risk * 0.22) + (max(0.0, 25.0 - ownership) / 25.0) * 1.8 + (p.form * 0.12)
-
-            fixture_count = _fixture_count_for_gw(p, fixtures, gw)
-            fixture_badge = "DGW" if fixture_count >= 2 else ("BLANK" if fixture_count == 0 else "SGW")
-
-            if risk < 0.26:
-                risk_band = "green"
-                risk_label = "low"
-            elif risk < 0.5:
-                risk_band = "yellow"
-                risk_label = "medium"
-            else:
-                risk_band = "red"
-                risk_label = "high"
-
-            common = {
-                "id": p.id,
-                "name": p.web_name,
-                "position": POSITION_MAP.get(p.element_type, str(p.element_type)),
-                "price": round(p.now_cost / 10.0, 1),
-                "xP_next_1": xp1,
-                "xP_next_3": xp3,
-                "ownership_pct": round(ownership, 1),
-                "risk": round(risk, 2),
-                "risk_band": risk_band,
-                "risk_label": risk_label,
-                "form": round(p.form, 2),
-                "fixture_count": fixture_count,
-                "fixture_badge": fixture_badge,
-            }
-
-            safe_board.append({**common, "captain_score": round(safe_score, 2)})
-            upside_board.append({**common, "captain_score": round(upside_score, 2)})
-
-        safe_board.sort(key=lambda x: x["captain_score"], reverse=True)
-        upside_board.sort(key=lambda x: x["captain_score"], reverse=True)
-
-        return {
-            "gameweek": gw,
-            "safe_captains": safe_board[:limit],
-            "upside_captains": upside_board[:limit],
-            "summary": "Captaincy lab ranks stable vs upside captain options using xP horizon, risk, and ownership pressure.",
-        }
+        return build_captaincy_lab(players, fixtures, gw, limit)
     finally:
         db.close()
 
@@ -399,40 +319,7 @@ def explainability_top(
 
         fixtures = db.query(Fixture).all()
         gw = _resolve_gameweek(db, gameweek)
-
-        scored = []
-        for p in players:
-            xp = _expected_points(p, fixtures, gw)
-            breakdown = _explainability_breakdown(p, fixtures, gw)
-            scored.append((xp, p, breakdown))
-
-        scored.sort(key=lambda x: x[0], reverse=True)
-
-        out = []
-        for xp, p, breakdown in scored[:limit]:
-            fixture_count = _fixture_count_for_gw(p, fixtures, gw)
-            fixture_badge = "DGW" if fixture_count >= 2 else ("BLANK" if fixture_count == 0 else "SGW")
-
-            out.append(
-                {
-                    "id": p.id,
-                    "name": p.web_name,
-                    "position": POSITION_MAP.get(p.element_type, str(p.element_type)),
-                    "price": round(p.now_cost / 10.0, 1),
-                    "xP": round(xp, 2),
-                    "fixture_count": fixture_count,
-                    "fixture_badge": fixture_badge,
-                    "breakdown": breakdown,
-                    "reason": _reason(p, xp),
-                }
-            )
-
-        return {
-            "gameweek": gw,
-            "count": len(out),
-            "players": out,
-            "summary": "Top players with explainability factors (form, fixture, minutes, availability, risk, volatility).",
-        }
+        return build_explainability_top(players, fixtures, gw, limit)
     finally:
         db.close()
 
@@ -450,103 +337,7 @@ def chip_planner(
 
         fixtures = db.query(Fixture).all()
         gw = _resolve_gameweek(db, gameweek)
-
-        team_ids = sorted({p.team_id for p in players})
-
-        # Team-level fixture strength proxy for upcoming horizon.
-        team_strength: Dict[int, float] = {}
-        for team_id in team_ids:
-            vals = []
-            for f in fixtures:
-                if f.event is None or f.event < gw or f.event >= gw + horizon:
-                    continue
-                if f.team_h == team_id:
-                    vals.append(f.team_h_difficulty)
-                elif f.team_a == team_id:
-                    vals.append(f.team_a_difficulty)
-            team_strength[team_id] = (sum(vals) / len(vals)) if vals else 3.0
-
-        easy_teams = sorted(team_strength.items(), key=lambda x: x[1])[:5]
-        hard_teams = sorted(team_strength.items(), key=lambda x: x[1], reverse=True)[:5]
-
-        # Blank/Double GW detection for near-term planning windows.
-        gw_fixture_stats = []
-        for ev in range(gw, gw + min(horizon, 6)):
-            counts = {tid: 0 for tid in team_ids}
-            for f in fixtures:
-                if f.event != ev:
-                    continue
-                counts[f.team_h] = counts.get(f.team_h, 0) + 1
-                counts[f.team_a] = counts.get(f.team_a, 0) + 1
-
-            blank_teams = sum(1 for _, c in counts.items() if c == 0)
-            double_teams = sum(1 for _, c in counts.items() if c >= 2)
-            gw_fixture_stats.append(
-                {
-                    "gameweek": ev,
-                    "blank_teams": blank_teams,
-                    "double_teams": double_teams,
-                }
-            )
-
-        max_blank = max((x["blank_teams"] for x in gw_fixture_stats), default=0)
-        max_double = max((x["double_teams"] for x in gw_fixture_stats), default=0)
-
-        # Chip heuristics (v2): include blank/double structure.
-        wildcard_score = max(0.0, min(10.0, (sum(v for _, v in hard_teams) / max(1, len(hard_teams))) * 1.2))
-
-        # Free Hit spikes with large blank GW pressure.
-        free_hit_score = max(0.0, min(10.0, 2.0 + (max_blank * 0.45)))
-
-        # Bench boost benefits from doubles and bench depth.
-        playable_bench = 0
-        for p in players:
-            if p.now_cost / 10.0 <= 5.8 and p.minutes >= 450:
-                if _expected_points_horizon(p, fixtures, gw, horizon=3) >= 4.2:
-                    playable_bench += 1
-        bench_boost_score = max(0.0, min(10.0, (playable_bench / 2.2) + (max_double * 0.35)))
-
-        # Triple captain likes elite short-horizon xP + doubles.
-        premiums = [p for p in players if p.now_cost / 10.0 >= 10.0]
-        top_premium_xp = max((_expected_points_horizon(p, fixtures, gw, horizon=2) for p in premiums), default=0.0)
-        triple_captain_score = max(0.0, min(10.0, (top_premium_xp * 1.0) + (max_double * 0.28)))
-
-        ranked = sorted(
-            [
-                ("wildcard", wildcard_score),
-                ("free_hit", free_hit_score),
-                ("bench_boost", bench_boost_score),
-                ("triple_captain", triple_captain_score),
-            ],
-            key=lambda x: x[1],
-            reverse=True,
-        )
-        best_chip = ranked[0]
-        alt_chip = ranked[1]
-
-        recommendation = "hold"
-        confidence = 0.45
-        if best_chip[1] >= 7.4:
-            recommendation = f"play_{best_chip[0]}"
-            confidence = min(0.9, 0.55 + ((best_chip[1] - alt_chip[1]) / 10.0))
-
-        return {
-            "gameweek": gw,
-            "horizon": horizon,
-            "chip_scores": {
-                "wildcard": round(wildcard_score, 2),
-                "free_hit": round(free_hit_score, 2),
-                "bench_boost": round(bench_boost_score, 2),
-                "triple_captain": round(triple_captain_score, 2),
-            },
-            "fixture_windows": gw_fixture_stats,
-            "easy_fixture_teams": [{"team_id": t, "avg_difficulty": round(s, 2)} for t, s in easy_teams],
-            "hard_fixture_teams": [{"team_id": t, "avg_difficulty": round(s, 2)} for t, s in hard_teams],
-            "recommendation": recommendation,
-            "alternative": f"play_{alt_chip[0]}" if alt_chip[1] >= 6.8 else "hold",
-            "confidence": round(confidence, 2),
-            "summary": "Chip planner scores chip timing using fixture swings plus blank/double GW pressure.",
-        }
+        return build_chip_planner(players, fixtures, gw, horizon)
     finally:
         db.close()
 
@@ -562,98 +353,17 @@ def rival_intelligence(
         gw = _resolve_gameweek(db, gameweek)
         current_gw = _int(_get_meta(db, "current_gw"), 0)
 
-        my_payload, my_gw = _fetch_entry_picks_with_fallback(entry_id, gw, [current_gw, gw - 1])
-        rival_payload, _ = _fetch_entry_picks_with_fallback(rival_entry_id, my_gw, [current_gw, my_gw - 1])
-
-        my_picks = my_payload.get("picks", [])
-        rival_picks = rival_payload.get("picks", [])
-
-        my_ids = {_int(p.get("element")) for p in my_picks}
-        rival_ids = {_int(p.get("element")) for p in rival_picks}
-
-        overlap = sorted(my_ids.intersection(rival_ids))
-        my_only = sorted(my_ids - rival_ids)
-        rival_only = sorted(rival_ids - my_ids)
-
         players = db.query(Player).all()
         fixtures = db.query(Fixture).all()
-        by_id = {p.id: p for p in players}
-
-        my_captain_id = next((_int(p.get("element")) for p in my_picks if bool(p.get("is_captain", False))), None)
-        rival_captain_id = next((_int(p.get("element")) for p in rival_picks if bool(p.get("is_captain", False))), None)
-
-        def names(ids: List[int]) -> List[str]:
-            out = []
-            for pid in ids:
-                p = by_id.get(pid)
-                if p:
-                    out.append(p.web_name)
-            return out
-
-        # Differential impact scoring
-        my_diff_scored = []
-        for pid in my_only:
-            p = by_id.get(pid)
-            if not p:
-                continue
-            xp = _expected_points_horizon(p, fixtures, my_gw, horizon=3)
-            eo_pressure = min(1.0, max(0.0, p.selected_by_percent / 100.0))
-            impact = xp * (1.0 - eo_pressure)
-            my_diff_scored.append({
-                "id": p.id,
-                "name": p.web_name,
-                "xP_3": round(xp, 2),
-                "ownership_pct": round(p.selected_by_percent, 1),
-                "impact_score": round(impact, 2),
-            })
-
-        rival_diff_scored = []
-        for pid in rival_only:
-            p = by_id.get(pid)
-            if not p:
-                continue
-            xp = _expected_points_horizon(p, fixtures, my_gw, horizon=3)
-            eo_pressure = min(1.0, max(0.0, p.selected_by_percent / 100.0))
-            impact = xp * (1.0 - eo_pressure)
-            rival_diff_scored.append({
-                "id": p.id,
-                "name": p.web_name,
-                "xP_3": round(xp, 2),
-                "ownership_pct": round(p.selected_by_percent, 1),
-                "impact_score": round(impact, 2),
-            })
-
-        my_diff_scored.sort(key=lambda x: x["impact_score"], reverse=True)
-        rival_diff_scored.sort(key=lambda x: x["impact_score"], reverse=True)
-
-        my_captain_name = by_id.get(my_captain_id).web_name if my_captain_id in by_id else None
-        rival_captain_name = by_id.get(rival_captain_id).web_name if rival_captain_id in by_id else None
-        captain_overlap = my_captain_id is not None and my_captain_id == rival_captain_id
-
-        captain_risk = "high_if_diff" if not captain_overlap else "hedged"
-
-        return {
-            "gameweek": my_gw,
-            "entry_id": entry_id,
-            "rival_entry_id": rival_entry_id,
-            "overlap_count": len(overlap),
-            "my_only_count": len(my_only),
-            "rival_only_count": len(rival_only),
-            "overlap_players": names(overlap),
-            "my_differentials": names(my_only),
-            "rival_differentials": names(rival_only),
-            "captaincy": {
-                "my_captain": my_captain_name,
-                "rival_captain": rival_captain_name,
-                "overlap": captain_overlap,
-                "risk": captain_risk,
-            },
-            "differential_impact": {
-                "my_top": my_diff_scored[:8],
-                "rival_top": rival_diff_scored[:8],
-            },
-            "summary": "Rival intelligence compares overlap, captaincy exposure, and differential impact scores.",
-        }
+        return build_rival_intelligence(
+            db=db,
+            players=players,
+            fixtures=fixtures,
+            entry_id=entry_id,
+            rival_entry_id=rival_entry_id,
+            gameweek=gw,
+            current_gw=current_gw,
+        )
     finally:
         db.close()
 
