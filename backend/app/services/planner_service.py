@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from app.api.routes.base import (
     _expected_points_horizon,
@@ -8,9 +8,17 @@ from app.api.routes.base import (
     _int,
 )
 from app.db.models import Fixture, Player
+from app.services.http_client import fetch_json
 
 
-def build_chip_planner(players: List[Player], fixtures: List[Fixture], gw: int, horizon: int) -> dict:
+def build_chip_planner(
+    players: List[Player],
+    fixtures: List[Fixture],
+    gw: int,
+    horizon: int,
+    *,
+    entry_id: Optional[int] = None,
+) -> dict:
     team_ids = sorted({p.team_id for p in players})
 
     team_strength: Dict[int, float] = {}
@@ -58,24 +66,88 @@ def build_chip_planner(players: List[Player], fixtures: List[Fixture], gw: int, 
     top_premium_xp = max((_expected_points_horizon(p, fixtures, gw, horizon=2) for p in premiums), default=0.0)
     triple_captain_score = max(0.0, min(10.0, (top_premium_xp * 1.0) + (max_double * 0.28)))
 
-    ranked = sorted(
-        [
-            ("wildcard", wildcard_score),
-            ("free_hit", free_hit_score),
-            ("bench_boost", bench_boost_score),
-            ("triple_captain", triple_captain_score),
-        ],
-        key=lambda x: x[1],
-        reverse=True,
-    )
-    best_chip = ranked[0]
-    alt_chip = ranked[1]
+    chip_scores = {
+        "wildcard": wildcard_score,
+        "free_hit": free_hit_score,
+        "bench_boost": bench_boost_score,
+        "triple_captain": triple_captain_score,
+    }
+
+    chip_history = []
+    chip_usage = {
+        "wildcard": {"used_count": 0, "max_uses": 2, "remaining": 2, "available": True, "used_gws": []},
+        "free_hit": {"used_count": 0, "max_uses": 2, "remaining": 2, "available": True, "used_gws": []},
+        "bench_boost": {"used_count": 0, "max_uses": 1, "remaining": 1, "available": True, "used_gws": []},
+        "triple_captain": {"used_count": 0, "max_uses": 1, "remaining": 1, "available": True, "used_gws": []},
+    }
+
+    if entry_id:
+        try:
+            hist = fetch_json(
+                f"https://fantasy.premierleague.com/api/entry/{entry_id}/history/",
+                timeout=20,
+                not_found_detail=f"FPL team {entry_id} not found",
+                upstream_error_prefix="Could not fetch chip usage history",
+            )
+            chip_map = {
+                "wildcard": "wildcard",
+                "freehit": "free_hit",
+                "bboost": "bench_boost",
+                "3xc": "triple_captain",
+            }
+            label_map = {
+                "wildcard": "Wildcard",
+                "free_hit": "Free Hit",
+                "bench_boost": "Bench Boost",
+                "triple_captain": "Triple Captain",
+            }
+            for c in hist.get("chips", []) or []:
+                raw = str(c.get("name") or "").lower().strip()
+                key = chip_map.get(raw)
+                if not key:
+                    continue
+                gw_used = _int(c.get("event"), 0)
+                item = chip_usage[key]
+                item["used_count"] += 1
+                if gw_used > 0:
+                    item["used_gws"].append(gw_used)
+                chip_history.append(
+                    {
+                        "chip": key,
+                        "label": label_map.get(key, key),
+                        "gameweek": gw_used if gw_used > 0 else None,
+                        "time": c.get("time"),
+                    }
+                )
+
+            for key, item in chip_usage.items():
+                item["used_gws"] = sorted(item["used_gws"])
+                # Some FPL histories can report multi-use chip events (e.g., season-over-season/history behavior).
+                # Keep display coherent by never showing used_count above max_uses.
+                item["max_uses"] = max(int(item["max_uses"]), int(item["used_count"]))
+                item["remaining"] = max(0, int(item["max_uses"]) - int(item["used_count"]))
+                item["available"] = item["remaining"] > 0
+
+            chip_history.sort(key=lambda x: (_int(x.get("gameweek"), 0), str(x.get("time") or "")))
+        except Exception:  # noqa: BLE001
+            pass
+
+    # Exclude fully used chips from recommendations.
+    available_scores = {
+        k: v for k, v in chip_scores.items()
+        if bool((chip_usage.get(k) or {}).get("available", True))
+    }
+
+    sorted_available = sorted(available_scores.items(), key=lambda kv: kv[1], reverse=True)
+    best_chip = sorted_available[0] if sorted_available else None
+    alt_chip = sorted_available[1] if len(sorted_available) > 1 else None
 
     recommendation = "hold"
     confidence = 0.45
-    if best_chip[1] >= 7.4:
+    if best_chip and best_chip[1] >= 7.4:
         recommendation = f"play_{best_chip[0]}"
-        confidence = min(0.9, 0.55 + ((best_chip[1] - alt_chip[1]) / 10.0))
+        alt_score = alt_chip[1] if alt_chip else 0.0
+        confidence = min(0.9, 0.55 + ((best_chip[1] - alt_score) / 10.0))
 
     return {
         "gameweek": gw,
@@ -86,11 +158,13 @@ def build_chip_planner(players: List[Player], fixtures: List[Fixture], gw: int, 
             "bench_boost": round(bench_boost_score, 2),
             "triple_captain": round(triple_captain_score, 2),
         },
+        "chip_usage": chip_usage,
+        "chip_history": chip_history,
         "fixture_windows": gw_fixture_stats,
         "easy_fixture_teams": [{"team_id": t, "avg_difficulty": round(s, 2)} for t, s in easy_teams],
         "hard_fixture_teams": [{"team_id": t, "avg_difficulty": round(s, 2)} for t, s in hard_teams],
         "recommendation": recommendation,
-        "alternative": f"play_{alt_chip[0]}" if alt_chip[1] >= 6.8 else "hold",
+        "alternative": (f"play_{alt_chip[0]}" if alt_chip and alt_chip[1] >= 6.8 else "hold"),
         "confidence": round(confidence, 2),
         "summary": "Chip planner scores chip timing using fixture swings plus blank/double GW pressure.",
     }
@@ -168,10 +242,27 @@ def build_rival_intelligence(
 
     captain_risk = "high_if_diff" if not captain_overlap else "hedged"
 
+    def _overall_rank_for_entry(team_entry_id: int):
+        try:
+            entry = fetch_json(
+                f"https://fantasy.premierleague.com/api/entry/{team_entry_id}/",
+                timeout=20,
+                not_found_detail=f"FPL team {team_entry_id} not found",
+                upstream_error_prefix="Could not fetch FPL entry profile",
+            )
+            return _int(entry.get("summary_overall_rank"), 0) or None
+        except Exception:  # noqa: BLE001
+            return None
+
+    my_overall_rank = _overall_rank_for_entry(entry_id)
+    rival_overall_rank = _overall_rank_for_entry(rival_entry_id)
+
     return {
         "gameweek": my_gw,
         "entry_id": entry_id,
         "rival_entry_id": rival_entry_id,
+        "entry_overall_rank": my_overall_rank,
+        "rival_overall_rank": rival_overall_rank,
         "overlap_count": len(overlap),
         "my_only_count": len(my_only),
         "rival_only_count": len(rival_only),

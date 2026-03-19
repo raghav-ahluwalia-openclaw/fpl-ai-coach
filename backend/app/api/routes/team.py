@@ -395,7 +395,8 @@ def what_if_simulator(
         db.close()
 
 
-@router.get("/api/fpl/team/{entry_id}/weekly-cockpit")
+@router.get("/api/fpl/team/{entry_id}/gameweek-hub")
+@router.get("/api/fpl/team/{entry_id}/weekly-cockpit")  # backward-compatible alias
 def weekly_cockpit(
     entry_id: int,
     gameweek: Optional[int] = Query(default=None, ge=1, le=38),
@@ -771,6 +772,7 @@ def weekly_cockpit(
         return {
             "entry_id": entry_id,
             "gameweek": gw,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
             "picks_source_gw": picks_source_gw,
             "mode": mode,
             "team_overview": {
@@ -803,10 +805,295 @@ def weekly_cockpit(
                 "differential": diff_caps,
             },
             "what_changed": changes,
-            "summary": "Weekly cockpit with team health, top transfer plans (1FT/2FT), captain matrix, and latest changes.",
+            "summary": "Gameweek Hub with team health, top transfer plans (1FT/2FT), captain matrix, and latest changes.",
         }
     finally:
         db.close()
+
+
+@router.get("/api/fpl/team/{entry_id}/leagues")
+def team_leagues(entry_id: int):
+    entry_url = f"https://fantasy.premierleague.com/api/entry/{entry_id}/"
+    payload = fetch_json(
+        entry_url,
+        timeout=20,
+        not_found_detail=f"FPL team {entry_id} not found",
+        upstream_error_prefix="Could not fetch team leagues from FPL",
+    )
+
+    leagues = payload.get("leagues", {}) or {}
+    classic = leagues.get("classic", []) or []
+    h2h = leagues.get("h2h", []) or []
+
+    league_rows = []
+
+    def _standings_url(kind: str, league_id: int, page: int) -> str:
+        if kind == "h2h":
+            return f"https://fantasy.premierleague.com/api/leagues-h2h/{league_id}/standings/?page_standings={page}"
+        return f"https://fantasy.premierleague.com/api/leagues-classic/{league_id}/standings/?page_standings={page}"
+
+    def _to_points(row: dict) -> int:
+        return _int(row.get("total"), 0)
+
+    for kind, items in (("classic", classic), ("h2h", h2h)):
+        for lg in items:
+            league_id = _int(lg.get("id"), 0)
+            if league_id <= 0:
+                continue
+
+            entry_rank = _int(lg.get("entry_rank"), 0)
+            entry_last_rank = _int(lg.get("entry_last_rank"), 0)
+            page = max(1, ((entry_rank - 1) // 50) + 1) if entry_rank > 0 else 1
+
+            try:
+                details = fetch_json(
+                    _standings_url(kind, league_id, page),
+                    timeout=20,
+                    upstream_error_prefix=f"Could not fetch standings for league {league_id}",
+                )
+                standings = (details.get("standings") or {}).get("results", []) or []
+
+                first_page = details
+                if page != 1:
+                    first_page = fetch_json(
+                        _standings_url(kind, league_id, 1),
+                        timeout=20,
+                        upstream_error_prefix=f"Could not fetch leader data for league {league_id}",
+                    )
+
+                first_results = (first_page.get("standings") or {}).get("results", []) or []
+                leader_row = first_results[0] if first_results else {}
+                leader_points = _to_points(leader_row)
+
+                your_row = None
+                for r in standings:
+                    if _int(r.get("entry"), 0) == entry_id:
+                        your_row = r
+                        break
+                if your_row is None and standings:
+                    # fallback by rank if entry id is absent in this page payload
+                    your_row = next((r for r in standings if _int(r.get("rank"), 0) == entry_rank), None)
+
+                your_points = _to_points(your_row or {})
+                your_rank = _int((your_row or {}).get("rank"), entry_rank)
+                last_rank = _int((your_row or {}).get("last_rank"), entry_last_rank)
+
+                # Rank can be tied/skipped; derive neighbors via rank_sort (strict ordering).
+                combined_rows = list(standings)
+                for neighbor_page in [page - 1, page + 1]:
+                    if neighbor_page < 1:
+                        continue
+                    try:
+                        neighbor = fetch_json(
+                            _standings_url(kind, league_id, neighbor_page),
+                            timeout=20,
+                            upstream_error_prefix=f"Could not fetch neighboring standings for league {league_id}",
+                        )
+                        combined_rows.extend((neighbor.get("standings") or {}).get("results", []) or [])
+                    except HTTPException:
+                        pass
+
+                # De-duplicate by entry id.
+                uniq = {}
+                for r in combined_rows:
+                    rid = _int(r.get("entry"), 0)
+                    if rid <= 0:
+                        continue
+                    uniq[rid] = r
+                combined_rows = list(uniq.values())
+
+                # Always prefer exact entry match once neighbor pages are loaded.
+                exact_row = next((r for r in combined_rows if _int(r.get("entry"), 0) == entry_id), None)
+                if exact_row is not None:
+                    your_row = exact_row
+                    your_points = _to_points(your_row)
+                    your_rank = _int(your_row.get("rank"), your_rank)
+                    last_rank = _int(your_row.get("last_rank"), last_rank)
+
+                above = None
+                below = None
+                if your_row is not None:
+                    your_sort = _int(your_row.get("rank_sort"), 0)
+                    if your_sort > 0:
+                        above_cands = [r for r in combined_rows if 0 < _int(r.get("rank_sort"), 0) < your_sort]
+                        below_cands = [r for r in combined_rows if _int(r.get("rank_sort"), 0) > your_sort]
+                        if above_cands:
+                            above = max(above_cands, key=lambda r: _int(r.get("rank_sort"), 0))
+                        if below_cands:
+                            below = min(below_cands, key=lambda r: _int(r.get("rank_sort"), 0))
+
+                # For large public leagues, adjacent rank_sort entries can have equal points.
+                # Use nearest distinct points when available so gaps remain decision-useful.
+                higher_points = sorted({_to_points(r) for r in combined_rows if _to_points(r) > your_points})
+                lower_points = sorted({_to_points(r) for r in combined_rows if _to_points(r) < your_points})
+
+                if higher_points:
+                    gap_above = max(1, higher_points[0] - your_points)
+                else:
+                    gap_above = (_to_points(above) - your_points) if above else None
+                    if gap_above == 0 and your_rank > 1:
+                        gap_above = 1
+
+                if lower_points:
+                    gap_below = max(1, your_points - lower_points[-1])
+                else:
+                    gap_below = (your_points - _to_points(below)) if below else None
+                    if gap_below == 0 and below is not None:
+                        gap_below = 1
+
+                league_meta = details.get("league") or {}
+                entry_count = (
+                    _int(lg.get("rank_count"), 0)
+                    or _int(league_meta.get("max_entries"), 0)
+                    or _int((details.get("standings") or {}).get("entry_count"), 0)
+                )
+                if entry_count <= 0 and your_rank > 0:
+                    # fallback for h2h/private leagues when count isn't provided
+                    entry_count = max(your_rank, _int((leader_row or {}).get("rank"), 0), len((first_page.get("standings") or {}).get("results", []) or []))
+
+                percentile = round((1.0 - ((max(your_rank, 1) - 1) / max(entry_count - 1, 1))) * 100.0, 1) if entry_count > 1 else 100.0
+
+                around_sorted = sorted(standings, key=lambda x: _int(x.get("rank"), 10**9))
+                around = []
+                for r in around_sorted:
+                    rr = _int(r.get("rank"), 0)
+                    if your_rank > 0 and abs(rr - your_rank) <= 2:
+                        around.append(
+                            {
+                                "rank": rr,
+                                "entry": _int(r.get("entry"), 0),
+                                "entry_name": r.get("entry_name"),
+                                "manager": r.get("player_name"),
+                                "points": _to_points(r),
+                                "event_points": _int(r.get("event_total"), 0),
+                            }
+                        )
+
+                league_rows.append(
+                    {
+                        "league_id": league_id,
+                        "name": lg.get("name"),
+                        "type": kind,
+                        "entry_count": entry_count,
+                        "your_rank": your_rank,
+                        "last_rank": last_rank,
+                        "rank_delta": (last_rank - your_rank) if your_rank > 0 and last_rank > 0 else 0,
+                        "you_points": your_points,
+                        "leader_points": leader_points,
+                        "gap_to_leader": (leader_points - your_points) if leader_points >= your_points else 0,
+                        "gap_to_next_above": gap_above,
+                        "gap_to_next_below": gap_below,
+                        "percentile": percentile,
+                        "last_updated_data": details.get("last_updated_data") or first_page.get("last_updated_data"),
+                        "around": around,
+                    }
+                )
+            except HTTPException:
+                league_rows.append(
+                    {
+                        "league_id": league_id,
+                        "name": lg.get("name"),
+                        "type": kind,
+                        "entry_count": _int(lg.get("rank_count"), 0),
+                        "your_rank": entry_rank,
+                        "last_rank": entry_last_rank,
+                        "rank_delta": (entry_last_rank - entry_rank) if entry_rank > 0 and entry_last_rank > 0 else 0,
+                        "you_points": 0,
+                        "leader_points": 0,
+                        "gap_to_leader": 0,
+                        "gap_to_next_above": None,
+                        "gap_to_next_below": None,
+                        "percentile": 0.0,
+                        "last_updated_data": None,
+                        "around": [],
+                    }
+                )
+
+    type_order = {"classic": 0, "h2h": 1}
+    league_rows.sort(
+        key=lambda x: (
+            type_order.get(str(x.get("type") or "").lower(), 9),
+            -float(x.get("percentile") or 0.0),
+            x.get("your_rank") or 10**9,
+            x.get("name") or "",
+        )
+    )
+
+    insights = []
+    if league_rows:
+        overtake_candidates = [
+            l for l in league_rows
+            if isinstance(l.get("gap_to_next_above"), int) and l.get("gap_to_next_above") is not None and int(l.get("gap_to_next_above") or 0) > 1
+        ]
+        if not overtake_candidates:
+            overtake_candidates = [
+                l for l in league_rows
+                if isinstance(l.get("gap_to_next_above"), int) and l.get("gap_to_next_above") is not None
+            ]
+        closest_overtake = min(
+            overtake_candidates,
+            key=lambda x: x.get("gap_to_next_above", 10**9),
+            default=None,
+        )
+        if closest_overtake and closest_overtake.get("gap_to_next_above") is not None:
+            insights.append(
+                {
+                    "type": "closest_overtake",
+                    "text": f"Closest overtake: {closest_overtake['name']} (need {closest_overtake['gap_to_next_above']} pts).",
+                }
+            )
+
+        pressure_candidates = [
+            l for l in league_rows
+            if isinstance(l.get("gap_to_next_below"), int) and l.get("gap_to_next_below") is not None and int(l.get("gap_to_next_below") or 0) > 1
+        ]
+        if not pressure_candidates:
+            pressure_candidates = [
+                l for l in league_rows
+                if isinstance(l.get("gap_to_next_below"), int) and l.get("gap_to_next_below") is not None
+            ]
+        pressure_league = min(
+            pressure_candidates,
+            key=lambda x: x.get("gap_to_next_below", 10**9),
+            default=None,
+        )
+        if pressure_league and pressure_league.get("gap_to_next_below") is not None:
+            insights.append(
+                {
+                    "type": "pressure_alert",
+                    "text": f"Pressure alert: only {pressure_league['gap_to_next_below']} pts ahead in {pressure_league['name']}.",
+                }
+            )
+
+        best_league = max(league_rows, key=lambda x: float(x.get("percentile") or 0.0), default=None)
+        if best_league:
+            insights.append(
+                {
+                    "type": "best_league",
+                    "text": f"Best standing: {best_league['name']} at top {round(100 - float(best_league.get('percentile') or 0.0), 1)}% (rank {best_league['your_rank']}).",
+                }
+            )
+
+        biggest_climb = max(league_rows, key=lambda x: int(x.get("rank_delta") or 0), default=None)
+        if biggest_climb and int(biggest_climb.get("rank_delta") or 0) > 0:
+            insights.append(
+                {
+                    "type": "momentum",
+                    "text": f"Best momentum: +{biggest_climb['rank_delta']} places in {biggest_climb['name']}.",
+                }
+            )
+
+    return {
+        "entry_id": entry_id,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "summary": {
+            "league_count": len(league_rows),
+            "classic_count": len([x for x in league_rows if x.get("type") == "classic"]),
+            "h2h_count": len([x for x in league_rows if x.get("type") == "h2h"]),
+        },
+        "insights": insights,
+        "leagues": league_rows,
+    }
 
 
 @router.get("/api/fpl/team/{entry_id}/rank-history", response_model=RankHistoryResponse)

@@ -54,9 +54,10 @@ type CaptainCandidate = {
   fixture_window_next_3: FixtureWindow;
 };
 
-type WeeklyCockpit = {
+type GameweekHub = {
   entry_id: number;
   gameweek: number;
+  generated_at?: string;
   picks_source_gw?: number;
   mode: Mode;
   team_overview: {
@@ -124,7 +125,7 @@ export default function WeeklyPage() {
   const [xpView, setXpView] = useState<XpView>("1gw");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<WeeklyCockpit | null>(null);
+  const [data, setData] = useState<GameweekHub | null>(null);
   const [captainInfoOpen, setCaptainInfoOpen] = useState(false);
   const [captainInfoPinned, setCaptainInfoPinned] = useState(false);
   const [lineupInfoOpen, setLineupInfoOpen] = useState(false);
@@ -149,10 +150,10 @@ export default function WeeklyPage() {
     setError(null);
     try {
       await fetchJson(`/api/fpl/team/${id}/import`, { method: "POST" });
-      const cockpit = await fetchJson<WeeklyCockpit>(`/api/fpl/team/${id}/weekly-cockpit?mode=${mode}`);
-      setData(cockpit);
+      const hub = await fetchJson<GameweekHub>(`/api/fpl/team/${id}/gameweek-hub?mode=${mode}`);
+      setData(hub);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to load weekly cockpit");
+      setError(e instanceof Error ? e.message : "Failed to load Gameweek Hub");
     } finally {
       setLoading(false);
     }
@@ -166,9 +167,11 @@ export default function WeeklyPage() {
   }, [teamId, run]);
 
   return (
-    <main className="min-h-screen p-4 md:p-8 max-w-6xl mx-auto text-white">
+    <main className="min-h-screen p-3 sm:p-4 md:p-8 max-w-6xl mx-auto text-white">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
-        <h1 className="text-3xl font-black">Weekly Cockpit</h1>
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-black">Gameweek Hub</h1>
+        </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="inline-flex rounded-md border border-white/20 overflow-hidden">
             <button
@@ -199,18 +202,18 @@ export default function WeeklyPage() {
       </div>
 
       <section className={`${cardClass} mb-4`}>
-        <div className="flex gap-3 flex-wrap items-center">
+        <div className="grid sm:flex gap-2 sm:gap-3 items-center">
           <input
             value={teamId}
             onChange={(e) => setTeamId(e.target.value.replace(/\D/g, ""))}
             placeholder="FPL Team ID"
             inputMode="numeric"
-            className="rounded-md px-3 py-2 bg-black/30 border border-white/20 min-w-[220px]"
+            className="rounded-md px-3 py-2 bg-black/30 border border-white/20 w-full sm:min-w-[220px] sm:w-auto"
           />
           <button
             onClick={() => void run()}
             disabled={loading || !/^\d+$/.test(teamId.trim())}
-            className="px-4 py-2 rounded-md bg-[#00ff87] text-[#37003c] font-bold disabled:opacity-60"
+            className="px-4 py-2 rounded-md bg-[#00ff87] text-[#37003c] font-bold disabled:opacity-60 w-full sm:w-auto"
           >
             {loading ? "Loading..." : "Run Weekly Plan"}
           </button>

@@ -20,6 +20,7 @@ from app.services.planner_service import build_chip_planner, build_rival_intelli
 def chip_planner(
     gameweek: Optional[int] = Query(default=None, ge=1, le=38),
     horizon: int = Query(default=6, ge=3, le=10),
+    entry_id: Optional[int] = Query(default=None, ge=1),
 ):
     db = SessionLocal()
     try:
@@ -29,7 +30,7 @@ def chip_planner(
 
         fixtures = db.query(Fixture).all()
         gw = _resolve_gameweek(db, gameweek)
-        return build_chip_planner(players, fixtures, gw, horizon)
+        return build_chip_planner(players, fixtures, gw, horizon, entry_id=entry_id)
     finally:
         db.close()
 

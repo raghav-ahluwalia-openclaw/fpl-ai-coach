@@ -19,8 +19,9 @@ export const metadata: Metadata = {
 };
 
 const navItems = [
-  { href: "/weekly", label: "Weekly Cockpit" },
+  { href: "/weekly", label: "Gameweek Hub" },
   { href: "/planner", label: "Planner" },
+  { href: "/leagues", label: "Leagues" },
   { href: "/top", label: "Research" },
   { href: "/socials", label: "FPL Socials" },
 ];

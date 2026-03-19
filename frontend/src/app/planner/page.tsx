@@ -13,6 +13,11 @@ type ChipPlannerResponse = {
     bench_boost: number;
     triple_captain: number;
   };
+  chip_usage?: Record<
+    "wildcard" | "free_hit" | "bench_boost" | "triple_captain",
+    { used_count: number; max_uses: number; remaining: number; available: boolean; used_gws: number[] }
+  >;
+  chip_history?: Array<{ chip: string; label: string; gameweek?: number | null; time?: string | null }>;
   fixture_windows: { gameweek: number; blank_teams: number; double_teams: number }[];
   recommendation: string;
   alternative?: string;
@@ -26,6 +31,8 @@ type AppSettings = {
 
 type RivalIntelResponse = {
   gameweek: number;
+  entry_overall_rank?: number | null;
+  rival_overall_rank?: number | null;
   overlap_count: number;
   my_only_count: number;
   rival_only_count: number;
@@ -45,7 +52,7 @@ type RivalIntelResponse = {
 };
 
 const API_BASE = "";
-const cardClass = "rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md p-5";
+const cardClass = "rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md p-4 md:p-5";
 
 export default function PlannerPage() {
   const [chip, setChip] = useState<ChipPlannerResponse | null>(null);
@@ -56,10 +63,6 @@ export default function PlannerPage() {
   const autoCompareDone = useRef(false);
 
   useEffect(() => {
-    fetchJson<ChipPlannerResponse>(`${API_BASE}/api/fpl/chip-planner?horizon=6`)
-      .then(setChip)
-      .catch((e) => setError(e.message || "Failed to load chip planner"));
-
     fetchJson<AppSettings>(`${API_BASE}/api/fpl/settings`)
       .then((s) => {
         if (s.fpl_entry_id) setEntryId((prev) => prev || String(s.fpl_entry_id));
@@ -67,6 +70,15 @@ export default function PlannerPage() {
       })
       .catch(() => null);
   }, []);
+
+  useEffect(() => {
+    const qs = new URLSearchParams({ horizon: "6" });
+    if (entryId) qs.set("entry_id", entryId);
+
+    fetchJson<ChipPlannerResponse>(`${API_BASE}/api/fpl/chip-planner?${qs.toString()}`)
+      .then(setChip)
+      .catch((e) => setError(e.message || "Failed to load chip planner"));
+  }, [entryId]);
 
   useEffect(() => {
     if (!autoCompareDone.current && entryId && rivalEntryId) {
@@ -102,8 +114,8 @@ export default function PlannerPage() {
   }
 
   return (
-    <main className="min-h-screen p-6 md:p-8 max-w-6xl mx-auto text-white">
-      <h1 className="text-3xl font-black mb-4">Planner</h1>
+    <main className="min-h-screen p-3 sm:p-4 md:p-8 max-w-6xl mx-auto text-white">
+      <h1 className="text-2xl sm:text-3xl font-black mb-4">Planner</h1>
       {error ? <p className="text-red-300 mb-3">{error}</p> : null}
 
       {chip ? (
@@ -114,11 +126,30 @@ export default function PlannerPage() {
             {chip.alternative ? <> • Alt: <strong>{chip.alternative}</strong></> : null}
             {typeof chip.confidence === "number" ? <> • Confidence: <strong>{Math.round(chip.confidence * 100)}%</strong></> : null}
           </p>
-          <div className="grid md:grid-cols-4 gap-3 text-sm">
-            <div className="border border-white/10 rounded-md p-3">Wildcard: <strong>{chip.chip_scores.wildcard.toFixed(2)}</strong></div>
-            <div className="border border-white/10 rounded-md p-3">Free Hit: <strong>{chip.chip_scores.free_hit.toFixed(2)}</strong></div>
-            <div className="border border-white/10 rounded-md p-3">Bench Boost: <strong>{chip.chip_scores.bench_boost.toFixed(2)}</strong></div>
-            <div className="border border-white/10 rounded-md p-3">Triple Captain: <strong>{chip.chip_scores.triple_captain.toFixed(2)}</strong></div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3 text-sm">
+            {([
+              ["wildcard", "Wildcard", chip.chip_scores.wildcard],
+              ["free_hit", "Free Hit", chip.chip_scores.free_hit],
+              ["bench_boost", "Bench Boost", chip.chip_scores.bench_boost],
+              ["triple_captain", "Triple Captain", chip.chip_scores.triple_captain],
+            ] as const).map(([key, label, score]) => {
+              const usage = chip.chip_usage?.[key];
+              const usedUp = usage ? usage.used_count >= 2 : false;
+              return (
+                <div
+                  key={key}
+                  className={`border border-white/10 rounded-md p-3 ${usedUp ? "bg-white/5 opacity-50" : "bg-black/20"}`}
+                >
+                  <p>{label}: <strong>{score.toFixed(2)}</strong></p>
+                  {usage ? (
+                    <p className="text-xs text-white/70 mt-1">
+                      Used {usage.used_count}/{usage.max_uses}
+                      {usage.used_gws?.length ? ` • GW ${usage.used_gws.join(", ")}` : ""}
+                    </p>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
 
           <div className="mt-3 text-sm text-white/80">
@@ -131,6 +162,7 @@ export default function PlannerPage() {
               ))}
             </div>
           </div>
+
         </section>
       ) : (
         <p className="text-white/75">Loading chip planner...</p>
@@ -138,20 +170,20 @@ export default function PlannerPage() {
 
       <section className={`${cardClass} mt-4`}>
         <h2 className="font-semibold text-[#00ff87] mb-2">Rival Intelligence</h2>
-        <div className="flex gap-2 flex-wrap mb-3">
+        <div className="grid sm:flex gap-2 mb-3">
           <input
             value={entryId}
             onChange={(e) => setEntryId(e.target.value.replace(/\D/g, ""))}
             placeholder="Your Team ID"
-            className="rounded-md px-3 py-2 bg-black/30 border border-white/20"
+            className="rounded-md px-3 py-2 bg-black/30 border border-white/20 w-full sm:w-auto"
           />
           <input
             value={rivalEntryId}
             onChange={(e) => setRivalEntryId(e.target.value.replace(/\D/g, ""))}
             placeholder="Rival Team ID"
-            className="rounded-md px-3 py-2 bg-black/30 border border-white/20"
+            className="rounded-md px-3 py-2 bg-black/30 border border-white/20 w-full sm:w-auto"
           />
-          <button onClick={() => void loadRival()} className="px-4 py-2 rounded-md bg-[#00ff87] text-[#37003c] font-bold">
+          <button onClick={() => void loadRival()} className="px-4 py-2 rounded-md bg-[#00ff87] text-[#37003c] font-bold w-full sm:w-auto">
             Compare
           </button>
         </div>
@@ -159,6 +191,7 @@ export default function PlannerPage() {
         {rival ? (
           <div className="text-sm text-white/85 space-y-3">
             <p>GW {rival.gameweek} • Overlap: <strong>{rival.overlap_count}</strong> • My differentials: <strong>{rival.my_only_count}</strong> • Rival differentials: <strong>{rival.rival_only_count}</strong></p>
+            <p>Overall Rank — Me: <strong>{rival.entry_overall_rank ? rival.entry_overall_rank.toLocaleString() : "—"}</strong> • Rival: <strong>{rival.rival_overall_rank ? rival.rival_overall_rank.toLocaleString() : "—"}</strong></p>
             <p><strong>My differentials:</strong> {rival.my_differentials.join(", ") || "None"}</p>
             <p><strong>Rival differentials:</strong> {rival.rival_differentials.join(", ") || "None"}</p>
             <p>

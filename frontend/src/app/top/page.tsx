@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { fetchJson } from "@/lib/api";
@@ -54,12 +53,7 @@ type ExplainabilityResponse = {
 };
 
 const API_BASE = "";
-const cardClass = "rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md p-5";
-
-const insightTools = [
-  { label: "Target Radar", href: "/targets" },
-  { label: "Rank Trend", href: "/team-rank" },
-];
+const cardClass = "rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md p-4 md:p-5";
 
 function safeNum(value: unknown, fallback = 0): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -104,25 +98,10 @@ export default function TopPage() {
   }, []);
 
   return (
-    <main className="min-h-screen p-6 md:p-8 max-w-6xl mx-auto text-white">
-      <section className={`${cardClass} mb-4`}>
-        <p className="text-xs uppercase tracking-widest text-white/60 mb-2">Additional Tools</p>
-        <div className="flex flex-wrap gap-2 text-sm">
-          {insightTools.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className="rounded-full px-3 py-1 border border-white/20 hover:border-[#00ff87]/60 hover:text-[#00ff87] transition"
-            >
-              {link.label}
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
-        <h1 className="text-3xl font-black">Top Picks</h1>
-        <div className="flex items-center gap-3 flex-wrap">
+    <main className="min-h-screen p-3 sm:p-4 md:p-8 max-w-6xl mx-auto text-white">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+        <h1 className="text-2xl sm:text-3xl font-black">Top Picks</h1>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
           <label className="text-sm text-white/85 flex items-center gap-2">
             <input
               type="checkbox"
@@ -134,7 +113,7 @@ export default function TopPage() {
           <select
             value={limit}
             onChange={(e) => setLimit(Number(e.target.value))}
-            className="rounded-md px-3 py-2 bg-black/30 border border-white/20"
+            className="rounded-md px-3 py-2 bg-black/30 border border-white/20 w-full sm:w-auto"
           >
             <option value={10}>Top 10</option>
             <option value={20}>Top 20</option>
@@ -154,7 +133,7 @@ export default function TopPage() {
           </p>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-xs md:text-sm">
               <thead>
                 <tr className="text-left text-white/70 border-b border-white/10">
                   <th className="py-2">#</th>

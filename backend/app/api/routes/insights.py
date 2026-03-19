@@ -11,17 +11,12 @@ from .base import (
     Player,
     Recommendation,
     SessionLocal,
-    TargetPlayer,
-    TargetsResponse,
-    _build_target_player,
     _choose_captains,
     _expected_points,
     _expected_points_horizon,
     _get_meta,
     _pick_to_response,
     _resolve_gameweek,
-    _strategy_config,
-    _target_tier,
     router,
 )
 from app.services.ml_recommender import (
@@ -181,61 +176,6 @@ def recommendation_ml(
                 "ML recommendation (XGBoost) using selected model artifact; "
                 f"model={meta.get('model_version', model_version)} rows={meta.get('rows', 'n/a')}"
             ),
-        )
-    finally:
-        db.close()
-
-@router.get("/api/fpl/targets", response_model=TargetsResponse)
-def target_insights(
-    mode: str = Query(default="balanced", pattern="^(safe|balanced|aggressive)$"),
-    gameweek: Optional[int] = Query(default=None, ge=1, le=38),
-    horizon: int = Query(default=3, ge=1, le=5),
-    limit: int = Query(default=12, ge=3, le=30),
-):
-    db = SessionLocal()
-    try:
-        players = db.query(Player).all()
-        if not players:
-            raise HTTPException(status_code=400, detail="No player data found. Run POST /api/fpl/ingest/bootstrap first.")
-
-        fixtures = db.query(Fixture).all()
-        gw = _resolve_gameweek(db, gameweek)
-        mode_weights, _ = _strategy_config(mode)
-
-        scored: List[TargetPlayer] = []
-        for p in players:
-            # Keep common FPL range to avoid extreme edge cases
-            price = p.now_cost / 10.0
-            if price < 4.0 or price > 15.5:
-                continue
-            target = _build_target_player(p, fixtures, gw, mode=mode, mode_weights=mode_weights)
-
-            # Recompute primary score on requested horizon for sorting consistency
-            horizon_score = _expected_points_horizon(p, fixtures, gw, horizon=horizon, weights=mode_weights)
-            risk = (target.minutes_risk * 0.35) + (target.availability_risk * 0.65)
-            adjusted = horizon_score * (1.0 - min(0.5, risk))
-            target.target_score = round(adjusted, 2)
-            target.tier = _target_tier(adjusted)
-            scored.append(target)
-
-        scored.sort(key=lambda x: x.target_score, reverse=True)
-
-        # Safe board: reliable + generally owned
-        safe_targets = [t for t in scored if t.availability_risk <= 0.25 and t.minutes_risk <= 0.35]
-        safe_targets = safe_targets[:limit]
-
-        # Differential board: lower ownership but still good score
-        differential_targets = [t for t in scored if t.ownership_pct <= 20.0 and t.target_score >= 5.5]
-        differential_targets = differential_targets[: max(5, limit // 2)]
-
-        return TargetsResponse(
-            gameweek=gw,
-            strategy_mode=mode,
-            horizon=horizon,
-            safe_targets=safe_targets,
-            differential_targets=differential_targets,
-            last_ingested_at=_get_meta(db, "last_ingested_at"),
-            summary="Multi-source target radar: projections from form/minutes/fixtures/availability with mode-specific risk posture.",
         )
     finally:
         db.close()

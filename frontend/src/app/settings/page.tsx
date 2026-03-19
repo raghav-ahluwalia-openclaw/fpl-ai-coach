@@ -7,17 +7,15 @@ import { fetchJson } from "@/lib/api";
 type AppSettings = {
   scope: string;
   fpl_entry_id: number | null;
-  league_id: number | null;
   rival_entry_id: number | null;
 };
 
 const API_BASE = "";
-const cardClass = "rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md p-5";
+const cardClass = "rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md p-4 md:p-5";
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [entryId, setEntryId] = useState("");
-  const [leagueId, setLeagueId] = useState("");
   const [rivalEntryId, setRivalEntryId] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,7 +25,6 @@ export default function SettingsPage() {
       .then((payload) => {
         setSettings(payload);
         setEntryId(payload.fpl_entry_id ? String(payload.fpl_entry_id) : "");
-        setLeagueId(payload.league_id ? String(payload.league_id) : "");
         setRivalEntryId(payload.rival_entry_id ? String(payload.rival_entry_id) : "");
       })
       .catch((e) => setError(e.message || "Failed to load settings"));
@@ -39,7 +36,6 @@ export default function SettingsPage() {
     try {
       const qs = new URLSearchParams({ clear_missing: "true" });
       if (entryId) qs.set("fpl_entry_id", entryId);
-      if (leagueId) qs.set("league_id", leagueId);
       if (rivalEntryId) qs.set("rival_entry_id", rivalEntryId);
 
       const payload = await fetchJson<AppSettings>(`${API_BASE}/api/fpl/settings?${qs.toString()}`, { method: "POST" });
@@ -52,12 +48,12 @@ export default function SettingsPage() {
   }
 
   return (
-    <main className="min-h-screen p-6 md:p-8 max-w-4xl mx-auto text-white">
-      <h1 className="text-3xl font-black mb-4">Settings</h1>
+    <main className="min-h-screen p-3 sm:p-4 md:p-8 max-w-4xl mx-auto text-white">
+      <h1 className="text-2xl sm:text-3xl font-black mb-4">Settings</h1>
 
       <section className={cardClass}>
         <p className="text-sm text-white/75 mb-4">
-          Store your IDs once and the app will reuse them across Team, Rank Trend, and Planner workflows.
+          Store your IDs once and the app will reuse them across Team, Leagues, and Planner workflows.
         </p>
 
         {settings ? <p className="text-xs text-white/50 mb-3">Profile scope: {settings.scope}</p> : null}
@@ -71,17 +67,6 @@ export default function SettingsPage() {
               className="w-full mt-1 rounded-md px-3 py-2 bg-black/30 border border-white/20"
               inputMode="numeric"
               placeholder="e.g. 538572"
-            />
-          </label>
-
-          <label className="text-sm text-white/85">
-            League ID
-            <input
-              value={leagueId}
-              onChange={(e) => setLeagueId(e.target.value.replace(/\D/g, ""))}
-              className="w-full mt-1 rounded-md px-3 py-2 bg-black/30 border border-white/20"
-              inputMode="numeric"
-              placeholder="e.g. 12345"
             />
           </label>
 
@@ -103,7 +88,7 @@ export default function SettingsPage() {
           <button
             onClick={save}
             disabled={saving}
-            className="px-4 py-2 rounded-md bg-[#00ff87] text-[#37003c] font-bold disabled:opacity-60"
+            className="px-4 py-2 rounded-md bg-[#00ff87] text-[#37003c] font-bold disabled:opacity-60 w-full sm:w-auto"
           >
             {saving ? "Saving..." : "Save Settings"}
           </button>
