@@ -54,8 +54,8 @@ const cardClass = "rounded-2xl border border-white/15 bg-white/5 backdrop-blur-m
 
 const insightTools = [
   { label: "Target Radar", href: "/targets" },
-  { label: "Captaincy Lab", href: "/captaincy" },
   { label: "Rank Trend", href: "/team-rank" },
+  { label: "Weekly Cockpit", href: "/weekly" },
 ];
 
 function safeNum(value: unknown, fallback = 0): number {

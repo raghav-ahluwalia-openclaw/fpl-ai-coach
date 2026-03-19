@@ -12,11 +12,6 @@ const primaryCards = [
     href: "/socials",
   },
   {
-    title: "My Team Hub",
-    desc: "Import your squad, get personalized recommendations, and track rank trend.",
-    href: "/team",
-  },
-  {
     title: "Planner",
     desc: "Chip planning, rival intelligence, and weekly digest payloads.",
     href: "/planner",
@@ -35,7 +30,7 @@ export default function Home() {
         <p className="text-xs uppercase tracking-[0.24em] text-cyan-200/90 mb-2">Fantasy Premier League</p>
         <h1 className="text-3xl md:text-4xl font-black">FPL AI Coach</h1>
         <p className="text-sm md:text-base text-white/85 mt-2">
-          Clean flow: start with Weekly Brief, then refine in My Team and Planner.
+          Clean flow: start with Weekly Cockpit, then refine in Planner and Research.
         </p>
       </section>
 

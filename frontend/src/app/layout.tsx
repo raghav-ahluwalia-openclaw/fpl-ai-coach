@@ -20,7 +20,6 @@ export const metadata: Metadata = {
 
 const navItems = [
   { href: "/weekly", label: "Weekly Cockpit" },
-  { href: "/team", label: "My Team" },
   { href: "/planner", label: "Planner" },
   { href: "/top", label: "Research" },
   { href: "/socials", label: "FPL Socials" },
