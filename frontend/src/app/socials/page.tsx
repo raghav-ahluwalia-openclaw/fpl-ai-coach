@@ -44,8 +44,24 @@ function sentimentClass(label: string) {
   return "border-white/30 text-white/80";
 }
 
-function shortSummary(text?: string, maxChars = 420): string {
-  const clean = (text || "").replace(/\s+/g, " ").trim();
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function shortSummary(text?: string, title?: string, maxChars = 420): string {
+  let clean = (text || "").replace(/\s+/g, " ").trim();
+  if (!clean) return "Summary unavailable.";
+
+  if (title) {
+    const t = title.replace(/\s+/g, " ").trim();
+    if (t) {
+      const titleRegex = new RegExp(`^${escapeRegExp(t)}[:\-–—\s]*`, "i");
+      clean = clean.replace(titleRegex, "").trim();
+      const anywhereTitleRegex = new RegExp(escapeRegExp(t), "ig");
+      clean = clean.replace(anywhereTitleRegex, "").replace(/\s{2,}/g, " ").trim();
+    }
+  }
+
   if (!clean) return "Summary unavailable.";
   if (clean.length <= maxChars) return clean;
   return `${clean.slice(0, maxChars).trim()}…`;
@@ -100,7 +116,7 @@ export default function SocialsPage() {
                       </div>
                     ) : null}
                     <p className="text-white/65 mt-1">👁️ {v.view_count ?? 0} • 📅 {v.upload_date || "unknown"}</p>
-                    <p className="text-white/75 mt-2">{shortSummary(v.summary)}</p>
+                    <p className="text-white/75 mt-2">{shortSummary(v.summary, v.title)}</p>
                   </li>
                 ))}
               </ul>
@@ -134,7 +150,7 @@ export default function SocialsPage() {
                       ))}
                     </div>
                   ) : null}
-                  <p className="text-white/80 mt-2">{shortSummary(t.summary, 360)}</p>
+                  <p className="text-white/80 mt-2">{shortSummary(t.summary, t.title, 360)}</p>
                 </li>
               ))}
             </ul>
