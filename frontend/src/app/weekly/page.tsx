@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchJson } from "@/lib/api";
 
 type Mode = "safe" | "balanced" | "aggressive";
+type XpView = "1gw" | "3gw";
 
 type AppSettings = { fpl_entry_id: number | null };
 
@@ -29,12 +30,7 @@ type TransferMove = {
   gain: number;
   projected_points_3_in: number;
   projected_points_3_out: number;
-  fixture_difficulty_factor_in: number;
   fixture_window_next_3_in: FixtureWindow;
-  minutes_risk_in: number;
-  availability_risk_in: number;
-  injury_news_in: string;
-  upside_safety_score_in: number;
 };
 
 type TransferPlan = {
@@ -85,19 +81,24 @@ type WeeklyCockpit = {
     differential: CaptainCandidate[];
   };
   what_changed: Array<Record<string, unknown>>;
-  summary: string;
 };
 
 const cardClass = "rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md p-5";
 
-function xpLabel(xpView: "1gw" | "3gw", xp1: number, xp3: number): string {
-  return xpView === "3gw" ? `xP3 ${xp3}` : `xP1 ${xp1}`;
+function badgeClass(badge?: "DGW" | "SGW" | "BLANK") {
+  if (badge === "DGW") return "border-emerald-300 text-emerald-200";
+  if (badge === "BLANK") return "border-rose-300 text-rose-200";
+  return "border-white/30 text-white/80";
+}
+
+function xpVal(xpView: XpView, xp1: number, xp3: number): number {
+  return xpView === "3gw" ? xp3 : xp1;
 }
 
 export default function WeeklyPage() {
   const [teamId, setTeamId] = useState("");
   const [mode, setMode] = useState<Mode>("balanced");
-  const [xpView, setXpView] = useState<"1gw" | "3gw">("3gw");
+  const [xpView, setXpView] = useState<XpView>("3gw");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<WeeklyCockpit | null>(null);
@@ -139,37 +140,9 @@ export default function WeeklyPage() {
 
   return (
     <main className="min-h-screen p-6 md:p-8 max-w-6xl mx-auto text-white">
-      <h1 className="text-3xl font-black mb-1">Weekly Cockpit</h1>
-      {data ? (
-        <p className="text-sm text-white/75 mb-4">
-          GW {data.gameweek}
-          {typeof data.picks_source_gw === "number" && data.picks_source_gw !== data.gameweek
-            ? ` • using latest available squad snapshot from GW ${data.picks_source_gw}`
-            : ""}
-        </p>
-      ) : (
-        <p className="text-sm text-white/75 mb-4">Planning view for next decision GW.</p>
-      )}
-
-      <section className={`${cardClass} mb-6`}>
-        <div className="flex gap-3 flex-wrap items-center">
-          <input
-            value={teamId}
-            onChange={(e) => setTeamId(e.target.value.replace(/\D/g, ""))}
-            placeholder="FPL Team ID"
-            inputMode="numeric"
-            className="rounded-md px-3 py-2 bg-black/30 border border-white/20 min-w-[220px]"
-          />
-          <select
-            value={mode}
-            onChange={(e) => setMode(e.target.value as Mode)}
-            className="rounded-md px-3 py-2 bg-black/30 border border-white/20"
-          >
-            <option value="safe">Safe</option>
-            <option value="balanced">Balanced</option>
-            <option value="aggressive">Aggressive</option>
-          </select>
-
+      <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
+        <h1 className="text-3xl font-black">Weekly Cockpit</h1>
+        <div className="flex items-center gap-2">
           <div className="inline-flex rounded-md border border-white/20 overflow-hidden">
             <button
               type="button"
@@ -186,6 +159,27 @@ export default function WeeklyPage() {
               xP 3GW
             </button>
           </div>
+          <select
+            value={mode}
+            onChange={(e) => setMode(e.target.value as Mode)}
+            className="rounded-md px-3 py-2 bg-black/30 border border-white/20"
+          >
+            <option value="safe">Safe</option>
+            <option value="balanced">Balanced</option>
+            <option value="aggressive">Aggressive</option>
+          </select>
+        </div>
+      </div>
+
+      <section className={`${cardClass} mb-4`}>
+        <div className="flex gap-3 flex-wrap items-center">
+          <input
+            value={teamId}
+            onChange={(e) => setTeamId(e.target.value.replace(/\D/g, ""))}
+            placeholder="FPL Team ID"
+            inputMode="numeric"
+            className="rounded-md px-3 py-2 bg-black/30 border border-white/20 min-w-[220px]"
+          />
           <button
             onClick={() => void run()}
             disabled={loading || !/^\d+$/.test(teamId.trim())}
@@ -193,174 +187,148 @@ export default function WeeklyPage() {
           >
             {loading ? "Loading..." : "Run Weekly Plan"}
           </button>
+          {data ? (
+            <p className="text-sm text-white/75">
+              GW {data.gameweek}
+              {typeof data.picks_source_gw === "number" && data.picks_source_gw !== data.gameweek
+                ? ` • using latest available squad snapshot from GW ${data.picks_source_gw}`
+                : ""}
+            </p>
+          ) : null}
         </div>
       </section>
 
       {error ? <p className="text-red-300 mb-4">{error}</p> : null}
 
       {data ? (
-        <div className="space-y-6">
+        <div className="grid gap-4">
           <section className={cardClass}>
-            <h2 className="text-xl font-bold text-[#00ff87] mb-2">Fixture Context (DGW / BLANK considered)</h2>
             <p className="text-sm text-white/80">{data.fixture_context.method}</p>
             <p className="text-sm text-white/70 mt-1">
-              Squad flags over next 3 GWs: {data.fixture_context.squad_window.double_flags_next_3} players with DGW windows,
-              {" "}{data.fixture_context.squad_window.blank_flags_next_3} players with BLANK windows.
+              Next-3-GW squad flags: DGW windows {data.fixture_context.squad_window.double_flags_next_3} • BLANK windows {data.fixture_context.squad_window.blank_flags_next_3}
             </p>
           </section>
 
           <section className={cardClass}>
-            <h2 className="text-xl font-bold text-[#00ff87] mb-3">Lineup Optimizer</h2>
-            <p className="text-sm text-white/75 mb-3">Recommended formation: <span className="font-semibold text-white">{data.lineup_optimizer.formation}</span></p>
-            <div className="grid md:grid-cols-2 gap-4 text-sm">
-              <div className="rounded-lg border border-white/10 p-3 bg-black/20">
-                <h3 className="font-semibold mb-2">Starting XI</h3>
-                <ul className="space-y-1">
+            <h2 className="font-semibold text-[#00ff87] mb-2">Lineup Optimizer • {data.lineup_optimizer.formation}</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-white/70 border-b border-white/10">
+                    <th className="py-2">Player</th>
+                    <th className="py-2">Pos</th>
+                    <th className="py-2">{xpView === "1gw" ? "xP (1GW)" : "xP (3GW)"}</th>
+                    <th className="py-2">GW</th>
+                    <th className="py-2">Next 3</th>
+                    <th className="py-2">Role</th>
+                  </tr>
+                </thead>
+                <tbody>
                   {data.lineup_optimizer.starting_xi.map((p) => (
-                    <li key={`xi-${p.name}`}>
-                      {p.name} ({p.position}) • {xpLabel(xpView, p.xP_next_1, p.xP_next_3)} • {p.fixture_badge} • {p.fixture_window_next_3.label}
-                    </li>
+                    <tr key={`xi-${p.name}`} className="border-b border-white/5">
+                      <td className="py-2 font-medium">{p.name}</td>
+                      <td className="py-2">{p.position}</td>
+                      <td className="py-2">{xpVal(xpView, p.xP_next_1, p.xP_next_3).toFixed(2)}</td>
+                      <td className="py-2"><span className={`text-xs rounded-full px-2 py-0.5 border ${badgeClass(p.fixture_badge)}`}>{p.fixture_badge}</span></td>
+                      <td className="py-2 text-white/75">{p.fixture_window_next_3.label}</td>
+                      <td className="py-2 text-[#00ff87]">XI</td>
+                    </tr>
                   ))}
-                </ul>
-              </div>
-              <div className="rounded-lg border border-white/10 p-3 bg-black/20">
-                <h3 className="font-semibold mb-2">Bench Order</h3>
-                <ul className="space-y-1">
                   {data.lineup_optimizer.bench_order.map((p) => (
-                    <li key={`bench-${p.name}`}>
-                      {p.bench_rank}. {p.name} ({p.position}) • {xpLabel(xpView, p.xP_next_1, p.xP_next_3)} • {p.fixture_badge} • {p.fixture_window_next_3.label}
-                    </li>
+                    <tr key={`bench-${p.name}`} className="border-b border-white/5">
+                      <td className="py-2 font-medium">{p.name}</td>
+                      <td className="py-2">{p.position}</td>
+                      <td className="py-2">{xpVal(xpView, p.xP_next_1, p.xP_next_3).toFixed(2)}</td>
+                      <td className="py-2"><span className={`text-xs rounded-full px-2 py-0.5 border ${badgeClass(p.fixture_badge)}`}>{p.fixture_badge}</span></td>
+                      <td className="py-2 text-white/75">{p.fixture_window_next_3.label}</td>
+                      <td className="py-2 text-pink-200">Bench {p.bench_rank}</td>
+                    </tr>
                   ))}
-                </ul>
-              </div>
+                </tbody>
+              </table>
             </div>
           </section>
 
           <section className={cardClass}>
-            <h2 className="text-xl font-bold text-[#00ff87] mb-3">Your Team Health</h2>
-            <div className="grid md:grid-cols-3 gap-4">
-              {["sell", "watch", "hold"].map((bucket) => (
-                <div key={bucket} className="rounded-lg border border-white/10 p-3 bg-black/20">
-                  <h3 className="font-semibold uppercase text-sm mb-2">{bucket}</h3>
-                  <ul className="space-y-2 text-sm">
-                    {(data.team_health[bucket as keyof typeof data.team_health] as HealthRow[]).map((p) => (
-                      <li key={`${bucket}-${p.name}`}>
-                        <div className="font-medium">{p.name} ({p.position}) • {xpLabel(xpView, p.projected_points_1, p.projected_points_3)}</div>
-                        <div className="text-white/70">Risk M:{p.minutes_risk} A:{p.availability_risk} • {p.fixture_badge} • {p.fixture_window_next_3.label}</div>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
+            <h2 className="font-semibold text-[#00ff87] mb-2">Team Health</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-white/70 border-b border-white/10">
+                    <th className="py-2">Player</th>
+                    <th className="py-2">Pos</th>
+                    <th className="py-2">{xpView === "1gw" ? "xP (1GW)" : "xP (3GW)"}</th>
+                    <th className="py-2">GW</th>
+                    <th className="py-2">Risks</th>
+                    <th className="py-2">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...data.team_health.sell, ...data.team_health.watch, ...data.team_health.hold].map((p) => {
+                    const action = data.team_health.sell.includes(p) ? "sell" : data.team_health.watch.includes(p) ? "watch" : "hold";
+                    return (
+                      <tr key={`h-${p.name}`} className="border-b border-white/5">
+                        <td className="py-2 font-medium">{p.name}</td>
+                        <td className="py-2">{p.position}</td>
+                        <td className="py-2">{xpVal(xpView, p.projected_points_1, p.projected_points_3).toFixed(2)}</td>
+                        <td className="py-2"><span className={`text-xs rounded-full px-2 py-0.5 border ${badgeClass(p.fixture_badge)}`}>{p.fixture_badge}</span></td>
+                        <td className="py-2 text-white/75">M {p.minutes_risk.toFixed(2)} / A {p.availability_risk.toFixed(2)}</td>
+                        <td className="py-2">
+                          <span className={`text-xs rounded-full px-2 py-0.5 border ${action === "sell" ? "border-rose-300 text-rose-200" : action === "watch" ? "border-amber-300 text-amber-200" : "border-emerald-300 text-emerald-200"}`}>
+                            {action.toUpperCase()}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </section>
 
           <section className={cardClass}>
-            <h2 className="text-xl font-bold text-[#00ff87] mb-3">Top Transfer Plans (Plan A/B/C)</h2>
-            <div className="grid md:grid-cols-2 gap-4">
+            <h2 className="font-semibold text-[#00ff87] mb-2">Top Transfer Plans (A/B/C)</h2>
+            <div className="grid md:grid-cols-2 gap-4 text-sm">
               <div>
                 <h3 className="font-semibold mb-2">1FT</h3>
-                <ul className="space-y-3 text-sm">
-                  {data.top_transfer_plans.one_ft.map((p) => (
-                    <li key={`1ft-${p.plan}`} className="rounded-lg border border-white/10 p-3 bg-black/20">
-                      <div className="font-medium">{p.plan} • Net {p.net_gain} • Hit {p.hit}</div>
-                      {p.transfers.map((t, i) => (
-                        <div key={`${p.plan}-1-${i}`} className="text-white/80">{t.out} → {t.in} (gain {t.gain}, xP3 {t.projected_points_3_out}→{t.projected_points_3_in}, {t.fixture_window_next_3_in.label})</div>
-                      ))}
-                    </li>
-                  ))}
-                </ul>
+                {data.top_transfer_plans.one_ft.map((p) => (
+                  <div key={`1ft-${p.plan}`} className="rounded-lg border border-white/10 p-3 bg-black/20 mb-2">
+                    <p className="font-medium">{p.plan} • Net {p.net_gain} • Hit {p.hit}</p>
+                    {p.transfers.map((t, i) => (
+                      <p key={`${p.plan}-1-${i}`} className="text-white/80">{t.out} → {t.in} ({t.fixture_window_next_3_in.label})</p>
+                    ))}
+                  </div>
+                ))}
               </div>
               <div>
                 <h3 className="font-semibold mb-2">2FT</h3>
-                <ul className="space-y-3 text-sm">
-                  {data.top_transfer_plans.two_ft.map((p) => (
-                    <li key={`2ft-${p.plan}`} className="rounded-lg border border-white/10 p-3 bg-black/20">
-                      <div className="font-medium">{p.plan} • Net {p.net_gain} • Hit {p.hit}</div>
-                      {p.transfers.map((t, i) => (
-                        <div key={`${p.plan}-2-${i}`} className="text-white/80">{t.out} → {t.in} (gain {t.gain}, xP3 {t.projected_points_3_out}→{t.projected_points_3_in}, {t.fixture_window_next_3_in.label})</div>
-                      ))}
-                    </li>
-                  ))}
-                </ul>
+                {data.top_transfer_plans.two_ft.map((p) => (
+                  <div key={`2ft-${p.plan}`} className="rounded-lg border border-white/10 p-3 bg-black/20 mb-2">
+                    <p className="font-medium">{p.plan} • Net {p.net_gain} • Hit {p.hit}</p>
+                    {p.transfers.map((t, i) => (
+                      <p key={`${p.plan}-2-${i}`} className="text-white/80">{t.out} → {t.in} ({t.fixture_window_next_3_in.label})</p>
+                    ))}
+                  </div>
+                ))}
               </div>
             </div>
           </section>
 
           <section className={cardClass}>
-            <h2 className="text-xl font-bold text-[#00ff87] mb-3">Captain Matrix</h2>
+            <h2 className="font-semibold text-[#00ff87] mb-2">Captain Matrix</h2>
             <div className="grid md:grid-cols-2 gap-4 text-sm">
               <div>
                 <h3 className="font-semibold mb-2">Safe</h3>
-                <ul className="space-y-2">
-                  {data.captain_matrix.safe.map((c) => (
-                    <li key={`safe-${c.name}`}>{c.name} • score {c.safe_score} • xP3 {c.projected_points_3} • {c.fixture_window_next_3.label}</li>
-                  ))}
-                </ul>
+                {data.captain_matrix.safe.map((c) => (
+                  <p key={`safe-${c.name}`}>{c.name} • score {c.safe_score} • {c.fixture_window_next_3.label}</p>
+                ))}
               </div>
               <div>
                 <h3 className="font-semibold mb-2">Differential</h3>
-                <ul className="space-y-2">
-                  {data.captain_matrix.differential.map((c) => (
-                    <li key={`diff-${c.name}`}>{c.name} • score {c.differential_score} • own {c.ownership_pct}% • {c.fixture_window_next_3.label}</li>
-                  ))}
-                </ul>
+                {data.captain_matrix.differential.map((c) => (
+                  <p key={`diff-${c.name}`}>{c.name} • score {c.differential_score} • own {c.ownership_pct}% • {c.fixture_window_next_3.label}</p>
+                ))}
               </div>
-            </div>
-          </section>
-
-          <section className={cardClass}>
-            <h2 className="text-xl font-bold text-[#00ff87] mb-3">What Changed Since Last Week</h2>
-            <div className="space-y-3 text-sm">
-              {data.what_changed.length === 0 ? <p className="text-white/70">No major changes detected.</p> : null}
-              {data.what_changed.map((item, idx) => {
-                const type = String(item.type ?? "update");
-                const summary = String(item.summary ?? "Update");
-                if (type === "squad_changes") {
-                  const outs = Array.isArray(item.out) ? (item.out as string[]) : [];
-                  const ins = Array.isArray(item.in) ? (item.in as string[]) : [];
-                  return (
-                    <div key={`chg-${idx}`} className="rounded-lg border border-white/10 p-3 bg-black/20">
-                      <p className="font-medium">{summary}</p>
-                      <p className="text-white/80">Out: {outs.join(", ") || "—"}</p>
-                      <p className="text-white/80">In: {ins.join(", ") || "—"}</p>
-                    </div>
-                  );
-                }
-                if (type === "injury_news") {
-                  const players = Array.isArray(item.players) ? (item.players as Array<{ name?: string; news?: string }>) : [];
-                  return (
-                    <div key={`chg-${idx}`} className="rounded-lg border border-white/10 p-3 bg-black/20">
-                      <p className="font-medium">{summary}</p>
-                      <ul className="mt-1 space-y-1 text-white/80">
-                        {players.map((p, i) => (
-                          <li key={`inj-${idx}-${i}`}>{p.name || "Player"}: {p.news || "No details"}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  );
-                }
-                if (type === "fixture_swings") {
-                  const players = Array.isArray(item.players)
-                    ? (item.players as Array<{ name?: string; from?: string; to?: string }>)
-                    : [];
-                  return (
-                    <div key={`chg-${idx}`} className="rounded-lg border border-white/10 p-3 bg-black/20">
-                      <p className="font-medium">{summary}</p>
-                      <ul className="mt-1 space-y-1 text-white/80">
-                        {players.map((p, i) => (
-                          <li key={`fix-${idx}-${i}`}>{p.name || "Player"}: {p.from || "?"} → {p.to || "?"}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  );
-                }
-                return (
-                  <div key={`chg-${idx}`} className="rounded-lg border border-white/10 p-3 bg-black/20">
-                    <p className="font-medium">{summary}</p>
-                  </div>
-                );
-              })}
             </div>
           </section>
         </div>

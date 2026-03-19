@@ -7,9 +7,9 @@ const primaryCards = [
     href: "/weekly",
   },
   {
-    title: "Weekly Brief",
-    desc: "One-page final plan with captain, transfer, and consensus rationale.",
-    href: "/brief",
+    title: "FPL Socials",
+    desc: "Creator consensus + top Reddit FantasyPL threads with summaries.",
+    href: "/socials",
   },
   {
     title: "My Team Hub",
