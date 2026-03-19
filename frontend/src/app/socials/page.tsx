@@ -19,6 +19,12 @@ type SocialsResponse = {
       upload_date?: string;
       view_count?: number;
       summary?: string;
+      summary_struct?: {
+        key_calls?: string;
+        buy_watch?: string;
+        sell_watch?: string;
+        captain_chips?: string;
+      };
       transcript?: string;
       transcript_path?: string;
       player_mentions: Mention[];
@@ -94,7 +100,11 @@ export default function SocialsPage() {
     setRefreshing(true);
     setError(null);
     try {
-      await fetchJson("/api/fpl/socials/refresh?videos_per_creator=4", { method: "POST" });
+      const res = await fetchJson<{ ok?: boolean; message?: string; error?: string }>("/api/fpl/socials/refresh?videos_per_creator=4", { method: "POST" });
+      if (res.ok === false) {
+        setError(`${res.message || "Refresh failed"}${res.error ? `: ${res.error}` : ""}`);
+        return;
+      }
       await loadSocials();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to refresh socials");
@@ -149,7 +159,16 @@ export default function SocialsPage() {
                       );
                     })() : null}
                     <p className="text-white/65 mt-1">👁️ {v.view_count ?? 0} • 📅 {v.upload_date || "unknown"}</p>
-                    <p className="text-white/75 mt-2">{shortSummary(v.summary, v.title)}</p>
+                    {v.summary_struct ? (
+                      <div className="mt-2 space-y-1 text-white/75">
+                        <p><span className="text-white/60">Key calls:</span> {shortSummary(v.summary_struct.key_calls, undefined, 220)}</p>
+                        <p><span className="text-emerald-200">Buy watch:</span> {shortSummary(v.summary_struct.buy_watch, undefined, 220)}</p>
+                        <p><span className="text-rose-200">Sell/risk watch:</span> {shortSummary(v.summary_struct.sell_watch, undefined, 220)}</p>
+                        <p><span className="text-cyan-200">Captain/chips:</span> {shortSummary(v.summary_struct.captain_chips, undefined, 220)}</p>
+                      </div>
+                    ) : (
+                      <p className="text-white/75 mt-2">{shortSummary(v.summary, v.title)}</p>
+                    )}
                   </li>
                 ))}
               </ul>

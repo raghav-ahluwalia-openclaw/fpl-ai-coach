@@ -25,12 +25,17 @@ NEG_WEIGHTS = {
 }
 
 
-def summarize_text(text: str, max_sentences: int = 4) -> str:
+def _sentences(text: str) -> list[str]:
     clean = re.sub(r"\s+", " ", (text or "").strip())
     if not clean:
-        return "No detailed summary available yet."
+        return []
+    return [p.strip() for p in re.split(r"(?<=[.!?])\s+", clean) if len(p.strip()) > 25]
 
-    parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", clean) if len(p.strip()) > 25]
+
+def summarize_text(text: str, max_sentences: int = 4) -> str:
+    parts = _sentences(text)
+    if not parts:
+        return "No detailed summary available yet."
     blacklist = [
         "welcome back", "what is going on everyone", "kind captions language", "captions language",
         "in this one", "we're going to", "we are going to", "fantasy premier league tips",
@@ -77,6 +82,32 @@ def summarize_text(text: str, max_sentences: int = 4) -> str:
 
     out = " ".join(picked).strip()
     return out[:520]
+
+
+def _pick_line(parts: list[str], keywords: list[str], fallback: str = "No strong signal.") -> str:
+    for s in parts:
+        low = s.lower()
+        if any(k in low for k in keywords):
+            return s
+    return fallback
+
+
+def structured_summary(text: str) -> dict:
+    parts = _sentences(text)
+    if not parts:
+        return {
+            "key_calls": "No detailed summary available.",
+            "buy_watch": "No clear buy signal extracted.",
+            "sell_watch": "No clear sell/risk signal extracted.",
+            "captain_chips": "No clear captain/chip signal extracted.",
+        }
+
+    return {
+        "key_calls": _pick_line(parts, ["overall", "plan", "strategy", "approach", "final thoughts", "key"]),
+        "buy_watch": _pick_line(parts, ["buy", "bring", "target", "pick", "consider", "watchlist"]),
+        "sell_watch": _pick_line(parts, ["sell", "avoid", "rotation", "injury", "risk", "doubt", "suspended", "minutes"]),
+        "captain_chips": _pick_line(parts, ["captain", "vice", "triple captain", "wildcard", "free hit", "bench boost"]),
+    }
 
 
 def sentiment_score(text: str) -> int:
@@ -178,6 +209,7 @@ def main() -> int:
         combined = " ".join([v.get("title") or "", v.get("summary") or "", transcript]).strip()
         s_score = sentiment_score(combined)
 
+        summary_struct = structured_summary(combined)
         enriched_videos.append(
             {
                 "creator": v.get("creator"),
@@ -186,7 +218,8 @@ def main() -> int:
                 "video_id": vid,
                 "upload_date": v.get("upload_date"),
                 "view_count": v.get("view_count"),
-                "summary": summarize_text(combined, max_sentences=8),
+                "summary": summarize_text(combined, max_sentences=4),
+                "summary_struct": summary_struct,
                 "transcript_path": str(transcript_path.relative_to(ROOT)),
                 "transcript": transcript,
                 "player_mentions": extract_player_mentions(combined, player_names, max_items=12),

@@ -126,9 +126,24 @@ def fpl_socials_refresh(videos_per_creator: int = Query(default=4, ge=1, le=8)):
             timeout=900,
             check=False,
         )
-        if digest.returncode != 0:
-            raise HTTPException(status_code=500, detail=f"Digest refresh failed: {digest.stderr.strip() or digest.stdout.strip()}")
+    except subprocess.TimeoutExpired:
+        return {
+            "ok": False,
+            "stage": "digest",
+            "videos_per_creator": videos_per_creator,
+            "message": "Digest refresh timed out",
+        }
 
+    if digest.returncode != 0:
+        return {
+            "ok": False,
+            "stage": "digest",
+            "videos_per_creator": videos_per_creator,
+            "message": "Digest refresh failed",
+            "error": (digest.stderr.strip() or digest.stdout.strip())[:1200],
+        }
+
+    try:
         enrich = subprocess.run(
             ["python3", str(enrich_script)],
             cwd=str(project_root),
@@ -137,20 +152,32 @@ def fpl_socials_refresh(videos_per_creator: int = Query(default=4, ge=1, le=8)):
             timeout=900,
             check=False,
         )
-        if enrich.returncode != 0:
-            raise HTTPException(status_code=500, detail=f"Enrichment refresh failed: {enrich.stderr.strip() or enrich.stdout.strip()}")
-
+    except subprocess.TimeoutExpired:
         return {
-            "ok": True,
+            "ok": False,
+            "stage": "enrich",
             "videos_per_creator": videos_per_creator,
             "digest": digest.stdout.strip().splitlines()[-3:],
-            "enrich": enrich.stdout.strip().splitlines()[-3:],
-            "message": "Socials data refreshed successfully",
+            "message": "Enrichment refresh timed out",
         }
-    except HTTPException:
-        raise
-    except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=504, detail="Socials refresh timed out")
+
+    if enrich.returncode != 0:
+        return {
+            "ok": False,
+            "stage": "enrich",
+            "videos_per_creator": videos_per_creator,
+            "digest": digest.stdout.strip().splitlines()[-3:],
+            "message": "Enrichment refresh failed",
+            "error": (enrich.stderr.strip() or enrich.stdout.strip())[:1200],
+        }
+
+    return {
+        "ok": True,
+        "videos_per_creator": videos_per_creator,
+        "digest": digest.stdout.strip().splitlines()[-3:],
+        "enrich": enrich.stdout.strip().splitlines()[-3:],
+        "message": "Socials data refreshed successfully",
+    }
 
 
 @router.get("/api/fpl/socials")
@@ -191,6 +218,7 @@ def fpl_socials(limit: int = Query(default=5, ge=1, le=10), reddit_window: str =
                             "upload_date": v.get("upload_date"),
                             "view_count": int(v.get("view_count") or 0),
                             "summary": v.get("summary") or "",
+                            "summary_struct": v.get("summary_struct") or {},
                             "transcript": v.get("transcript") or "",
                             "player_mentions": v.get("player_mentions") or [],
                             "sentiment": v.get("sentiment") or {"label": "neutral", "score": 0},
@@ -225,6 +253,7 @@ def fpl_socials(limit: int = Query(default=5, ge=1, le=10), reddit_window: str =
                             "upload_date": v.get("upload_date"),
                             "view_count": int(v.get("view_count") or 0),
                             "summary": _summarize_text(combined, max_sentences=5),
+                            "summary_struct": {},
                             "transcript": "",
                             "player_mentions": _extract_player_mentions(combined, player_names, max_items=8),
                             "sentiment": {
