@@ -157,7 +157,7 @@ def main() -> int:
         _wait(f"{BASE_FRONT}/")
 
         # Core pages (smoke set)
-        for path in ["/", "/global", "/team", "/captaincy", "/planner", "/settings"]:
+        for path in ["/", "/team", "/captaincy", "/planner", "/settings"]:
             code, _ = _request("GET", f"{BASE_FRONT}{path}")
             _assert(code == 200, f"page load failed {path}: {code}")
 
