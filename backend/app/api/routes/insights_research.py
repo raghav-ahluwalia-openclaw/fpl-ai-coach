@@ -204,10 +204,21 @@ def fpl_socials(limit: int = Query(default=5, ge=1, le=10), reddit_window: str =
                 evideos_all = enriched.get("videos", [])
                 evideos_all = sorted(
                     evideos_all,
-                    key=lambda x: (int(x.get("view_count") or 0), str(x.get("upload_date") or "")),
+                    key=lambda x: (str(x.get("upload_date") or ""), int(x.get("view_count") or 0)),
                     reverse=True,
                 )
-                evideos = evideos_all[:limit]
+                # diversify feed: max 2 videos per creator
+                creator_counts: dict[str, int] = {}
+                evideos = []
+                for v in evideos_all:
+                    creator = str(v.get("creator") or "unknown")
+                    if creator_counts.get(creator, 0) >= 2:
+                        continue
+                    evideos.append(v)
+                    creator_counts[creator] = creator_counts.get(creator, 0) + 1
+                    if len(evideos) >= limit:
+                        break
+
                 videos = []
                 for v in evideos:
                     videos.append(
@@ -231,12 +242,23 @@ def fpl_socials(limit: int = Query(default=5, ge=1, le=10), reddit_window: str =
                     "videos": videos,
                 }
             else:
-                raw_videos = payload.get("videos", [])
-                raw_videos = sorted(
-                    raw_videos,
-                    key=lambda x: (int(x.get("view_count") or 0), str(x.get("upload_date") or "")),
+                raw_videos_all = payload.get("videos", [])
+                raw_videos_all = sorted(
+                    raw_videos_all,
+                    key=lambda x: (str(x.get("upload_date") or ""), int(x.get("view_count") or 0)),
                     reverse=True,
-                )[:limit]
+                )
+                creator_counts: dict[str, int] = {}
+                raw_videos = []
+                for v in raw_videos_all:
+                    creator = str(v.get("creator") or "unknown")
+                    if creator_counts.get(creator, 0) >= 2:
+                        continue
+                    raw_videos.append(v)
+                    creator_counts[creator] = creator_counts.get(creator, 0) + 1
+                    if len(raw_videos) >= limit:
+                        break
+
                 videos = []
                 for v in raw_videos:
                     title = v.get("title") or "Untitled"

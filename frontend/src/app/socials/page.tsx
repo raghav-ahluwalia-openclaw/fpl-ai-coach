@@ -132,7 +132,7 @@ export default function SocialsPage() {
       {data ? (
         <section className="grid md:grid-cols-2 gap-4">
           <div className={cardClass}>
-            <h2 className="font-semibold text-[#00ff87] mb-3">YouTube Creators (Top 5 by views + upload date)</h2>
+            <h2 className="font-semibold text-[#00ff87] mb-3">YouTube Creators (Top 5 by latest upload date, then views)</h2>
             {data.youtube_creators.videos.length === 0 ? (
               <p className="text-white/70">No creator digest found yet.</p>
             ) : (
