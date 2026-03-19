@@ -49,6 +49,12 @@ type WeeklyBriefResponse = {
     vice_captain: string;
     transfer_out: string;
     transfer_in: string;
+    fixture_badges?: {
+      captain?: "DGW" | "SGW" | "BLANK";
+      vice_captain?: "DGW" | "SGW" | "BLANK";
+      transfer_out?: "DGW" | "SGW" | "BLANK";
+      transfer_in?: "DGW" | "SGW" | "BLANK";
+    };
   };
   baseline: {
     captain: string;
@@ -82,6 +88,12 @@ type WeeklyBriefResponse = {
 
 const API_BASE = "";
 const cardClass = "rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md p-5";
+
+function badgeClass(badge?: "DGW" | "SGW" | "BLANK") {
+  if (badge === "DGW") return "border-emerald-300 text-emerald-200";
+  if (badge === "BLANK") return "border-rose-300 text-rose-200";
+  return "border-white/30 text-white/80";
+}
 
 export default function WeeklyBriefPage() {
   const [mode, setMode] = useState<BriefMode>("balanced");
@@ -178,9 +190,28 @@ export default function WeeklyBriefPage() {
           <div className={cardClass}>
             <p className="text-sm text-white/70 mb-2">GW {data.gameweek} • {data.mode.toUpperCase()}</p>
             <h2 className="font-semibold text-[#00ff87] mb-2">Final Action</h2>
-            <p><strong>Captain:</strong> {data.final.captain}</p>
-            <p><strong>Vice:</strong> {data.final.vice_captain}</p>
-            <p className="mt-2"><strong>Transfer:</strong> {data.final.transfer_out} → {data.final.transfer_in}</p>
+            <p>
+              <strong>Captain:</strong> {data.final.captain}
+              <span className={`ml-2 text-[11px] rounded-full px-2 py-0.5 border ${badgeClass(data.final.fixture_badges?.captain)}`}>
+                {data.final.fixture_badges?.captain || "SGW"}
+              </span>
+            </p>
+            <p>
+              <strong>Vice:</strong> {data.final.vice_captain}
+              <span className={`ml-2 text-[11px] rounded-full px-2 py-0.5 border ${badgeClass(data.final.fixture_badges?.vice_captain)}`}>
+                {data.final.fixture_badges?.vice_captain || "SGW"}
+              </span>
+            </p>
+            <p className="mt-2">
+              <strong>Transfer:</strong> {data.final.transfer_out}
+              <span className={`ml-2 text-[11px] rounded-full px-2 py-0.5 border ${badgeClass(data.final.fixture_badges?.transfer_out)}`}>
+                {data.final.fixture_badges?.transfer_out || "SGW"}
+              </span>
+              {" "}→ {data.final.transfer_in}
+              <span className={`ml-2 text-[11px] rounded-full px-2 py-0.5 border ${badgeClass(data.final.fixture_badges?.transfer_in)}`}>
+                {data.final.fixture_badges?.transfer_in || "SGW"}
+              </span>
+            </p>
           </div>
 
           <div className={cardClass}>

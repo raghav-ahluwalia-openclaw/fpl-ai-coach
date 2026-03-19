@@ -932,6 +932,42 @@ def weekly_brief(
     if ml is not None and not ml_eligible:
         rationale.append(f"ML confidence below threshold ({ml.confidence:.2f} < {min_ml_confidence:.2f}); baseline fallback applied")
 
+    # Fixture badges for final picks (DGW / SGW / BLANK)
+    badge_map = {
+        "captain": "SGW",
+        "vice_captain": "SGW",
+        "transfer_out": "SGW",
+        "transfer_in": "SGW",
+    }
+    try:
+        db = SessionLocal()
+        try:
+            fixtures = db.query(Fixture).all()
+            players = db.query(Player).all()
+            by_name = {p.web_name: p for p in players}
+
+            def badge_for_name(name: str) -> str:
+                p = by_name.get(name)
+                if not p:
+                    return "SGW"
+                count = _fixture_count_for_gw(p, fixtures, base.gameweek)
+                if count >= 2:
+                    return "DGW"
+                if count == 0:
+                    return "BLANK"
+                return "SGW"
+
+            badge_map = {
+                "captain": badge_for_name(final_captain),
+                "vice_captain": badge_for_name(final_vice),
+                "transfer_out": badge_for_name(transfer_out),
+                "transfer_in": badge_for_name(transfer_in),
+            }
+        finally:
+            db.close()
+    except Exception:  # noqa: BLE001
+        pass
+
     return {
         "gameweek": base.gameweek,
         "mode": mode,
@@ -940,6 +976,7 @@ def weekly_brief(
             "vice_captain": final_vice,
             "transfer_out": transfer_out,
             "transfer_in": transfer_in,
+            "fixture_badges": badge_map,
         },
         "baseline": {
             "captain": base.captain,
