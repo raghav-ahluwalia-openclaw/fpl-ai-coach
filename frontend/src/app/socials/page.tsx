@@ -17,6 +17,8 @@ type SocialsResponse = {
       title: string;
       url: string;
       summary?: string;
+      transcript?: string;
+      transcript_path?: string;
       player_mentions: Mention[];
       sentiment: { label: "positive" | "neutral" | "negative"; score: number };
     }>;
@@ -89,6 +91,12 @@ export default function SocialsPage() {
                       </div>
                     ) : null}
                     {v.summary ? <p className="text-white/75 mt-2">{v.summary}</p> : null}
+                    {v.transcript ? (
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-white/70">View transcript</summary>
+                        <p className="text-white/70 mt-2 whitespace-pre-wrap max-h-64 overflow-auto">{v.transcript}</p>
+                      </details>
+                    ) : null}
                   </li>
                 ))}
               </ul>

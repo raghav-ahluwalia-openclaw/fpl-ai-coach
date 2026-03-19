@@ -11,6 +11,7 @@ from .base import *  # noqa: F403
 from app.services.captaincy_service import build_captaincy_lab, build_explainability_top
 
 DIGEST_PATH = Path(__file__).resolve().parents[3] / "data" / "content" / "creator_digest.json"
+ENRICHED_SOCIALS_PATH = Path(__file__).resolve().parents[3] / "data" / "content" / "socials_enriched.json"
 
 POS_WORDS = {
     "great", "good", "best", "nailed", "essential", "must", "strong", "haul", "buy", "start", "captain", "value", "love", "solid", "safe", "upside", "form"
@@ -105,34 +106,61 @@ def fpl_socials(limit: int = Query(default=5, ge=1, le=10), reddit_window: str =
     if DIGEST_PATH.exists():
         try:
             payload = json.loads(DIGEST_PATH.read_text(encoding="utf-8"))
-            raw_videos = payload.get("videos", [])[:limit]
-            videos = []
-            for v in raw_videos:
-                title = v.get("title") or "Untitled"
-                base_summary = v.get("summary") or ""
-                tags = v.get("transcript_tags") or []
-                transcript_hint = " ".join(tags[:20]) if isinstance(tags, list) else ""
-                combined = " ".join([title, base_summary, transcript_hint]).strip()
-                sentiment_score = _sentiment_score(combined)
-                videos.append(
-                    {
-                        "creator": v.get("creator"),
-                        "title": title,
-                        "url": v.get("url"),
-                        "summary": _summarize_text(combined, max_sentences=5),
-                        "player_mentions": _extract_player_mentions(combined, player_names, max_items=8),
-                        "sentiment": {
-                            "label": _sentiment_label(sentiment_score),
-                            "score": sentiment_score,
-                        },
-                    }
-                )
+            top_topics = payload.get("top_topics", [])[: min(limit, 10)]
 
-            consensus = {
-                "generated_at": payload.get("generated_at"),
-                "top_topics": payload.get("top_topics", [])[: min(limit, 10)],
-                "videos": videos,
-            }
+            # Prefer transcript-enriched dataset if present.
+            if ENRICHED_SOCIALS_PATH.exists():
+                enriched = json.loads(ENRICHED_SOCIALS_PATH.read_text(encoding="utf-8"))
+                evideos = enriched.get("videos", [])[:limit]
+                videos = []
+                for v in evideos:
+                    videos.append(
+                        {
+                            "creator": v.get("creator"),
+                            "title": v.get("title"),
+                            "url": v.get("url"),
+                            "summary": v.get("summary") or "",
+                            "transcript": v.get("transcript") or "",
+                            "player_mentions": v.get("player_mentions") or [],
+                            "sentiment": v.get("sentiment") or {"label": "neutral", "score": 0},
+                            "transcript_path": v.get("transcript_path"),
+                        }
+                    )
+                consensus = {
+                    "generated_at": enriched.get("generated_at") or payload.get("generated_at"),
+                    "top_topics": top_topics,
+                    "videos": videos,
+                }
+            else:
+                raw_videos = payload.get("videos", [])[:limit]
+                videos = []
+                for v in raw_videos:
+                    title = v.get("title") or "Untitled"
+                    base_summary = v.get("summary") or ""
+                    tags = v.get("transcript_tags") or []
+                    transcript_hint = " ".join(tags[:20]) if isinstance(tags, list) else ""
+                    combined = " ".join([title, base_summary, transcript_hint]).strip()
+                    sentiment_score = _sentiment_score(combined)
+                    videos.append(
+                        {
+                            "creator": v.get("creator"),
+                            "title": title,
+                            "url": v.get("url"),
+                            "summary": _summarize_text(combined, max_sentences=5),
+                            "transcript": "",
+                            "player_mentions": _extract_player_mentions(combined, player_names, max_items=8),
+                            "sentiment": {
+                                "label": _sentiment_label(sentiment_score),
+                                "score": sentiment_score,
+                            },
+                        }
+                    )
+
+                consensus = {
+                    "generated_at": payload.get("generated_at"),
+                    "top_topics": top_topics,
+                    "videos": videos,
+                }
         except Exception:  # noqa: BLE001
             pass
 
