@@ -23,14 +23,6 @@ const primaryCards = [
   },
 ];
 
-const secondaryLinks = [
-  { label: "Transfer Center", href: "/targets" },
-  { label: "Captaincy Lab", href: "/captaincy" },
-  { label: "Rank Trend", href: "/team-rank" },
-  { label: "Global Picks", href: "/global" },
-  { label: "Settings", href: "/settings" },
-];
-
 export default function Home() {
   return (
     <main className="min-h-screen p-6 md:p-8 max-w-6xl mx-auto text-white">
@@ -55,20 +47,6 @@ export default function Home() {
         ))}
       </section>
 
-      <section className="mt-5 rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md p-4">
-        <p className="text-xs uppercase tracking-widest text-white/60 mb-2">Advanced tools</p>
-        <div className="flex flex-wrap gap-2 text-sm">
-          {secondaryLinks.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className="rounded-full px-3 py-1 border border-white/20 hover:border-[#00ff87]/60 hover:text-[#00ff87] transition"
-            >
-              {link.label}
-            </Link>
-          ))}
-        </div>
-      </section>
     </main>
   );
 }

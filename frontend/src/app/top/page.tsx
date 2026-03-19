@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { fetchJson } from "@/lib/api";
@@ -50,6 +51,14 @@ type ExplainabilityResponse = {
 const API_BASE = "";
 const cardClass = "rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md p-5";
 
+const insightTools = [
+  { label: "Transfer Center", href: "/targets" },
+  { label: "Captaincy Lab", href: "/captaincy" },
+  { label: "Rank Trend", href: "/team-rank" },
+  { label: "Global Picks", href: "/global" },
+  { label: "Settings", href: "/settings" },
+];
+
 export default function TopPage() {
   const [limit, setLimit] = useState(20);
   const [data, setData] = useState<TopPlayersResponse | null>(null);
@@ -84,6 +93,21 @@ export default function TopPage() {
           <option value={50}>Top 50</option>
         </select>
       </div>
+
+      <section className={`${cardClass} mb-4`}>
+        <p className="text-xs uppercase tracking-widest text-white/60 mb-2">Insight tools</p>
+        <div className="flex flex-wrap gap-2 text-sm">
+          {insightTools.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              className="rounded-full px-3 py-1 border border-white/20 hover:border-[#00ff87]/60 hover:text-[#00ff87] transition"
+            >
+              {link.label}
+            </Link>
+          ))}
+        </div>
+      </section>
 
       {error ? <p className="text-red-300 mb-3">{error}</p> : null}
       {!data && !error ? <p className="text-white/75">Loading...</p> : null}

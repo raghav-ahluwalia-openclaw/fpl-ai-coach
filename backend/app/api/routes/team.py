@@ -67,10 +67,10 @@ def team_recommendation(
         if not players:
             raise HTTPException(status_code=400, detail="No player data found. Run POST /api/fpl/ingest/bootstrap first.")
 
-        gw = _resolve_gameweek(db, gameweek)
+        target_gw = _resolve_gameweek(db, gameweek)
         current_gw = _int(_get_meta(db, "current_gw"), 0)
-        payload, resolved_gw = _fetch_entry_picks_with_fallback(entry_id, gw, [current_gw, gw - 1])
-        gw = resolved_gw
+        payload, _resolved_gw = _fetch_entry_picks_with_fallback(entry_id, target_gw, [current_gw, target_gw - 1])
+        gw = target_gw
         picks = payload.get("picks", [])
         hist = payload.get("entry_history", {})
 
@@ -100,12 +100,30 @@ def team_recommendation(
         starting_xi = []
         for xpts, p in ordered_starting_pairs:
             fc, fb = _fixture_badge_for_gw(p, fixtures, gw)
-            starting_xi.append(_pick_to_response(p, xpts, fixture_count=fc, fixture_badge=fb))
+            xpts3 = _expected_points_horizon(p, fixtures, gw, horizon=3, weights=horizon_weights)
+            starting_xi.append(
+                _pick_to_response(
+                    p,
+                    xpts,
+                    expected_points_3=round(xpts3, 2),
+                    fixture_count=fc,
+                    fixture_badge=fb,
+                )
+            )
 
         bench = []
         for xpts, p in bench_pairs:
             fc, fb = _fixture_badge_for_gw(p, fixtures, gw)
-            bench.append(_pick_to_response(p, xpts, fixture_count=fc, fixture_badge=fb))
+            xpts3 = _expected_points_horizon(p, fixtures, gw, horizon=3, weights=horizon_weights)
+            bench.append(
+                _pick_to_response(
+                    p,
+                    xpts,
+                    expected_points_3=round(xpts3, 2),
+                    fixture_count=fc,
+                    fixture_badge=fb,
+                )
+            )
 
         captain, vice = _choose_captains(ordered_starting_pairs)
 
@@ -203,10 +221,10 @@ def what_if_simulator(
         if not players:
             raise HTTPException(status_code=400, detail="No player data found. Run POST /api/fpl/ingest/bootstrap first.")
 
-        gw = _resolve_gameweek(db, gameweek)
+        target_gw = _resolve_gameweek(db, gameweek)
         current_gw = _int(_get_meta(db, "current_gw"), 0)
-        payload, resolved_gw = _fetch_entry_picks_with_fallback(entry_id, gw, [current_gw, gw - 1])
-        gw = resolved_gw
+        payload, _resolved_gw = _fetch_entry_picks_with_fallback(entry_id, target_gw, [current_gw, target_gw - 1])
+        gw = target_gw
         picks = payload.get("picks", [])
         hist = payload.get("entry_history", {})
 

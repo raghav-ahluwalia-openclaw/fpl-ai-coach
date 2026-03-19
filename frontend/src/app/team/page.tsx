@@ -12,6 +12,7 @@ type Pick = {
   position: string;
   price: number;
   expected_points: number;
+  expected_points_3?: number;
   reason: string;
   fixture_count?: number;
   fixture_badge?: "DGW" | "SGW" | "BLANK";
@@ -51,6 +52,7 @@ function badgeClass(badge?: "DGW" | "SGW" | "BLANK") {
 export default function TeamPage() {
   const [teamId, setTeamId] = useState("");
   const [mode, setMode] = useState<Mode>("balanced");
+  const [xpView, setXpView] = useState<"1gw" | "3gw">("1gw");
   const [data, setData] = useState<TeamRecommendation | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -123,6 +125,23 @@ export default function TeamPage() {
             <option value="balanced">Balanced</option>
             <option value="aggressive">Aggressive</option>
           </select>
+
+          <div className="inline-flex rounded-md border border-white/20 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setXpView("1gw")}
+              className={`px-3 py-2 text-sm ${xpView === "1gw" ? "bg-[#00ff87] text-[#37003c]" : "bg-black/30 text-white/80"}`}
+            >
+              xP 1GW
+            </button>
+            <button
+              type="button"
+              onClick={() => setXpView("3gw")}
+              className={`px-3 py-2 text-sm ${xpView === "3gw" ? "bg-[#00ff87] text-[#37003c]" : "bg-black/30 text-white/80"}`}
+            >
+              xP 3GW
+            </button>
+          </div>
           <button
             onClick={() => void run()}
             disabled={loading || !normalizedTeamId || !teamIdValid}
@@ -149,7 +168,7 @@ export default function TeamPage() {
             {data.starting_xi.map((p) => (
               <li key={p.id} className="pb-2 border-b border-white/10 last:border-b-0">
                 <div className="font-medium">
-                  {p.name} ({p.position}) — £{p.price.toFixed(1)} — {p.expected_points} xP
+                  {p.name} ({p.position}) — £{p.price.toFixed(1)} — {(xpView === "3gw" ? (p.expected_points_3 ?? p.expected_points) : p.expected_points)} xP
                   <span className={`ml-2 text-[11px] rounded-full px-2 py-0.5 border ${badgeClass(p.fixture_badge)}`}>
                     {p.fixture_badge || "SGW"}
                   </span>
@@ -164,7 +183,7 @@ export default function TeamPage() {
             {data.bench.map((p) => (
               <li key={p.id} className="pb-2 border-b border-white/10 last:border-b-0">
                 <div className="font-medium">
-                  {p.name} ({p.position}) — {p.expected_points} xP
+                  {p.name} ({p.position}) — {(xpView === "3gw" ? (p.expected_points_3 ?? p.expected_points) : p.expected_points)} xP
                   <span className={`ml-2 text-[11px] rounded-full px-2 py-0.5 border ${badgeClass(p.fixture_badge)}`}>
                     {p.fixture_badge || "SGW"}
                   </span>

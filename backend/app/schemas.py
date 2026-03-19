@@ -10,6 +10,7 @@ class Pick(BaseModel):
     position: str
     price: float
     expected_points: float
+    expected_points_3: Optional[float] = None
     reason: str
     fixture_count: Optional[int] = None
     fixture_badge: Optional[str] = None
