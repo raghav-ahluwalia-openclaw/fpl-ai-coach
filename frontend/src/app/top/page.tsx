@@ -55,7 +55,6 @@ const insightTools = [
   { label: "Transfer Center", href: "/targets" },
   { label: "Captaincy Lab", href: "/captaincy" },
   { label: "Rank Trend", href: "/team-rank" },
-  { label: "Settings", href: "/settings" },
 ];
 
 export default function TopPage() {
@@ -80,7 +79,7 @@ export default function TopPage() {
   return (
     <main className="min-h-screen p-6 md:p-8 max-w-6xl mx-auto text-white">
       <section className={`${cardClass} mb-4`}>
-        <p className="text-xs uppercase tracking-widest text-white/60 mb-2">Insight tools</p>
+        <p className="text-xs uppercase tracking-widest text-white/60 mb-2">Additional Tools</p>
         <div className="flex flex-wrap gap-2 text-sm">
           {insightTools.map((link) => (
             <Link
@@ -95,7 +94,7 @@ export default function TopPage() {
       </section>
 
       <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
-        <h1 className="text-3xl font-black">Research</h1>
+        <h1 className="text-3xl font-black">Top Picks</h1>
         <select
           value={limit}
           onChange={(e) => setLimit(Number(e.target.value))}
@@ -113,7 +112,6 @@ export default function TopPage() {
 
       {data ? (
         <section className={cardClass}>
-          <h2 className="font-semibold text-[#00ff87] mb-2">Top Picks</h2>
           <p className="text-sm text-white/75 mb-3">
             GW {data.next_gw} • Showing {data.count} players
           </p>

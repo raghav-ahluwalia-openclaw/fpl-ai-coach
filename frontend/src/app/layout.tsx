@@ -19,11 +19,11 @@ export const metadata: Metadata = {
 };
 
 const navItems = [
-  { href: "/", label: "Dashboard" },
+  { href: "/", label: "🏠" },
   { href: "/brief", label: "Weekly Brief" },
   { href: "/team", label: "My Team" },
   { href: "/planner", label: "Planner" },
-  { href: "/top", label: "Research" },
+  { href: "/top", label: "Top Picks" },
 ];
 
 export default function RootLayout({
