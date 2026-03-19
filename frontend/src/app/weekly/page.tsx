@@ -83,7 +83,7 @@ type WeeklyCockpit = {
   what_changed: Array<Record<string, unknown>>;
 };
 
-const cardClass = "rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md p-5";
+const cardClass = "rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md p-4 md:p-5";
 
 function badgeClass(badge?: "DGW" | "SGW" | "BLANK") {
   if (badge === "DGW") return "border-emerald-300 text-emerald-200";
@@ -139,10 +139,10 @@ export default function WeeklyPage() {
   }, [teamId, run]);
 
   return (
-    <main className="min-h-screen p-6 md:p-8 max-w-6xl mx-auto text-white">
-      <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
+    <main className="min-h-screen p-4 md:p-8 max-w-6xl mx-auto text-white">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
         <h1 className="text-3xl font-black">Weekly Cockpit</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <div className="inline-flex rounded-md border border-white/20 overflow-hidden">
             <button
               type="button"
@@ -212,15 +212,14 @@ export default function WeeklyPage() {
           <section className={cardClass}>
             <h2 className="font-semibold text-[#00ff87] mb-2">Lineup Optimizer • {data.lineup_optimizer.formation}</h2>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-xs md:text-sm">
                 <thead>
                   <tr className="text-left text-white/70 border-b border-white/10">
-                    <th className="py-2">Player</th>
-                    <th className="py-2">Pos</th>
-                    <th className="py-2">{xpView === "1gw" ? "xP (1GW)" : "xP (3GW)"}</th>
-                    <th className="py-2">GW</th>
-                    <th className="py-2">Next 3</th>
-                    <th className="py-2">Role</th>
+                    <th className="py-2 whitespace-nowrap">Player</th>
+                    <th className="py-2 whitespace-nowrap">Pos</th>
+                    <th className="py-2 whitespace-nowrap">{xpView === "1gw" ? "xP (1GW)" : "xP (3GW)"}</th>
+                    <th className="py-2 whitespace-nowrap">GW</th>
+                    <th className="py-2 whitespace-nowrap">Role</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -230,8 +229,7 @@ export default function WeeklyPage() {
                       <td className="py-2">{p.position}</td>
                       <td className="py-2">{xpVal(xpView, p.xP_next_1, p.xP_next_3).toFixed(2)}</td>
                       <td className="py-2"><span className={`text-xs rounded-full px-2 py-0.5 border ${badgeClass(p.fixture_badge)}`}>{p.fixture_badge}</span></td>
-                      <td className="py-2 text-white/75">{p.fixture_window_next_3.label}</td>
-                      <td className="py-2 text-[#00ff87]">XI</td>
+                      <td className="py-2 text-[#00ff87] whitespace-nowrap">XI</td>
                     </tr>
                   ))}
                   {data.lineup_optimizer.bench_order.map((p) => (
@@ -240,8 +238,7 @@ export default function WeeklyPage() {
                       <td className="py-2">{p.position}</td>
                       <td className="py-2">{xpVal(xpView, p.xP_next_1, p.xP_next_3).toFixed(2)}</td>
                       <td className="py-2"><span className={`text-xs rounded-full px-2 py-0.5 border ${badgeClass(p.fixture_badge)}`}>{p.fixture_badge}</span></td>
-                      <td className="py-2 text-white/75">{p.fixture_window_next_3.label}</td>
-                      <td className="py-2 text-pink-200">Bench {p.bench_rank}</td>
+                      <td className="py-2 text-pink-200 whitespace-nowrap">Bench {p.bench_rank}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -252,15 +249,15 @@ export default function WeeklyPage() {
           <section className={cardClass}>
             <h2 className="font-semibold text-[#00ff87] mb-2">Team Health</h2>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-xs md:text-sm">
                 <thead>
                   <tr className="text-left text-white/70 border-b border-white/10">
-                    <th className="py-2">Player</th>
-                    <th className="py-2">Pos</th>
-                    <th className="py-2">{xpView === "1gw" ? "xP (1GW)" : "xP (3GW)"}</th>
-                    <th className="py-2">GW</th>
-                    <th className="py-2">Risks</th>
-                    <th className="py-2">Action</th>
+                    <th className="py-2 whitespace-nowrap">Player</th>
+                    <th className="py-2 whitespace-nowrap">Pos</th>
+                    <th className="py-2 whitespace-nowrap">{xpView === "1gw" ? "xP (1GW)" : "xP (3GW)"}</th>
+                    <th className="py-2 whitespace-nowrap">GW</th>
+                    <th className="py-2 whitespace-nowrap">Risks</th>
+                    <th className="py-2 whitespace-nowrap">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -295,7 +292,7 @@ export default function WeeklyPage() {
                   <div key={`1ft-${p.plan}`} className="rounded-lg border border-white/10 p-3 bg-black/20 mb-2">
                     <p className="font-medium">{p.plan} • Net {p.net_gain} • Hit {p.hit}</p>
                     {p.transfers.map((t, i) => (
-                      <p key={`${p.plan}-1-${i}`} className="text-white/80">{t.out} → {t.in} ({t.fixture_window_next_3_in.label})</p>
+                      <p key={`${p.plan}-1-${i}`} className="text-white/80">{t.out} → {t.in}</p>
                     ))}
                   </div>
                 ))}
@@ -306,7 +303,7 @@ export default function WeeklyPage() {
                   <div key={`2ft-${p.plan}`} className="rounded-lg border border-white/10 p-3 bg-black/20 mb-2">
                     <p className="font-medium">{p.plan} • Net {p.net_gain} • Hit {p.hit}</p>
                     {p.transfers.map((t, i) => (
-                      <p key={`${p.plan}-2-${i}`} className="text-white/80">{t.out} → {t.in} ({t.fixture_window_next_3_in.label})</p>
+                      <p key={`${p.plan}-2-${i}`} className="text-white/80">{t.out} → {t.in}</p>
                     ))}
                   </div>
                 ))}
@@ -320,13 +317,13 @@ export default function WeeklyPage() {
               <div>
                 <h3 className="font-semibold mb-2">Safe</h3>
                 {data.captain_matrix.safe.map((c) => (
-                  <p key={`safe-${c.name}`}>{c.name} • score {c.safe_score} • {c.fixture_window_next_3.label}</p>
+                  <p key={`safe-${c.name}`}>{c.name} • score {c.safe_score}</p>
                 ))}
               </div>
               <div>
                 <h3 className="font-semibold mb-2">Differential</h3>
                 {data.captain_matrix.differential.map((c) => (
-                  <p key={`diff-${c.name}`}>{c.name} • score {c.differential_score} • own {c.ownership_pct}% • {c.fixture_window_next_3.label}</p>
+                  <p key={`diff-${c.name}`}>{c.name} • score {c.differential_score} • own {c.ownership_pct}%</p>
                 ))}
               </div>
             </div>
