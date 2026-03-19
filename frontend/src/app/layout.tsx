@@ -39,7 +39,7 @@ export default function RootLayout({
               <Link
                 href="/"
                 aria-label="Home"
-                className="text-white/85 hover:text-white transition-colors"
+                className="text-[#00ff87] hover:text-[#7effb8] transition-colors"
                 title="Home"
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true" className="h-6 w-6">
