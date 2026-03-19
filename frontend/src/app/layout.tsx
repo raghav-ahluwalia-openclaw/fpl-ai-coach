@@ -19,7 +19,6 @@ export const metadata: Metadata = {
 };
 
 const navItems = [
-  { href: "/", label: "🏠" },
   { href: "/brief", label: "Weekly Brief" },
   { href: "/team", label: "My Team" },
   { href: "/planner", label: "Planner" },
@@ -37,8 +36,13 @@ export default function RootLayout({
         <header className="sticky top-0 z-50 border-b border-white/15 bg-[#240033]/85 backdrop-blur-md">
           <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
             <div className="flex items-center gap-5 flex-wrap">
-              <Link href="/" className="font-black tracking-wide text-[#00ff87]">
-                FPL AI COACH
+              <Link
+                href="/"
+                aria-label="Home"
+                className="text-white/85 text-xl leading-none hover:text-white transition-colors"
+                title="Home"
+              >
+                ⌂
               </Link>
               <nav className="flex items-center gap-4 text-sm text-white/85 flex-wrap">
                 {navItems.map((item) => (
