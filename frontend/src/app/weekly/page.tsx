@@ -104,7 +104,7 @@ function xpVal(xpView: XpView, xp1: number, xp3: number): number {
 export default function WeeklyPage() {
   const [teamId, setTeamId] = useState("");
   const [mode, setMode] = useState<Mode>("balanced");
-  const [xpView, setXpView] = useState<XpView>("3gw");
+  const [xpView, setXpView] = useState<XpView>("1gw");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<WeeklyCockpit | null>(null);

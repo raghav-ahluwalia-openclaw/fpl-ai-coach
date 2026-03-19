@@ -74,6 +74,7 @@ export default function TopPage() {
   const [data, setData] = useState<TopPlayersResponse | null>(null);
   const [explain, setExplain] = useState<ExplainabilityResponse | null>(null);
   const [myTeamIds, setMyTeamIds] = useState<Set<number>>(new Set());
+  const [hideInTeam, setHideInTeam] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -125,16 +126,26 @@ export default function TopPage() {
 
       <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
         <h1 className="text-3xl font-black">Top Picks</h1>
-        <select
-          value={limit}
-          onChange={(e) => setLimit(Number(e.target.value))}
-          className="rounded-md px-3 py-2 bg-black/30 border border-white/20"
-        >
-          <option value={10}>Top 10</option>
-          <option value={20}>Top 20</option>
-          <option value={30}>Top 30</option>
-          <option value={50}>Top 50</option>
-        </select>
+        <div className="flex items-center gap-3 flex-wrap">
+          <label className="text-sm text-white/85 flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={hideInTeam}
+              onChange={(e) => setHideInTeam(e.target.checked)}
+            />
+            Hide players already in my team
+          </label>
+          <select
+            value={limit}
+            onChange={(e) => setLimit(Number(e.target.value))}
+            className="rounded-md px-3 py-2 bg-black/30 border border-white/20"
+          >
+            <option value={10}>Top 10</option>
+            <option value={20}>Top 20</option>
+            <option value={30}>Top 30</option>
+            <option value={50}>Top 50</option>
+          </select>
+        </div>
       </div>
 
       {error ? <p className="text-red-300 mb-3">{error}</p> : null}
@@ -160,30 +171,27 @@ export default function TopPage() {
                 </tr>
               </thead>
               <tbody>
-                {data.players.map((p, idx) => {
-                  const xP = safeNum(p.xP ?? p.expected_points, 0);
-                  const form = safeNum(p.form, 0);
-                  const ppg = safeNum(p.ppg, 0);
-                  const price = safeNum(p.price, 0);
-                  const inMyTeam = myTeamIds.has(p.id);
+                {data.players
+                  .filter((p) => !(hideInTeam && myTeamIds.has(p.id)))
+                  .map((p, idx) => {
+                    const xP = safeNum(p.xP ?? p.expected_points, 0);
+                    const form = safeNum(p.form, 0);
+                    const ppg = safeNum(p.ppg, 0);
+                    const price = safeNum(p.price, 0);
+                    const inMyTeam = myTeamIds.has(p.id);
 
-                  return (
-                    <tr key={p.id} className={`border-b border-white/5 ${inMyTeam ? "opacity-45" : ""}`}>
-                      <td className="py-2">{idx + 1}</td>
-                      <td className="py-2 font-medium">
-                        {p.name}
-                        {inMyTeam ? (
-                          <span className="ml-2 text-[11px] rounded-full px-2 py-0.5 border border-white/30 text-white/70">IN TEAM</span>
-                        ) : null}
-                      </td>
-                      <td className="py-2">{p.position}</td>
-                      <td className="py-2">£{price.toFixed(1)}</td>
-                      <td className="py-2 text-[#00ff87] font-semibold">{xP.toFixed(2)}</td>
-                      <td className="py-2">{form.toFixed(1)}</td>
-                      <td className="py-2">{ppg.toFixed(1)}</td>
-                    </tr>
-                  );
-                })}
+                    return (
+                      <tr key={p.id} className={`border-b border-white/5 ${inMyTeam ? "opacity-45" : ""}`}>
+                        <td className="py-2">{idx + 1}</td>
+                        <td className="py-2 font-medium">{p.name}</td>
+                        <td className="py-2">{p.position}</td>
+                        <td className="py-2">£{price.toFixed(1)}</td>
+                        <td className="py-2 text-[#00ff87] font-semibold">{xP.toFixed(2)}</td>
+                        <td className="py-2">{form.toFixed(1)}</td>
+                        <td className="py-2">{ppg.toFixed(1)}</td>
+                      </tr>
+                    );
+                  })}
               </tbody>
             </table>
           </div>
@@ -194,8 +202,11 @@ export default function TopPage() {
         <section className={`${cardClass} mt-4`}>
           <h2 className="font-semibold mb-3 text-[#00ff87]">Explainability Cards</h2>
           <div className="grid md:grid-cols-2 gap-3">
-            {explain.players.slice(0, 8).map((p) => (
-              <div key={p.id} className="border border-white/10 rounded-lg p-3 bg-black/20 text-sm">
+            {explain.players
+              .filter((p) => !(hideInTeam && myTeamIds.has(p.id)))
+              .slice(0, 8)
+              .map((p) => (
+              <div key={p.id} className={`border border-white/10 rounded-lg p-3 bg-black/20 text-sm ${myTeamIds.has(p.id) ? "opacity-45" : ""}`}>
                 <p className="font-semibold">
                   {p.name} <span className="text-white/60">({p.position})</span>
                   <span

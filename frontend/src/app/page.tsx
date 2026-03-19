@@ -7,11 +7,6 @@ const primaryCards = [
     href: "/weekly",
   },
   {
-    title: "FPL Socials",
-    desc: "Creator consensus + top Reddit FantasyPL threads with summaries.",
-    href: "/socials",
-  },
-  {
     title: "Planner",
     desc: "Chip planning, rival intelligence, and weekly digest payloads.",
     href: "/planner",
@@ -20,6 +15,11 @@ const primaryCards = [
     title: "Research",
     desc: "Top picks, explainability cards, and captaincy analysis.",
     href: "/top",
+  },
+  {
+    title: "FPL Socials",
+    desc: "Creator consensus + top Reddit FantasyPL threads with summaries.",
+    href: "/socials",
   },
 ];
 
