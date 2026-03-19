@@ -97,7 +97,7 @@ function badgeClass(badge?: "DGW" | "SGW" | "BLANK") {
 
 export default function WeeklyBriefPage() {
   const [mode, setMode] = useState<BriefMode>("balanced");
-  const [modelVersion, setModelVersion] = useState<ModelVersion>("xgb_hist_v1");
+  const [modelVersion, setModelVersion] = useState<ModelVersion>("xgb_v1");
   const [data, setData] = useState<WeeklyBriefResponse | null>(null);
   const [notifSettings, setNotifSettings] = useState<NotificationSettings | null>(null);
   const [notifStatus, setNotifStatus] = useState<NotificationStatus | null>(null);

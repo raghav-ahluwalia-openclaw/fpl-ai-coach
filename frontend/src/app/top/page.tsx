@@ -55,7 +55,6 @@ const insightTools = [
   { label: "Transfer Center", href: "/targets" },
   { label: "Captaincy Lab", href: "/captaincy" },
   { label: "Rank Trend", href: "/team-rank" },
-  { label: "Global Picks", href: "/global" },
   { label: "Settings", href: "/settings" },
 ];
 
@@ -80,20 +79,6 @@ export default function TopPage() {
 
   return (
     <main className="min-h-screen p-6 md:p-8 max-w-6xl mx-auto text-white">
-      <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
-        <h1 className="text-3xl font-black">Top Players</h1>
-        <select
-          value={limit}
-          onChange={(e) => setLimit(Number(e.target.value))}
-          className="rounded-md px-3 py-2 bg-black/30 border border-white/20"
-        >
-          <option value={10}>Top 10</option>
-          <option value={20}>Top 20</option>
-          <option value={30}>Top 30</option>
-          <option value={50}>Top 50</option>
-        </select>
-      </div>
-
       <section className={`${cardClass} mb-4`}>
         <p className="text-xs uppercase tracking-widest text-white/60 mb-2">Insight tools</p>
         <div className="flex flex-wrap gap-2 text-sm">
@@ -109,11 +94,26 @@ export default function TopPage() {
         </div>
       </section>
 
+      <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
+        <h1 className="text-3xl font-black">Research</h1>
+        <select
+          value={limit}
+          onChange={(e) => setLimit(Number(e.target.value))}
+          className="rounded-md px-3 py-2 bg-black/30 border border-white/20"
+        >
+          <option value={10}>Top 10</option>
+          <option value={20}>Top 20</option>
+          <option value={30}>Top 30</option>
+          <option value={50}>Top 50</option>
+        </select>
+      </div>
+
       {error ? <p className="text-red-300 mb-3">{error}</p> : null}
       {!data && !error ? <p className="text-white/75">Loading...</p> : null}
 
       {data ? (
         <section className={cardClass}>
+          <h2 className="font-semibold text-[#00ff87] mb-2">Top Picks</h2>
           <p className="text-sm text-white/75 mb-3">
             GW {data.next_gw} • Showing {data.count} players
           </p>

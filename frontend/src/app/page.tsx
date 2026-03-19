@@ -17,7 +17,7 @@ const primaryCards = [
     href: "/planner",
   },
   {
-    title: "Insights",
+    title: "Research",
     desc: "Top picks, explainability cards, and captaincy analysis.",
     href: "/top",
   },
