@@ -24,6 +24,37 @@ NEG_WEIGHTS = {
     "suspended": 3, "minutes": 1, "concern": 2, "uncertain": 2, "out": 1,
 }
 
+FPL_CONTEXT_KEYWORDS = [
+    "fpl", "fantasy premier league", "gameweek", "gw", "captain", "vice", "transfer", "chip", "wildcard",
+    "free hit", "bench boost", "triple captain", "fixture", "xgi", "minutes", "clean sheet", "differential",
+    "deadline", "rank", "ownership", "expected points", "xpts", "blank", "double gameweek", "dgw", "bgw",
+]
+
+PROMO_PATTERNS = [
+    "sponsor", "sponsored", "sponsorship", "paid promotion", "use code", "discount code", "affiliate",
+    "affiliate link", "patreon", "join my", "membership", "member", "link in description", "partnered with",
+    "thanks to", "brought to you by", "subscribe", "smash the like", "follow me",
+]
+
+DRAFT_PATTERNS = [
+    "fpl draft", "draft waiver", "waiver tips", "waiver wire", "draft picks", "draft strategy", "draft gw",
+]
+
+
+def _is_promotional(text: str) -> bool:
+    low = (text or "").lower()
+    return any(p in low for p in PROMO_PATTERNS)
+
+
+def _is_fpl_relevant(text: str) -> bool:
+    low = (text or "").lower()
+    return any(k in low for k in FPL_CONTEXT_KEYWORDS)
+
+
+def _is_draft_centric(text: str) -> bool:
+    low = (text or "").lower()
+    return any(p in low for p in DRAFT_PATTERNS) or bool(re.search(r"\bdraft\b", low))
+
 
 def _sentences(text: str) -> list[str]:
     clean = re.sub(r"\s+", " ", (text or "").strip())
@@ -32,56 +63,49 @@ def _sentences(text: str) -> list[str]:
     return [p.strip() for p in re.split(r"(?<=[.!?])\s+", clean) if len(p.strip()) > 25]
 
 
-def summarize_text(text: str, max_sentences: int = 4) -> str:
+def summarize_text(text: str, max_sentences: int = 6) -> str:
     parts = _sentences(text)
     if not parts:
         return "No detailed summary available yet."
+
     blacklist = [
         "welcome back", "what is going on everyone", "kind captions language", "captions language",
-        "in this one", "we're going to", "we are going to", "fantasy premier league tips",
         "subscribe", "smash the like", "thanks for watching",
     ]
-    keyword_pref = ["transfer", "captain", "sell", "buy", "fixtures", "injury", "wildcard", "free hit", "bench boost", "differential"]
 
     filtered = []
     for p in parts:
         low = p.lower()
         if any(b in low for b in blacklist):
             continue
-        # drop overly conversational transcript lines
-        pronouns = len(re.findall(r"\b(i|we|you|my|our|me|i'm|we're|you've)\b", low))
-        if pronouns >= 2:
+        if _is_promotional(low):
             continue
         filtered.append(p)
 
+    if not filtered:
+        filtered = [p for p in parts if not _is_promotional(p)]
     if not filtered:
         filtered = parts
     if not filtered:
         return "No detailed summary available yet."
 
+    # Keep summary generic + representative of the whole video by sampling
+    # evenly across the transcript instead of templated buckets.
     n = len(filtered)
+    k = min(max_sentences, n)
+    if k <= 1:
+        out = filtered[0]
+        return out[:700]
 
-    def score_sentence(idx: int, s: str) -> tuple[float, int]:
-        low = s.lower()
-        kw = sum(1 for k in keyword_pref if k in low)
-        penalty_intro = 1 if idx < max(3, n // 10) else 0
-        return (kw * 2.0 - penalty_intro + min(len(s), 180) / 180.0, len(s))
+    chosen_idx = []
+    for i in range(k):
+        idx = round(i * (n - 1) / (k - 1))
+        if not chosen_idx or idx != chosen_idx[-1]:
+            chosen_idx.append(idx)
 
-    ranked = sorted([(i, s) for i, s in enumerate(filtered)], key=lambda x: score_sentence(x[0], x[1]), reverse=True)
-
-    picked = []
-    seen = set()
-    for _, s in ranked:
-        key = s.lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        picked.append(s)
-        if len(picked) >= max_sentences:
-            break
-
+    picked = [filtered[i] for i in chosen_idx]
     out = " ".join(picked).strip()
-    return out[:520]
+    return out[:700]
 
 
 def _remove_title(text: str, title: str) -> str:
@@ -106,7 +130,13 @@ def _pick_line(parts: list[str], keywords: list[str], fallback: str = "No strong
 
 def structured_summary(text: str, *, title: str = "") -> dict:
     parts = _sentences(text)
-    if not parts:
+    parts = [p for p in parts if not _is_promotional(p)]
+    fpl_parts = [p for p in parts if _is_fpl_relevant(p)]
+
+    if not fpl_parts:
+        fpl_parts = parts
+
+    if not fpl_parts:
         return {
             "key_calls": "No detailed summary available.",
             "buy_watch": "No clear buy signal extracted.",
@@ -115,11 +145,36 @@ def structured_summary(text: str, *, title: str = "") -> dict:
         }
 
     return {
-        "key_calls": _remove_title(_pick_line(parts, ["overall", "plan", "strategy", "approach", "final thoughts", "key"]), title),
-        "buy_watch": _remove_title(_pick_line(parts, ["buy", "bring", "target", "pick", "consider", "watchlist"]), title),
-        "sell_watch": _remove_title(_pick_line(parts, ["sell", "avoid", "rotation", "injury", "risk", "doubt", "suspended", "minutes"]), title),
-        "captain_chips": _remove_title(_pick_line(parts, ["captain", "vice", "triple captain", "wildcard", "free hit", "bench boost"]), title),
+        "key_calls": _remove_title(_pick_line(fpl_parts, ["overall", "plan", "strategy", "approach", "final thoughts", "key", "gameweek", "transfer", "captain"]), title),
+        "buy_watch": _remove_title(_pick_line(fpl_parts, ["buy", "bring", "target", "pick", "consider", "watchlist", "transfer in"]), title),
+        "sell_watch": _remove_title(_pick_line(fpl_parts, ["sell", "avoid", "rotation", "injury", "risk", "doubt", "suspended", "minutes", "transfer out"]), title),
+        "captain_chips": _remove_title(_pick_line(fpl_parts, ["captain", "vice", "triple captain", "wildcard", "free hit", "bench boost", "chip"]), title),
     }
+
+
+def decision_oriented_summary(text: str, *, title: str = "") -> str:
+    s = structured_summary(text, title=title)
+
+    start_buy = _remove_title(s.get("buy_watch") or "No clear buy/start signal.", title)
+    avoid_sell = _remove_title(s.get("sell_watch") or "No clear avoid/sell signal.", title)
+    captain_chip = _remove_title(s.get("captain_chips") or "No clear captain/chip signal.", title)
+
+    parts = _sentences(text)
+    parts = [p for p in parts if not _is_promotional(p)]
+    monitor_line = _pick_line(
+        parts,
+        ["doubt", "injury", "minutes", "rotation", "press conference", "deadline", "confirmed", "lineup", "team news"],
+        fallback="Recheck team news and minutes risk before deadline.",
+    )
+    monitor_line = _remove_title(monitor_line, title)
+
+    lines = [
+        f"Start/Buy: {start_buy}",
+        f"Avoid/Sell: {avoid_sell}",
+        f"Captain/Chip: {captain_chip}",
+        f"Monitor: {monitor_line}",
+    ]
+    return "\n".join(lines)
 
 
 def sentiment_score(text: str) -> int:
@@ -202,6 +257,11 @@ def main() -> int:
     enriched_videos = []
 
     for v in videos:
+        title = v.get("title") or ""
+        creator = v.get("creator") or ""
+        if _is_draft_centric(f"{title} {creator}"):
+            continue
+
         url = v.get("url")
         if not url:
             continue
@@ -218,12 +278,12 @@ def main() -> int:
             if transcript_path.exists():
                 transcript = transcript_path.read_text(encoding="utf-8")
 
-        title = v.get("title") or ""
         # Use youtube-watcher transcript + prior short summary; do not inject title into summary body.
         combined = " ".join([v.get("summary") or "", transcript]).strip()
         s_score = sentiment_score(combined)
 
         summary_struct = structured_summary(combined, title=title)
+        decision_summary = decision_oriented_summary(combined, title=title)
         enriched_videos.append(
             {
                 "creator": v.get("creator"),
@@ -232,7 +292,7 @@ def main() -> int:
                 "video_id": vid,
                 "upload_date": v.get("upload_date"),
                 "view_count": v.get("view_count"),
-                "summary": _remove_title(summarize_text(combined, max_sentences=4), title),
+                "summary": decision_summary,
                 "summary_struct": summary_struct,
                 "transcript_path": str(transcript_path.relative_to(ROOT)),
                 "transcript": transcript,

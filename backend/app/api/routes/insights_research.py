@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -13,6 +14,8 @@ from app.services.captaincy_service import build_captaincy_lab, build_explainabi
 
 DIGEST_PATH = Path(__file__).resolve().parents[3] / "data" / "content" / "creator_digest.json"
 ENRICHED_SOCIALS_PATH = Path(__file__).resolve().parents[3] / "data" / "content" / "socials_enriched.json"
+EXCLUDED_CREATORS = {"fpl focal"}
+DRAFT_PATTERNS = {"fpl draft", "draft waiver", "waiver tips", "waiver wire", "draft picks", "draft strategy", "draft gw"}
 
 POS_WEIGHTS = {
     "great": 2, "good": 1, "best": 2, "nailed": 2, "essential": 2, "must": 1, "strong": 1, "haul": 2,
@@ -24,6 +27,9 @@ NEG_WEIGHTS = {
     "injured": 3, "rotation": 2, "risk": 2, "doubt": 2, "blank": 2, "trap": 2, "weak": 1,
     "suspended": 3, "minutes": 1, "concern": 2, "uncertain": 2, "out": 1,
 }
+
+OFFICIAL_FPL_BOOTSTRAP_URL = "https://fantasy.premierleague.com/api/bootstrap-static/"
+OFFICIAL_FPL_FIXTURES_URL = "https://fantasy.premierleague.com/api/fixtures/"
 
 
 def _summarize_text(text: str, max_sentences: int = 3) -> str:
@@ -78,6 +84,124 @@ def _extract_player_mentions(text: str, player_names: list[str], max_items: int 
     return mentions[:max_items]
 
 
+def _is_draft_centric_video(v: dict) -> bool:
+    title = str((v or {}).get("title") or "").lower()
+    hay = title
+    if any(p in hay for p in DRAFT_PATTERNS):
+        return True
+    return bool(re.search(r"\bdraft\b", hay))
+
+
+def _dedupe_videos_by_exact_title(videos: list[dict]) -> list[dict]:
+    """Drop duplicate creator rows that point to videos with the same exact title.
+
+    Normalization is intentionally light (strip + lowercase) to match "exact name"
+    dedupe while handling accidental casing/spacing differences.
+    """
+    seen: set[str] = set()
+    out: list[dict] = []
+    for v in videos:
+        title = str((v or {}).get("title") or "").strip().lower()
+        if not title:
+            out.append(v)
+            continue
+        if title in seen:
+            continue
+        seen.add(title)
+        out.append(v)
+    return out
+
+
+def _official_news_payload(limit: int = 8) -> dict:
+    """Build official FPL-driven updates for fixture schedule changes + player availability."""
+    try:
+        headers = {"User-Agent": "fpl-ai-coach/1.0"}
+        b_resp = requests.get(OFFICIAL_FPL_BOOTSTRAP_URL, timeout=20, headers=headers)
+        b_resp.raise_for_status()
+        bootstrap = b_resp.json()
+
+        f_resp = requests.get(OFFICIAL_FPL_FIXTURES_URL, timeout=20, headers=headers)
+        f_resp.raise_for_status()
+        fixtures = f_resp.json()
+
+        teams = {int(t.get("id")): str(t.get("short_name") or t.get("name") or "") for t in bootstrap.get("teams", [])}
+
+        severity_order = {"i": 0, "s": 1, "u": 2, "d": 3, "a": 4}
+        injuries = []
+        for e in bootstrap.get("elements", []):
+            status = str(e.get("status") or "a").lower()
+            news = str(e.get("news") or "").strip()
+            chance_next = e.get("chance_of_playing_next_round")
+            is_flagged = status != "a" or (isinstance(chance_next, int) and chance_next < 100)
+            if not is_flagged:
+                continue
+
+            team_short = teams.get(int(e.get("team") or 0), "")
+            player = str(e.get("web_name") or e.get("first_name") or "Unknown")
+            try:
+                selected_by_percent = float(e.get("selected_by_percent") or 0.0)
+            except Exception:  # noqa: BLE001
+                selected_by_percent = 0.0
+
+            injuries.append(
+                {
+                    "player": player,
+                    "team": team_short,
+                    "status": status,
+                    "chance_of_playing_next_round": chance_next,
+                    "selected_by_percent": selected_by_percent,
+                    "news": news or "Flagged in official FPL data",
+                }
+            )
+
+        # User requested ordering by FPL ownership %. Highest-owned flagged players first.
+        injuries.sort(
+            key=lambda x: (
+                -float(x.get("selected_by_percent") or 0.0),
+                severity_order.get(str(x.get("status") or "a"), 9),
+                int(x.get("chance_of_playing_next_round") or 100),
+                str(x.get("player") or ""),
+            )
+        )
+
+        fixture_updates = []
+        for fx in fixtures:
+            if not isinstance(fx, dict):
+                continue
+            if not bool(fx.get("provisional_start_time")):
+                continue
+            if bool(fx.get("finished")):
+                continue
+
+            h = teams.get(int(fx.get("team_h") or 0), "?")
+            a = teams.get(int(fx.get("team_a") or 0), "?")
+            fixture_updates.append(
+                {
+                    "gw": fx.get("event"),
+                    "fixture": f"{h} vs {a}",
+                    "kickoff_time": fx.get("kickoff_time"),
+                    "note": "Kickoff marked provisional by official FPL API (possible schedule change).",
+                }
+            )
+
+        fixture_updates.sort(key=lambda x: str(x.get("kickoff_time") or ""))
+
+        return {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "source": "Official FPL API",
+            "fixture_updates": fixture_updates[:limit],
+            "injuries": injuries[: max(limit, 10)],
+        }
+    except Exception as e:  # noqa: BLE001
+        return {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "source": "Official FPL API",
+            "fixture_updates": [],
+            "injuries": [],
+            "error": str(e),
+        }
+
+
 @router.get("/api/fpl/content-consensus")
 def content_consensus(limit: int = Query(default=10, ge=1, le=50), include_videos: bool = Query(default=True)):
     if not DIGEST_PATH.exists():
@@ -95,11 +219,22 @@ def content_consensus(limit: int = Query(default=10, ge=1, le=50), include_video
         raise HTTPException(status_code=500, detail=f"Failed to parse creator digest: {e}")
 
     top_topics = payload.get("top_topics", [])[:limit]
-    videos = payload.get("videos", [])[:limit] if include_videos else []
+    creator_coverage = {
+        k: v
+        for k, v in (payload.get("creator_coverage", {}) or {}).items()
+        if str(k or "").strip().lower() not in EXCLUDED_CREATORS
+    }
+    videos_all = payload.get("videos", [])
+    videos_all = [
+        v for v in videos_all
+        if str((v or {}).get("creator") or "").strip().lower() not in EXCLUDED_CREATORS
+        and not _is_draft_centric_video(v)
+    ]
+    videos = videos_all[:limit] if include_videos else []
 
     return {
         "generated_at": payload.get("generated_at"),
-        "creator_coverage": payload.get("creator_coverage", {}),
+        "creator_coverage": creator_coverage,
         "top_topics": top_topics,
         "top_title_terms": payload.get("top_title_terms", [])[: min(limit, 15)],
         "top_player_mentions": payload.get("top_player_mentions", [])[: min(limit, 20)],
@@ -202,11 +337,17 @@ def fpl_socials(limit: int = Query(default=5, ge=1, le=10), reddit_window: str =
             if ENRICHED_SOCIALS_PATH.exists():
                 enriched = json.loads(ENRICHED_SOCIALS_PATH.read_text(encoding="utf-8"))
                 evideos_all = enriched.get("videos", [])
+                evideos_all = [
+                    x for x in evideos_all
+                    if str((x or {}).get("creator") or "").strip().lower() not in EXCLUDED_CREATORS
+                    and not _is_draft_centric_video(x)
+                ]
                 evideos_all = sorted(
                     evideos_all,
                     key=lambda x: (str(x.get("upload_date") or ""), int(x.get("view_count") or 0)),
                     reverse=True,
                 )
+                evideos_all = _dedupe_videos_by_exact_title(evideos_all)
                 # diversify feed: max 2 videos per creator
                 creator_counts: dict[str, int] = {}
                 evideos = []
@@ -243,11 +384,17 @@ def fpl_socials(limit: int = Query(default=5, ge=1, le=10), reddit_window: str =
                 }
             else:
                 raw_videos_all = payload.get("videos", [])
+                raw_videos_all = [
+                    x for x in raw_videos_all
+                    if str((x or {}).get("creator") or "").strip().lower() not in EXCLUDED_CREATORS
+                    and not _is_draft_centric_video(x)
+                ]
                 raw_videos_all = sorted(
                     raw_videos_all,
                     key=lambda x: (str(x.get("upload_date") or ""), int(x.get("view_count") or 0)),
                     reverse=True,
                 )
+                raw_videos_all = _dedupe_videos_by_exact_title(raw_videos_all)
                 creator_counts: dict[str, int] = {}
                 raw_videos = []
                 for v in raw_videos_all:
@@ -359,11 +506,14 @@ def fpl_socials(limit: int = Query(default=5, ge=1, le=10), reddit_window: str =
             "sentiment": {"label": "neutral", "score": 0},
         }]
 
+    official_news = _official_news_payload(limit=max(6, limit))
+
     return {
         "subreddit": "FantasyPL",
         "reddit_window": reddit_window,
         "youtube_creators": consensus,
         "reddit_threads": reddit_threads,
+        "official_news": official_news,
     }
 
 

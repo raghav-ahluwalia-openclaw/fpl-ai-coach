@@ -7,12 +7,6 @@
       "tier": "core"
     },
     {
-      "name": "FPL Focal",
-      "query": "FPL Focal Fantasy Premier League",
-      "weight": 1.0,
-      "tier": "core"
-    },
-    {
       "name": "FPL Harry",
       "query": "FPL Harry Fantasy Premier League",
       "weight": 0.95,
