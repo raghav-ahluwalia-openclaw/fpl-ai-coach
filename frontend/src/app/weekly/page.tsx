@@ -8,6 +8,8 @@ type Mode = "safe" | "balanced" | "aggressive";
 
 type AppSettings = { fpl_entry_id: number | null };
 
+type FixtureWindow = { counts: number[]; blanks: number; doubles: number; singles: number; label: string };
+
 type HealthRow = {
   name: string;
   position: string;
@@ -15,6 +17,7 @@ type HealthRow = {
   minutes_risk: number;
   availability_risk: number;
   fixture_badge: "DGW" | "SGW" | "BLANK";
+  fixture_window_next_3: FixtureWindow;
   injury_news: string;
   upside_safety_score: number;
 };
@@ -26,6 +29,7 @@ type TransferMove = {
   projected_points_3_in: number;
   projected_points_3_out: number;
   fixture_difficulty_factor_in: number;
+  fixture_window_next_3_in: FixtureWindow;
   minutes_risk_in: number;
   availability_risk_in: number;
   injury_news_in: string;
@@ -47,16 +51,23 @@ type CaptainCandidate = {
   differential_score: number;
   projected_points_3: number;
   ownership_pct: number;
+  fixture_window_next_3: FixtureWindow;
 };
 
 type WeeklyCockpit = {
   entry_id: number;
   gameweek: number;
   mode: Mode;
+  fixture_context: {
+    gameweek: number;
+    considered: boolean;
+    method: string;
+    squad_window: { blank_flags_next_3: number; double_flags_next_3: number };
+  };
   lineup_optimizer: {
     formation: string;
-    starting_xi: Array<{ name: string; position: string; xP_next_1: number; xP_next_3: number; fixture_badge: "DGW" | "SGW" | "BLANK" }>;
-    bench_order: Array<{ name: string; position: string; bench_rank: number; xP_next_1: number; xP_next_3: number; fixture_badge: "DGW" | "SGW" | "BLANK" }>;
+    starting_xi: Array<{ name: string; position: string; xP_next_1: number; xP_next_3: number; fixture_badge: "DGW" | "SGW" | "BLANK"; fixture_window_next_3: FixtureWindow }>;
+    bench_order: Array<{ name: string; position: string; bench_rank: number; xP_next_1: number; xP_next_3: number; fixture_badge: "DGW" | "SGW" | "BLANK"; fixture_window_next_3: FixtureWindow }>;
   };
   team_health: {
     sell: HealthRow[];
@@ -156,6 +167,15 @@ export default function WeeklyPage() {
       {data ? (
         <div className="space-y-6">
           <section className={cardClass}>
+            <h2 className="text-xl font-bold text-[#00ff87] mb-2">Fixture Context (DGW / BLANK considered)</h2>
+            <p className="text-sm text-white/80">{data.fixture_context.method}</p>
+            <p className="text-sm text-white/70 mt-1">
+              Squad flags over next 3 GWs: {data.fixture_context.squad_window.double_flags_next_3} players with DGW windows,
+              {" "}{data.fixture_context.squad_window.blank_flags_next_3} players with BLANK windows.
+            </p>
+          </section>
+
+          <section className={cardClass}>
             <h2 className="text-xl font-bold text-[#00ff87] mb-3">Lineup Optimizer</h2>
             <p className="text-sm text-white/75 mb-3">Recommended formation: <span className="font-semibold text-white">{data.lineup_optimizer.formation}</span></p>
             <div className="grid md:grid-cols-2 gap-4 text-sm">
@@ -164,7 +184,7 @@ export default function WeeklyPage() {
                 <ul className="space-y-1">
                   {data.lineup_optimizer.starting_xi.map((p) => (
                     <li key={`xi-${p.name}`}>
-                      {p.name} ({p.position}) • xP1 {p.xP_next_1} • xP3 {p.xP_next_3} • {p.fixture_badge}
+                      {p.name} ({p.position}) • xP1 {p.xP_next_1} • xP3 {p.xP_next_3} • {p.fixture_badge} • {p.fixture_window_next_3.label}
                     </li>
                   ))}
                 </ul>
@@ -174,7 +194,7 @@ export default function WeeklyPage() {
                 <ul className="space-y-1">
                   {data.lineup_optimizer.bench_order.map((p) => (
                     <li key={`bench-${p.name}`}>
-                      {p.bench_rank}. {p.name} ({p.position}) • xP1 {p.xP_next_1} • xP3 {p.xP_next_3} • {p.fixture_badge}
+                      {p.bench_rank}. {p.name} ({p.position}) • xP1 {p.xP_next_1} • xP3 {p.xP_next_3} • {p.fixture_badge} • {p.fixture_window_next_3.label}
                     </li>
                   ))}
                 </ul>
@@ -192,7 +212,7 @@ export default function WeeklyPage() {
                     {(data.team_health[bucket as keyof typeof data.team_health] as HealthRow[]).map((p) => (
                       <li key={`${bucket}-${p.name}`}>
                         <div className="font-medium">{p.name} ({p.position}) • xP3 {p.projected_points_3}</div>
-                        <div className="text-white/70">Risk M:{p.minutes_risk} A:{p.availability_risk} • {p.fixture_badge}</div>
+                        <div className="text-white/70">Risk M:{p.minutes_risk} A:{p.availability_risk} • {p.fixture_badge} • {p.fixture_window_next_3.label}</div>
                       </li>
                     ))}
                   </ul>
@@ -211,7 +231,7 @@ export default function WeeklyPage() {
                     <li key={`1ft-${p.plan}`} className="rounded-lg border border-white/10 p-3 bg-black/20">
                       <div className="font-medium">{p.plan} • Net {p.net_gain} • Hit {p.hit}</div>
                       {p.transfers.map((t, i) => (
-                        <div key={`${p.plan}-1-${i}`} className="text-white/80">{t.out} → {t.in} (gain {t.gain}, xP3 {t.projected_points_3_out}→{t.projected_points_3_in})</div>
+                        <div key={`${p.plan}-1-${i}`} className="text-white/80">{t.out} → {t.in} (gain {t.gain}, xP3 {t.projected_points_3_out}→{t.projected_points_3_in}, {t.fixture_window_next_3_in.label})</div>
                       ))}
                     </li>
                   ))}
@@ -224,7 +244,7 @@ export default function WeeklyPage() {
                     <li key={`2ft-${p.plan}`} className="rounded-lg border border-white/10 p-3 bg-black/20">
                       <div className="font-medium">{p.plan} • Net {p.net_gain} • Hit {p.hit}</div>
                       {p.transfers.map((t, i) => (
-                        <div key={`${p.plan}-2-${i}`} className="text-white/80">{t.out} → {t.in} (gain {t.gain}, xP3 {t.projected_points_3_out}→{t.projected_points_3_in})</div>
+                        <div key={`${p.plan}-2-${i}`} className="text-white/80">{t.out} → {t.in} (gain {t.gain}, xP3 {t.projected_points_3_out}→{t.projected_points_3_in}, {t.fixture_window_next_3_in.label})</div>
                       ))}
                     </li>
                   ))}
@@ -240,7 +260,7 @@ export default function WeeklyPage() {
                 <h3 className="font-semibold mb-2">Safe</h3>
                 <ul className="space-y-2">
                   {data.captain_matrix.safe.map((c) => (
-                    <li key={`safe-${c.name}`}>{c.name} • score {c.safe_score} • xP3 {c.projected_points_3}</li>
+                    <li key={`safe-${c.name}`}>{c.name} • score {c.safe_score} • xP3 {c.projected_points_3} • {c.fixture_window_next_3.label}</li>
                   ))}
                 </ul>
               </div>
@@ -248,7 +268,7 @@ export default function WeeklyPage() {
                 <h3 className="font-semibold mb-2">Differential</h3>
                 <ul className="space-y-2">
                   {data.captain_matrix.differential.map((c) => (
-                    <li key={`diff-${c.name}`}>{c.name} • score {c.differential_score} • own {c.ownership_pct}%</li>
+                    <li key={`diff-${c.name}`}>{c.name} • score {c.differential_score} • own {c.ownership_pct}% • {c.fixture_window_next_3.label}</li>
                   ))}
                 </ul>
               </div>

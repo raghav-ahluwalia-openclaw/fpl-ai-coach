@@ -386,6 +386,19 @@ def weekly_cockpit(
 
         mode_weights, _ = _strategy_config(mode)
 
+        def _fixture_window_next_3(player: Player) -> dict:
+            counts = [_fixture_count_for_gw(player, fixtures, gw + i) for i in range(3)]
+            blanks = sum(1 for c in counts if c == 0)
+            doubles = sum(1 for c in counts if c >= 2)
+            singles = sum(1 for c in counts if c == 1)
+            return {
+                "counts": counts,
+                "blanks": blanks,
+                "doubles": doubles,
+                "singles": singles,
+                "label": f"B{blanks} / S{singles} / D{doubles}",
+            }
+
         scored = [(_expected_points(p, fixtures, gw), p) for p in squad_players]
         starting_pairs, bench_pairs, formation = _build_lineup_from_squad(scored)
 
@@ -399,6 +412,7 @@ def weekly_cockpit(
                     "xP_next_1": round(xpts, 2),
                     "xP_next_3": round(_expected_points_horizon(p, fixtures, gw, horizon=3, weights=mode_weights), 2),
                     "fixture_badge": _fixture_badge_for_gw(p, fixtures, gw)[1],
+                    "fixture_window_next_3": _fixture_window_next_3(p),
                 }
                 for xpts, p in sorted(starting_pairs, key=lambda x: x[0], reverse=True)
             ],
@@ -411,6 +425,7 @@ def weekly_cockpit(
                     "xP_next_1": round(xpts, 2),
                     "xP_next_3": round(_expected_points_horizon(p, fixtures, gw, horizon=3, weights=mode_weights), 2),
                     "fixture_badge": _fixture_badge_for_gw(p, fixtures, gw)[1],
+                    "fixture_window_next_3": _fixture_window_next_3(p),
                 }
                 for idx, (xpts, p) in enumerate(bench_pairs)
             ],
@@ -422,6 +437,7 @@ def weekly_cockpit(
             xp1 = _expected_points(p, fixtures, gw)
             xp3 = _expected_points_horizon(p, fixtures, gw, horizon=3, weights=mode_weights)
             fc, fb = _fixture_badge_for_gw(p, fixtures, gw)
+            fixture_window = _fixture_window_next_3(p)
             availability = _availability_factor(p.chance_of_playing_next_round, p.news)
             minutes_factor = _minutes_factor(p.minutes)
             minutes_risk = round(max(0.0, 1.0 - min(minutes_factor, 1.0)), 2)
@@ -429,9 +445,11 @@ def weekly_cockpit(
             risk = round(min(1.0, availability_risk * 0.6 + minutes_risk * 0.4), 2)
             upside_safety = round(max(-2.5, min(2.5, (xp3 - 5.5) - (risk * 2.0))), 2)
             action = "hold"
-            if risk >= 0.45 and xp3 < 4.8:
+            if fixture_window["blanks"] >= 1 and xp3 < 5.2:
+                action = "watch"
+            if fixture_window["blanks"] >= 2 or (risk >= 0.45 and xp3 < 4.8):
                 action = "sell"
-            elif risk >= 0.3 or xp3 < 5.3:
+            elif action != "sell" and (risk >= 0.3 or xp3 < 5.3):
                 action = "watch"
 
             health_rows.append(
@@ -444,6 +462,7 @@ def weekly_cockpit(
                     "projected_points_3": round(xp3, 2),
                     "fixture_count": fc,
                     "fixture_badge": fb,
+                    "fixture_window_next_3": fixture_window,
                     "fixture_difficulty_factor": round(_fixture_factor(p, fixtures, gw), 2),
                     "minutes_risk": minutes_risk,
                     "availability_risk": availability_risk,
@@ -485,12 +504,14 @@ def weekly_cockpit(
                 in_availability_risk = round(max(0.0, 1.0 - _availability_factor(in_p.chance_of_playing_next_round, in_p.news)), 2)
                 in_minutes_risk = round(max(0.0, 1.0 - min(_minutes_factor(in_p.minutes), 1.0)), 2)
                 in_upside_safety = round((in_xp3 - 5.5) - ((in_availability_risk * 0.6 + in_minutes_risk * 0.4) * 2.0), 2)
+                in_fixture_window = _fixture_window_next_3(in_p)
                 transfers.append(
                     {
                         **t,
                         "projected_points_3_in": round(in_xp3, 2),
                         "projected_points_3_out": round(out_xp3, 2),
                         "fixture_difficulty_factor_in": round(_fixture_factor(in_p, fixtures, gw), 2),
+                        "fixture_window_next_3_in": in_fixture_window,
                         "minutes_risk_in": in_minutes_risk,
                         "availability_risk_in": in_availability_risk,
                         "injury_news_in": in_p.news or "",
@@ -518,7 +539,13 @@ def weekly_cockpit(
             minutes_risk = max(0.0, 1.0 - min(_minutes_factor(p.minutes), 1.0))
             risk = min(1.0, availability_risk * 0.6 + minutes_risk * 0.4)
             safe_score = round(xp3 * (1.0 - risk * 0.65) + (ownership * 0.01), 2)
-            differential_score = round(xp3 * (1.0 - risk * 0.2) + (max(0.0, 30.0 - ownership) / 30.0) * 1.6, 2)
+            fixture_window = _fixture_window_next_3(p)
+            fixture_swing_bonus = (fixture_window["doubles"] * 0.35) - (fixture_window["blanks"] * 0.6)
+            differential_score = round(
+                xp3 * (1.0 - risk * 0.2) + (max(0.0, 30.0 - ownership) / 30.0) * 1.6 + fixture_swing_bonus,
+                2,
+            )
+            safe_score = round(safe_score + fixture_swing_bonus * 0.6, 2)
             matrix.append(
                 {
                     "id": p.id,
@@ -527,6 +554,7 @@ def weekly_cockpit(
                     "differential_score": differential_score,
                     "projected_points_3": round(xp3, 2),
                     "ownership_pct": round(ownership, 1),
+                    "fixture_window_next_3": fixture_window,
                     "minutes_risk": round(minutes_risk, 2),
                     "availability_risk": round(availability_risk, 2),
                 }
@@ -587,10 +615,21 @@ def weekly_cockpit(
                 }
             )
 
+        squad_window = {
+            "blank_flags_next_3": sum(1 for p in squad_players if _fixture_window_next_3(p)["blanks"] > 0),
+            "double_flags_next_3": sum(1 for p in squad_players if _fixture_window_next_3(p)["doubles"] > 0),
+        }
+
         return {
             "entry_id": entry_id,
             "gameweek": gw,
             "mode": mode,
+            "fixture_context": {
+                "gameweek": gw,
+                "considered": True,
+                "method": "All xP(1/3) and transfer/captain scores include SGW/DGW/BLANK via fixture-aware model.",
+                "squad_window": squad_window,
+            },
             "lineup_optimizer": lineup_optimizer,
             "team_health": {
                 "sell": sells,
