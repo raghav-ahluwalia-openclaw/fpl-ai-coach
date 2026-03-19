@@ -158,7 +158,10 @@ def top_players(limit: int = Query(default=20, ge=1, le=100)):
                     "name": p.web_name,
                     "position": POSITION_MAP.get(p.element_type, str(p.element_type)),
                     "price": round(p.now_cost / 10.0, 1),
+                    "xP": xpts,
                     "expected_points": xpts,
+                    "form": round(p.form, 2),
+                    "ppg": round(p.points_per_game, 2),
                     "reason": _reason(p, xpts),
                 }
             )

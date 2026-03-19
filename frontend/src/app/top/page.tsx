@@ -17,6 +17,13 @@ type TopPlayer = {
   ppg?: number;
 };
 
+type AppSettings = { fpl_entry_id: number | null };
+
+type TeamRecommendationLite = {
+  starting_xi: Array<{ id: number }>;
+  bench: Array<{ id: number }>;
+};
+
 type TopPlayersResponse = {
   count: number;
   next_gw: number;
@@ -66,6 +73,7 @@ export default function TopPage() {
   const [limit, setLimit] = useState(20);
   const [data, setData] = useState<TopPlayersResponse | null>(null);
   const [explain, setExplain] = useState<ExplainabilityResponse | null>(null);
+  const [myTeamIds, setMyTeamIds] = useState<Set<number>>(new Set());
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -80,6 +88,23 @@ export default function TopPage() {
       .then(setExplain)
       .catch(() => null);
   }, [limit]);
+
+  useEffect(() => {
+    fetchJson<AppSettings>(`${API_BASE}/api/fpl/settings`)
+      .then(async (s) => {
+        if (!s.fpl_entry_id) return;
+        await fetchJson(`${API_BASE}/api/fpl/team/${s.fpl_entry_id}/import`, { method: "POST" });
+        const rec = await fetchJson<TeamRecommendationLite>(
+          `${API_BASE}/api/fpl/team/${s.fpl_entry_id}/recommendation?mode=balanced`,
+        );
+        const ids = new Set<number>([
+          ...rec.starting_xi.map((p) => p.id),
+          ...rec.bench.map((p) => p.id),
+        ]);
+        setMyTeamIds(ids);
+      })
+      .catch(() => null);
+  }, []);
 
   return (
     <main className="min-h-screen p-6 md:p-8 max-w-6xl mx-auto text-white">
@@ -140,11 +165,17 @@ export default function TopPage() {
                   const form = safeNum(p.form, 0);
                   const ppg = safeNum(p.ppg, 0);
                   const price = safeNum(p.price, 0);
+                  const inMyTeam = myTeamIds.has(p.id);
 
                   return (
-                    <tr key={p.id} className="border-b border-white/5">
+                    <tr key={p.id} className={`border-b border-white/5 ${inMyTeam ? "opacity-45" : ""}`}>
                       <td className="py-2">{idx + 1}</td>
-                      <td className="py-2 font-medium">{p.name}</td>
+                      <td className="py-2 font-medium">
+                        {p.name}
+                        {inMyTeam ? (
+                          <span className="ml-2 text-[11px] rounded-full px-2 py-0.5 border border-white/30 text-white/70">IN TEAM</span>
+                        ) : null}
+                      </td>
                       <td className="py-2">{p.position}</td>
                       <td className="py-2">£{price.toFixed(1)}</td>
                       <td className="py-2 text-[#00ff87] font-semibold">{xP.toFixed(2)}</td>
