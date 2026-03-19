@@ -13,11 +13,15 @@ from app.services.captaincy_service import build_captaincy_lab, build_explainabi
 DIGEST_PATH = Path(__file__).resolve().parents[3] / "data" / "content" / "creator_digest.json"
 ENRICHED_SOCIALS_PATH = Path(__file__).resolve().parents[3] / "data" / "content" / "socials_enriched.json"
 
-POS_WORDS = {
-    "great", "good", "best", "nailed", "essential", "must", "strong", "haul", "buy", "start", "captain", "value", "love", "solid", "safe", "upside", "form", "improving", "returns", "clean"
+POS_WEIGHTS = {
+    "great": 2, "good": 1, "best": 2, "nailed": 2, "essential": 2, "must": 1, "strong": 1, "haul": 2,
+    "buy": 1, "start": 1, "captain": 1, "value": 1, "love": 2, "solid": 1, "safe": 1, "upside": 1,
+    "form": 1, "improving": 1, "returns": 1, "clean": 1,
 }
-NEG_WORDS = {
-    "bad", "poor", "awful", "bench", "drop", "sell", "avoid", "injury", "injured", "rotation", "risk", "doubt", "blank", "trap", "weak", "suspended", "minutes", "concern", "uncertain", "out"
+NEG_WEIGHTS = {
+    "bad": 2, "poor": 2, "awful": 3, "bench": 2, "drop": 1, "sell": 2, "avoid": 2, "injury": 3,
+    "injured": 3, "rotation": 2, "risk": 2, "doubt": 2, "blank": 2, "trap": 2, "weak": 1,
+    "suspended": 3, "minutes": 1, "concern": 2, "uncertain": 2, "out": 1,
 }
 
 
@@ -32,9 +36,9 @@ def _summarize_text(text: str, max_sentences: int = 3) -> str:
 
 def _sentiment_score(text: str) -> int:
     words = re.findall(r"[a-zA-Z']+", (text or "").lower())
-    pos = sum(1 for w in words if w in POS_WORDS)
-    neg = sum(1 for w in words if w in NEG_WORDS)
-    return pos - neg
+    pos = sum(POS_WEIGHTS.get(w, 0) for w in words)
+    neg = sum(NEG_WEIGHTS.get(w, 0) for w in words)
+    return int(pos - neg)
 
 
 def _sentiment_label(score: int) -> str:
@@ -61,8 +65,8 @@ def _extract_player_mentions(text: str, player_names: list[str], max_items: int 
 
         local_scores = []
         for m in matches[:6]:
-            a = max(0, m.start() - 120)
-            b = min(len(low), m.end() + 120)
+            a = max(0, m.start() - 80)
+            b = min(len(low), m.end() + 80)
             ctx = low[a:b]
             local_scores.append(_sentiment_score(ctx))
 

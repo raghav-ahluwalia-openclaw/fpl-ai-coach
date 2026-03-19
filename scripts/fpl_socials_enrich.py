@@ -13,11 +13,15 @@ OUT_PATH = ROOT / "backend" / "data" / "content" / "socials_enriched.json"
 TRANSCRIPTS_DIR = ROOT / "backend" / "data" / "content" / "transcripts"
 WATCHER = Path("/home/openclawuser/.openclaw/workspace/skills/youtube-watcher/scripts/get_transcript.py")
 
-POS_WORDS = {
-    "great", "good", "best", "nailed", "essential", "must", "strong", "haul", "buy", "start", "captain", "value", "love", "solid", "safe", "upside", "form", "improving", "returns", "clean"
+POS_WEIGHTS = {
+    "great": 2, "good": 1, "best": 2, "nailed": 2, "essential": 2, "must": 1, "strong": 1, "haul": 2,
+    "buy": 1, "start": 1, "captain": 1, "value": 1, "love": 2, "solid": 1, "safe": 1, "upside": 1,
+    "form": 1, "improving": 1, "returns": 1, "clean": 1,
 }
-NEG_WORDS = {
-    "bad", "poor", "awful", "bench", "drop", "sell", "avoid", "injury", "injured", "rotation", "risk", "doubt", "blank", "trap", "weak", "suspended", "minutes", "concern", "uncertain", "out"
+NEG_WEIGHTS = {
+    "bad": 2, "poor": 2, "awful": 3, "bench": 2, "drop": 1, "sell": 2, "avoid": 2, "injury": 3,
+    "injured": 3, "rotation": 2, "risk": 2, "doubt": 2, "blank": 2, "trap": 2, "weak": 1,
+    "suspended": 3, "minutes": 1, "concern": 2, "uncertain": 2, "out": 1,
 }
 
 
@@ -25,16 +29,35 @@ def summarize_text(text: str, max_sentences: int = 8) -> str:
     clean = re.sub(r"\s+", " ", (text or "").strip())
     if not clean:
         return "No detailed summary available yet."
-    parts = re.split(r"(?<=[.!?])\s+", clean)
-    parts = [p.strip() for p in parts if len(p.strip()) > 30]
-    return " ".join(parts[:max_sentences]) if parts else clean[:1200]
+
+    parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", clean) if len(p.strip()) > 25]
+    blacklist = [
+        "welcome back", "what is going on everyone", "kind captions language", "captions language",
+        "in this one", "we're going to", "we are going to", "fantasy premier league tips",
+    ]
+    keyword_pref = ["transfer", "captain", "sell", "buy", "fixtures", "injury", "wildcard", "free hit", "bench boost"]
+
+    filtered = []
+    for p in parts:
+        low = p.lower()
+        if any(b in low for b in blacklist):
+            continue
+        filtered.append(p)
+
+    ranked = sorted(filtered, key=lambda s: (any(k in s.lower() for k in keyword_pref), len(s)), reverse=True)
+    picked = ranked[:max_sentences] if ranked else filtered[:max_sentences]
+    if not picked:
+        picked = parts[:max_sentences]
+
+    out = " ".join(picked).strip()
+    return out[:1200]
 
 
 def sentiment_score(text: str) -> int:
     words = re.findall(r"[a-zA-Z']+", (text or "").lower())
-    pos = sum(1 for w in words if w in POS_WORDS)
-    neg = sum(1 for w in words if w in NEG_WORDS)
-    return pos - neg
+    pos = sum(POS_WEIGHTS.get(w, 0) for w in words)
+    neg = sum(NEG_WEIGHTS.get(w, 0) for w in words)
+    return int(pos - neg)
 
 
 def sentiment_label(score: int) -> str:
@@ -71,8 +94,8 @@ def extract_player_mentions(text: str, player_names: list[str], max_items: int =
 
         local_scores = []
         for m in matches[:6]:
-            a = max(0, m.start() - 120)
-            b = min(len(low), m.end() + 120)
+            a = max(0, m.start() - 80)
+            b = min(len(low), m.end() + 80)
             ctx = low[a:b]
             local_scores.append(sentiment_score(ctx))
 
