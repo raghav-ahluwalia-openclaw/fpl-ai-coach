@@ -14,10 +14,10 @@ TRANSCRIPTS_DIR = ROOT / "backend" / "data" / "content" / "transcripts"
 WATCHER = Path("/home/openclawuser/.openclaw/workspace/skills/youtube-watcher/scripts/get_transcript.py")
 
 POS_WORDS = {
-    "great", "good", "best", "nailed", "essential", "must", "strong", "haul", "buy", "start", "captain", "value", "love", "solid", "safe", "upside", "form"
+    "great", "good", "best", "nailed", "essential", "must", "strong", "haul", "buy", "start", "captain", "value", "love", "solid", "safe", "upside", "form", "improving", "returns", "clean"
 }
 NEG_WORDS = {
-    "bad", "poor", "awful", "bench", "drop", "sell", "avoid", "injury", "injured", "rotation", "risk", "doubt", "blank", "trap", "weak"
+    "bad", "poor", "awful", "bench", "drop", "sell", "avoid", "injury", "injured", "rotation", "risk", "doubt", "blank", "trap", "weak", "suspended", "minutes", "concern", "uncertain", "out"
 }
 
 
@@ -56,18 +56,32 @@ def extract_video_id(url: str) -> str:
 
 
 def extract_player_mentions(text: str, player_names: list[str], max_items: int = 12):
-    low = (text or "").lower()
+    raw = (text or "")
+    low = raw.lower()
     out = []
     for name in player_names:
         n = (name or "").strip()
         if len(n) < 3:
             continue
-        if re.search(rf"\b{re.escape(n.lower())}\b", low):
-            score = sentiment_score(low)
-            out.append({"name": n, "sentiment": sentiment_label(score), "score": score})
-        if len(out) >= max_items:
-            break
-    return out
+
+        pattern = re.compile(rf"\b{re.escape(n.lower())}\b")
+        matches = list(pattern.finditer(low))
+        if not matches:
+            continue
+
+        local_scores = []
+        for m in matches[:6]:
+            a = max(0, m.start() - 120)
+            b = min(len(low), m.end() + 120)
+            ctx = low[a:b]
+            local_scores.append(sentiment_score(ctx))
+
+        score = int(round(sum(local_scores) / max(1, len(local_scores))))
+        out.append({"name": n, "sentiment": sentiment_label(score), "score": score})
+
+    # prioritize strongest sentiment magnitude first
+    out.sort(key=lambda x: abs(int(x.get("score", 0))), reverse=True)
+    return out[:max_items]
 
 
 def fetch_transcript(url: str) -> str:

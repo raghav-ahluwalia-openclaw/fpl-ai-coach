@@ -14,10 +14,10 @@ DIGEST_PATH = Path(__file__).resolve().parents[3] / "data" / "content" / "creato
 ENRICHED_SOCIALS_PATH = Path(__file__).resolve().parents[3] / "data" / "content" / "socials_enriched.json"
 
 POS_WORDS = {
-    "great", "good", "best", "nailed", "essential", "must", "strong", "haul", "buy", "start", "captain", "value", "love", "solid", "safe", "upside", "form"
+    "great", "good", "best", "nailed", "essential", "must", "strong", "haul", "buy", "start", "captain", "value", "love", "solid", "safe", "upside", "form", "improving", "returns", "clean"
 }
 NEG_WORDS = {
-    "bad", "poor", "awful", "bench", "drop", "sell", "avoid", "injury", "injured", "rotation", "risk", "doubt", "blank", "trap", "weak"
+    "bad", "poor", "awful", "bench", "drop", "sell", "avoid", "injury", "injured", "rotation", "risk", "doubt", "blank", "trap", "weak", "suspended", "minutes", "concern", "uncertain", "out"
 }
 
 
@@ -46,18 +46,31 @@ def _sentiment_label(score: int) -> str:
 
 
 def _extract_player_mentions(text: str, player_names: list[str], max_items: int = 8) -> list[dict]:
-    low = (text or "").lower()
+    raw = (text or "")
+    low = raw.lower()
     mentions = []
     for name in player_names:
         n = (name or "").strip()
         if len(n) < 3:
             continue
-        if re.search(rf"\b{re.escape(n.lower())}\b", low):
-            score = _sentiment_score(low)
-            mentions.append({"name": n, "sentiment": _sentiment_label(score), "score": score})
-        if len(mentions) >= max_items:
-            break
-    return mentions
+
+        pattern = re.compile(rf"\b{re.escape(n.lower())}\b")
+        matches = list(pattern.finditer(low))
+        if not matches:
+            continue
+
+        local_scores = []
+        for m in matches[:6]:
+            a = max(0, m.start() - 120)
+            b = min(len(low), m.end() + 120)
+            ctx = low[a:b]
+            local_scores.append(_sentiment_score(ctx))
+
+        score = int(round(sum(local_scores) / max(1, len(local_scores))))
+        mentions.append({"name": n, "sentiment": _sentiment_label(score), "score": score})
+
+    mentions.sort(key=lambda x: abs(int(x.get("score", 0))), reverse=True)
+    return mentions[:max_items]
 
 
 @router.get("/api/fpl/content-consensus")
