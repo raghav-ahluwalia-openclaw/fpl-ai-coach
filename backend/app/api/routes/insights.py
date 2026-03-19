@@ -311,12 +311,48 @@ def captaincy_lab(
             minutes_security = _minutes_factor(p.minutes)
             ownership = max(0.0, min(p.selected_by_percent, 100.0))
 
-            risk = (1 - availability) * 0.6 + (1 - min(minutes_security, 1.0)) * 0.4
-            safe_score = xp3 * (1 - risk * 0.75) + (ownership * 0.01)
-            upside_score = xp3 * (1 - risk * 0.25) + (max(0.0, 25.0 - ownership) / 25.0) * 1.8 + (p.form * 0.12)
+            fixture_count = _fixture_count_for_gw(p, fixtures, gw)
+            fixture_factor = _fixture_factor(p, fixtures, gw)
+            fixture_volatility = max(0.0, min(1.0, abs(1.0 - fixture_factor)))
+
+            role_uncertainty = 0.0
+            if p.element_type in {1, 2}:  # GK/DEF captain roles usually lower upside certainty
+                role_uncertainty += 0.06
+            if p.form < 2.5:
+                role_uncertainty += 0.08
+
+            rotation_proxy = max(0.0, min(1.0, 1.0 - min(minutes_security, 1.0)))
+            availability_risk = max(0.0, min(1.0, 1.0 - availability))
+
+            # Composite risk: availability + rotation + fixture volatility + role uncertainty.
+            risk = (
+                availability_risk * 0.38
+                + rotation_proxy * 0.30
+                + fixture_volatility * 0.20
+                + role_uncertainty * 0.12
+            )
+
+            # DGW slight de-risking due to multiple opportunities, blank hard risk.
+            if fixture_count >= 2:
+                risk *= 0.82
+            if fixture_count == 0:
+                risk = min(1.0, risk + 0.55)
+
+            safe_score = xp3 * (1 - risk * 0.78) + (ownership * 0.01)
+            upside_score = xp3 * (1 - risk * 0.22) + (max(0.0, 25.0 - ownership) / 25.0) * 1.8 + (p.form * 0.12)
 
             fixture_count = _fixture_count_for_gw(p, fixtures, gw)
             fixture_badge = "DGW" if fixture_count >= 2 else ("BLANK" if fixture_count == 0 else "SGW")
+
+            if risk < 0.26:
+                risk_band = "green"
+                risk_label = "low"
+            elif risk < 0.5:
+                risk_band = "yellow"
+                risk_label = "medium"
+            else:
+                risk_band = "red"
+                risk_label = "high"
 
             common = {
                 "id": p.id,
@@ -327,6 +363,8 @@ def captaincy_lab(
                 "xP_next_3": xp3,
                 "ownership_pct": round(ownership, 1),
                 "risk": round(risk, 2),
+                "risk_band": risk_band,
+                "risk_label": risk_label,
                 "form": round(p.form, 2),
                 "fixture_count": fixture_count,
                 "fixture_badge": fixture_badge,

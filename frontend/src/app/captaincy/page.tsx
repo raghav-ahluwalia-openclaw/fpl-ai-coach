@@ -15,6 +15,8 @@ type CaptainOption = {
   xP_next_3: number;
   ownership_pct: number;
   risk: number;
+  risk_band: "green" | "yellow" | "red";
+  risk_label: "low" | "medium" | "high";
   form: number;
   fixture_count: number;
   fixture_badge: "DGW" | "SGW" | "BLANK";
@@ -67,7 +69,19 @@ function CaptainTable({ title, rows, xpView }: { title: string; rows: CaptainOpt
                     {r.fixture_badge}
                   </span>
                 </td>
-                <td className="py-2">{r.risk.toFixed(2)}</td>
+                <td className="py-2">
+                  <span
+                    className={`text-xs rounded-full px-2 py-0.5 border ${
+                      r.risk_band === "green"
+                        ? "border-emerald-300 text-emerald-200"
+                        : r.risk_band === "yellow"
+                          ? "border-amber-300 text-amber-200"
+                          : "border-rose-300 text-rose-200"
+                    }`}
+                  >
+                    {r.risk_label.toUpperCase()} ({r.risk.toFixed(2)})
+                  </span>
+                </td>
                 <td className="py-2">{r.ownership_pct.toFixed(1)}</td>
                 <td className="py-2 text-[#00ff87] font-semibold">{r.captain_score.toFixed(2)}</td>
               </tr>
