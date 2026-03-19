@@ -9,11 +9,12 @@ type TopPlayer = {
   id: number;
   name: string;
   position: string;
-  team_id: number;
+  team_id?: number;
   price: number;
-  xP: number;
-  form: number;
-  ppg: number;
+  xP?: number;
+  expected_points?: number;
+  form?: number;
+  ppg?: number;
 };
 
 type TopPlayersResponse = {
@@ -56,6 +57,10 @@ const insightTools = [
   { label: "Captaincy Lab", href: "/captaincy" },
   { label: "Rank Trend", href: "/team-rank" },
 ];
+
+function safeNum(value: unknown, fallback = 0): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
 
 export default function TopPage() {
   const [limit, setLimit] = useState(20);
@@ -130,17 +135,24 @@ export default function TopPage() {
                 </tr>
               </thead>
               <tbody>
-                {data.players.map((p, idx) => (
-                  <tr key={p.id} className="border-b border-white/5">
-                    <td className="py-2">{idx + 1}</td>
-                    <td className="py-2 font-medium">{p.name}</td>
-                    <td className="py-2">{p.position}</td>
-                    <td className="py-2">£{p.price.toFixed(1)}</td>
-                    <td className="py-2 text-[#00ff87] font-semibold">{p.xP.toFixed(2)}</td>
-                    <td className="py-2">{p.form.toFixed(1)}</td>
-                    <td className="py-2">{p.ppg.toFixed(1)}</td>
-                  </tr>
-                ))}
+                {data.players.map((p, idx) => {
+                  const xP = safeNum(p.xP ?? p.expected_points, 0);
+                  const form = safeNum(p.form, 0);
+                  const ppg = safeNum(p.ppg, 0);
+                  const price = safeNum(p.price, 0);
+
+                  return (
+                    <tr key={p.id} className="border-b border-white/5">
+                      <td className="py-2">{idx + 1}</td>
+                      <td className="py-2 font-medium">{p.name}</td>
+                      <td className="py-2">{p.position}</td>
+                      <td className="py-2">£{price.toFixed(1)}</td>
+                      <td className="py-2 text-[#00ff87] font-semibold">{xP.toFixed(2)}</td>
+                      <td className="py-2">{form.toFixed(1)}</td>
+                      <td className="py-2">{ppg.toFixed(1)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
