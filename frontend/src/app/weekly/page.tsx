@@ -606,7 +606,6 @@ export default function WeeklyPage() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3 mb-3">
-              <h3 className="text-base font-semibold text-[#00ff87]">Performance KPI definitions</h3>
               <button
                 type="button"
                 className="text-white/70 hover:text-white"
@@ -646,7 +645,6 @@ export default function WeeklyPage() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3 mb-3">
-              <h3 className="text-base font-semibold text-[#00ff87]">Lineup optimizer metric meaning</h3>
               <button
                 type="button"
                 className="text-white/70 hover:text-white"
@@ -681,7 +679,6 @@ export default function WeeklyPage() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3 mb-3">
-              <h3 className="text-base font-semibold text-[#00ff87]">Captain Matrix score meaning</h3>
               <button
                 type="button"
                 className="text-white/70 hover:text-white"
