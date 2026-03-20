@@ -620,6 +620,8 @@ export default function WeeklyPage() {
               </button>
             </div>
             <div className="space-y-2 text-white/85 leading-relaxed">
+              <p><strong>Captain Hit Rate</strong>: % of evaluated gameweeks where your captain matched or beat the highest-scoring starter in your XI.</p>
+              <p><strong>Transfer Positive Rate</strong>: % of weeks with transfers where net transfer gain (after hit cost) was positive.</p>
               <p><strong>Missed Captain Points</strong>: total points lost versus the best starter captain choice each GW.</p>
               <p><strong>Transfer ROI</strong>: net transfer gain divided by number of transfers made.</p>
               <p><strong>Hit Efficiency</strong>: raw transfer gain per point spent on transfer hits.</p>
