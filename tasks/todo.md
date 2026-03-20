@@ -13,8 +13,8 @@
 - [ ] Add confidence calibration + bucketed reliability outputs
 
 ### Phase 3
-- [ ] Weekly evaluation module (hit-rate, no-transfer baseline, calibration report)
-- [ ] `/api/fpl/performance/weekly` + dashboard card
+- [x] Weekly evaluation module MVP (captain hit-rate, transfer baseline comparison, heuristic calibration)
+- [x] `/api/fpl/performance/weekly` + dashboard card (Gameweek Hub Performance Snapshot)
 
 ## Recently completed (2026-03-19)
 

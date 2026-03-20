@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import datetime, timezone
 from itertools import combinations
+from statistics import median
 from typing import List, Optional, Tuple
 
 from fastapi import HTTPException, Query
@@ -1141,3 +1143,257 @@ def team_rank_history(entry_id: int):
         worst_rank=max(ranks),
         summary="Overall rank trend by gameweek (lower is better).",
     )
+
+
+@router.get("/api/fpl/performance/weekly")
+def performance_weekly_query(
+    entry_id: int = Query(..., ge=1),
+    lookback: int = Query(default=8, ge=3, le=20),
+):
+    return _performance_weekly(entry_id=entry_id, lookback=lookback)
+
+
+@router.get("/api/fpl/team/{entry_id}/performance/weekly")
+def performance_weekly(entry_id: int, lookback: int = Query(default=8, ge=3, le=20)):
+    return _performance_weekly(entry_id=entry_id, lookback=lookback)
+
+
+def _performance_weekly(*, entry_id: int, lookback: int) -> dict:
+    history = fetch_json(
+        f"https://fantasy.premierleague.com/api/entry/{entry_id}/history/",
+        timeout=20,
+        not_found_detail=f"FPL team {entry_id} not found",
+        upstream_error_prefix="Could not fetch entry performance history",
+    )
+
+    rows = history.get("current", []) or []
+    rows = [r for r in rows if _int(r.get("event"), 0) > 0]
+    rows.sort(key=lambda r: _int(r.get("event"), 0))
+    recent = rows[-lookback:]
+
+    if not recent:
+        return {
+            "entry_id": entry_id,
+            "lookback": lookback,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "summary": "No performance rows available yet.",
+            "weeks": [],
+            "captain_hit_rate": None,
+            "transfer_positive_rate": None,
+            "confidence_calibration": {"status": "insufficient-data", "buckets": []},
+            "dashboard_card": {},
+        }
+
+    transfers = fetch_json(
+        f"https://fantasy.premierleague.com/api/entry/{entry_id}/transfers/",
+        timeout=20,
+        not_found_detail=f"FPL team {entry_id} not found",
+        upstream_error_prefix="Could not fetch transfers history",
+    )
+    transfers = transfers or []
+
+    transfer_by_event: dict[int, list[dict]] = defaultdict(list)
+    for t in transfers:
+        ev = _int(t.get("event"), 0)
+        if ev > 0:
+            transfer_by_event[ev].append(t)
+
+    live_cache: dict[int, dict[int, int]] = {}
+
+    def _event_live_points(event: int) -> dict[int, int]:
+        if event in live_cache:
+            return live_cache[event]
+        payload = fetch_json(
+            f"https://fantasy.premierleague.com/api/event/{event}/live/",
+            timeout=20,
+            upstream_error_prefix=f"Could not fetch live points for GW {event}",
+        )
+        points_map: dict[int, int] = {}
+        for e in payload.get("elements", []) or []:
+            eid = _int(e.get("id"), 0)
+            pts = _int((e.get("stats") or {}).get("total_points"), 0)
+            if eid > 0:
+                points_map[eid] = pts
+        live_cache[event] = points_map
+        return points_map
+
+    week_rows = []
+    captain_hits = 0
+    captain_weeks = 0
+    transfer_weeks = 0
+    transfer_positive_weeks = 0
+
+    total_missed_captain_points = 0.0
+    total_transfers_made = 0
+    total_transfer_gain_raw = 0.0
+    total_transfer_gain_net = 0.0
+    total_hit_cost = 0.0
+    total_benching_loss = 0.0
+    total_xi_opt_gap = 0.0
+    bench_order_checks = 0
+    bench_order_correct = 0
+
+    calibration_rows: dict[str, list[bool]] = defaultdict(list)
+
+    for row in recent:
+        ev = _int(row.get("event"), 0)
+        event_points = _int(row.get("points"), 0)
+        total_points = _int(row.get("total_points"), 0)
+        overall_rank = _int(row.get("overall_rank"), 0)
+        transfers_count = _int(row.get("event_transfers"), 0)
+        transfers_cost = _int(row.get("event_transfers_cost"), 0)
+
+        picks_payload = fetch_json(
+            f"https://fantasy.premierleague.com/api/entry/{entry_id}/event/{ev}/picks/",
+            timeout=20,
+            upstream_error_prefix=f"Could not fetch picks for GW {ev}",
+        )
+        picks = picks_payload.get("picks", []) or []
+        live = _event_live_points(ev)
+
+        starters = [p for p in picks if _int(p.get("position"), 0) <= 11]
+        bench = [p for p in picks if _int(p.get("position"), 0) > 11]
+        captain_pick = next((p for p in picks if bool(p.get("is_captain"))), None)
+        captain_id = _int((captain_pick or {}).get("element"), 0)
+        captain_base = live.get(captain_id, 0)
+        starter_bases = [live.get(_int(p.get("element"), 0), 0) for p in starters]
+        bench_bases = [live.get(_int(p.get("element"), 0), 0) for p in bench]
+        all_xi_points = starter_bases + bench_bases
+        max_starter_base = max(starter_bases) if starter_bases else 0
+        captain_hit = captain_base >= max_starter_base
+        missed_captain_points = max(0, max_starter_base - captain_base)
+
+        if captain_id > 0:
+            captain_weeks += 1
+            if captain_hit:
+                captain_hits += 1
+
+        # Transfer baseline: compare in vs out realized points this GW.
+        transfer_gain_raw = 0
+        for t in transfer_by_event.get(ev, []):
+            in_id = _int(t.get("element_in"), 0)
+            out_id = _int(t.get("element_out"), 0)
+            transfer_gain_raw += live.get(in_id, 0) - live.get(out_id, 0)
+
+        transfer_gain_net = transfer_gain_raw - transfers_cost
+        if transfers_count > 0:
+            transfer_weeks += 1
+            if transfer_gain_net > 0:
+                transfer_positive_weeks += 1
+
+        # KPI aggregates
+        total_missed_captain_points += missed_captain_points
+        total_transfers_made += transfers_count
+        total_transfer_gain_raw += transfer_gain_raw
+        total_transfer_gain_net += transfer_gain_net
+        total_hit_cost += transfers_cost
+
+        starter_sorted_asc = sorted(starter_bases)
+        bench_sorted_desc = sorted(bench_bases, reverse=True)
+        swaps = min(3, len(starter_sorted_asc), len(bench_sorted_desc))
+        benching_loss = sum(max(0, bench_sorted_desc[i] - starter_sorted_asc[i]) for i in range(swaps))
+        total_benching_loss += benching_loss
+
+        xi_opt_gap = max(0, sum(sorted(all_xi_points, reverse=True)[:11]) - sum(starter_bases)) if all_xi_points else 0
+        total_xi_opt_gap += xi_opt_gap
+
+        # Bench order accuracy on outfield bench slots (12/13/14)
+        bench_by_pos = sorted([p for p in bench if _int(p.get("position"), 0) in {12, 13, 14}], key=lambda x: _int(x.get("position"), 99))
+        if len(bench_by_pos) == 3:
+            bpts = [live.get(_int(p.get("element"), 0), 0) for p in bench_by_pos]
+            bench_order_checks += 1
+            if bpts[0] >= bpts[1] >= bpts[2]:
+                bench_order_correct += 1
+
+        if captain_base - median(starter_bases) >= 3 if starter_bases else False:
+            bucket = "high"
+        elif captain_base - median(starter_bases) >= 1 if starter_bases else False:
+            bucket = "medium"
+        else:
+            bucket = "low"
+        calibration_rows[bucket].append(bool(captain_hit))
+
+        no_transfer_baseline_points = event_points - transfer_gain_net
+
+        week_rows.append(
+            {
+                "gameweek": ev,
+                "event_points": event_points,
+                "total_points": total_points,
+                "overall_rank": overall_rank,
+                "transfers": transfers_count,
+                "hit_cost": transfers_cost,
+                "captain_points": captain_base * 2,
+                "captain_base_points": captain_base,
+                "captain_hit": captain_hit,
+                "missed_captain_points": round(missed_captain_points, 2),
+                "transfer_gain_raw": transfer_gain_raw,
+                "transfer_gain_net": transfer_gain_net,
+                "benching_loss": round(benching_loss, 2),
+                "xi_optimization_gap": round(xi_opt_gap, 2),
+                "baseline_no_transfer_points": round(no_transfer_baseline_points, 2),
+            }
+        )
+
+    week_rows.sort(key=lambda x: x["gameweek"])
+
+    captain_hit_rate = round(captain_hits / captain_weeks, 3) if captain_weeks else None
+    transfer_positive_rate = round(transfer_positive_weeks / transfer_weeks, 3) if transfer_weeks else None
+
+    calibration = []
+    for b in ("high", "medium", "low"):
+        vals = calibration_rows.get(b, [])
+        if not vals:
+            calibration.append({"bucket": b, "count": 0, "success_rate": None})
+        else:
+            calibration.append({"bucket": b, "count": len(vals), "success_rate": round(sum(1 for v in vals if v) / len(vals), 3)})
+
+    recent_points = [r["event_points"] for r in week_rows]
+    avg_points = round(sum(recent_points) / max(1, len(recent_points)), 2)
+
+    missed_captain_points = round(total_missed_captain_points, 2)
+    transfer_roi = round(total_transfer_gain_net / total_transfers_made, 3) if total_transfers_made > 0 else None
+    hit_efficiency = round(total_transfer_gain_raw / total_hit_cost, 3) if total_hit_cost > 0 else None
+    benching_loss = round(total_benching_loss, 2)
+    bench_order_accuracy = round(bench_order_correct / bench_order_checks, 3) if bench_order_checks > 0 else None
+    xi_optimization_gap = round(total_xi_opt_gap, 2)
+
+    dashboard_card = {
+        "captain_hit_rate": captain_hit_rate,
+        "transfer_positive_rate": transfer_positive_rate,
+        "missed_captain_points": missed_captain_points,
+        "transfer_roi": transfer_roi,
+        "hit_efficiency": hit_efficiency,
+        "benching_loss": benching_loss,
+        "bench_order_accuracy": bench_order_accuracy,
+        "xi_optimization_gap": xi_optimization_gap,
+        "avg_points_last_n": avg_points,
+        "weeks_evaluated": len(week_rows),
+        "lookback": lookback,
+        "headline": (
+            f"Captain hit {round((captain_hit_rate or 0) * 100)}% • "
+            f"Transfer weeks positive {round((transfer_positive_rate or 0) * 100)}%"
+        ),
+    }
+
+    return {
+        "entry_id": entry_id,
+        "lookback": lookback,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "summary": "Weekly performance module with captain hit-rate, transfer baseline comparison, and confidence buckets.",
+        "weeks": week_rows,
+        "captain_hit_rate": captain_hit_rate,
+        "transfer_positive_rate": transfer_positive_rate,
+        "missed_captain_points": missed_captain_points,
+        "transfer_roi": transfer_roi,
+        "hit_efficiency": hit_efficiency,
+        "benching_loss": benching_loss,
+        "bench_order_accuracy": bench_order_accuracy,
+        "xi_optimization_gap": xi_optimization_gap,
+        "confidence_calibration": {
+            "status": "heuristic",
+            "buckets": calibration,
+            "note": "Buckets are derived from captain edge vs starter median due to limited archived model confidence.",
+        },
+        "dashboard_card": dashboard_card,
+    }

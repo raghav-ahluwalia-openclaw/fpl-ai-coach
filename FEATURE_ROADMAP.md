@@ -125,7 +125,9 @@
 
 7. Weekly evaluation module
    - Goal: recommendation hit-rate, no-transfer baseline, calibration report, performance API/card.
-   - Status: ⛔ Not started.
+   - Status: ✅ MVP completed.
+   - Delivered endpoints: `/api/fpl/performance/weekly` and `/api/fpl/team/{entry_id}/performance/weekly`.
+   - Delivered UI card: Performance Snapshot on Gameweek Hub (`/weekly`).
 
 ### Completed since this plan was drafted
 
