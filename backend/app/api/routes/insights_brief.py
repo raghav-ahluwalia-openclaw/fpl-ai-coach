@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -57,6 +58,7 @@ def weekly_digest_card(
         },
         "rationale": brief.get("rationale", [])[:4],
         "card": {
+            "version": "v3",
             "emoji_header": "📊",
             "sections": {
                 "captaincy": {
@@ -78,6 +80,34 @@ def weekly_digest_card(
             },
             "lines": lines,
             "telegram_text": "\n".join(lines),
+            "image_renderer": {
+                "schema": "weekly-digest-card-v3",
+                "theme": {
+                    "bg": "#37003c",
+                    "accent": "#00ff87",
+                    "text": "#ffffff",
+                    "muted": "#b9a7bf",
+                },
+                "header": {
+                    "title": f"GW{brief['gameweek']} Weekly Digest",
+                    "subtitle": f"Mode: {mode}",
+                    "badge": chip.get("recommendation"),
+                },
+                "rows": [
+                    {"label": "Captain", "value": final["captain"]},
+                    {"label": "Vice", "value": final["vice_captain"]},
+                    {"label": "Transfer", "value": f"{final['transfer_out']} → {final['transfer_in']}"},
+                    {"label": "Chip", "value": f"{chip.get('recommendation')} (alt: {chip.get('alternative')})"},
+                ],
+                "captain_options": {
+                    "safe_top3": [p.get("name") for p in safe_top3],
+                    "upside_top3": [p.get("name") for p in upside_top3],
+                },
+                "meta": {
+                    "gameweek": brief["gameweek"],
+                    "generated_at": brief.get("generated_at"),
+                },
+            },
         },
         "summary": "Rich weekly digest payload for messaging cards and Telegram reminders.",
     }
@@ -173,6 +203,7 @@ def weekly_brief(
 
     return {
         "gameweek": base.gameweek,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "mode": mode,
         "final": {
             "captain": final_captain,

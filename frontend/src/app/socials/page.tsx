@@ -252,7 +252,7 @@ export default function SocialsPage() {
     <main className="min-h-screen p-3 sm:p-4 md:p-8 max-w-6xl mx-auto text-white">
       <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-black">FPL Socials</h1>
+          <h1 className="text-2xl sm:text-2xl sm:text-3xl font-black">FPL Socials</h1>
           <p className="text-xs text-white/65 mt-1">Last refreshed: {refreshedLabel}</p>
         </div>
         <button

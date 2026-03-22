@@ -7,10 +7,10 @@
 - [x] Gameweek Hub single-screen page (Team Health + Plans + Captain Matrix + changes)
 - [x] XI + Bench optimizer UX with alternate-lineup gain
 
-### Phase 2 (active)
+### Phase 2 (completed)
 - [x] Standardize explicit 1/3/5 GW projections across APIs
-- [ ] Add price-change aware transfer scoring
-- [ ] Add confidence calibration + bucketed reliability outputs
+- [x] Add price-change aware transfer scoring
+- [x] Add confidence calibration + bucketed reliability outputs
 
 ### Phase 3
 - [x] Weekly evaluation module MVP (captain hit-rate, transfer baseline comparison, heuristic calibration)
@@ -28,6 +28,9 @@
 - [x] Target Radar removed from frontend/backend (`/targets`, `/api/fpl/targets`)
 - [x] Gameweek Hub naming migration completed across UI/API aliasing
 - [x] Chip planner usage visibility improved (used chips state + recommendation excludes used-up chips)
+- [x] Weekly digest card v3 payload added with `image_renderer` schema
+- [x] Transfer planner now includes price-change urgency and bonus-aware ranking signals
+- [x] Gameweek Hub transfer plans now expose calibrated confidence metadata (`cal_v1`)
 
 ## Verification
 

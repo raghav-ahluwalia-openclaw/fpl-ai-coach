@@ -115,7 +115,7 @@ export default function PlannerPage() {
 
   return (
     <main className="min-h-screen p-3 sm:p-4 md:p-8 max-w-6xl mx-auto text-white">
-      <h1 className="text-2xl sm:text-3xl font-black mb-4">Planner</h1>
+      <h1 className="text-2xl sm:text-2xl sm:text-3xl font-black mb-4">Planner</h1>
       {error ? <p className="text-red-300 mb-3">{error}</p> : null}
 
       {chip ? (
@@ -175,15 +175,15 @@ export default function PlannerPage() {
             value={entryId}
             onChange={(e) => setEntryId(e.target.value.replace(/\D/g, ""))}
             placeholder="Your Team ID"
-            className="rounded-md px-3 py-2 bg-black/30 border border-white/20 w-full sm:w-auto"
+            className="rounded-md h-10 px-3 bg-black/30 border border-white/20 w-full sm:w-auto"
           />
           <input
             value={rivalEntryId}
             onChange={(e) => setRivalEntryId(e.target.value.replace(/\D/g, ""))}
             placeholder="Rival Team ID"
-            className="rounded-md px-3 py-2 bg-black/30 border border-white/20 w-full sm:w-auto"
+            className="rounded-md h-10 px-3 bg-black/30 border border-white/20 w-full sm:w-auto"
           />
-          <button onClick={() => void loadRival()} className="px-4 py-2 rounded-md bg-[#00ff87] text-[#37003c] font-bold w-full sm:w-auto">
+          <button onClick={() => void loadRival()} className="px-4 h-10 rounded-md bg-[#00ff87] text-[#37003c] font-bold w-full sm:w-auto">
             Compare
           </button>
         </div>

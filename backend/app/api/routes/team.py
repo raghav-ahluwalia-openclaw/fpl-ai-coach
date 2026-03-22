@@ -245,6 +245,57 @@ def team_recommendation(
     finally:
         db.close()
 
+def _price_rise_pressure(p: Player) -> float:
+    ownership = max(0.0, min(_float(p.selected_by_percent), 100.0))
+    form = max(0.0, _float(p.form))
+    ppg = max(0.0, _float(p.points_per_game))
+    pressure = (ownership / 45.0) * 0.45 + (form / 8.0) * 0.35 + (ppg / 8.0) * 0.20
+    return round(min(1.0, max(0.0, pressure)), 3)
+
+
+def _price_fall_pressure(p: Player) -> float:
+    form = max(0.0, _float(p.form))
+    ppg = max(0.0, _float(p.points_per_game))
+    availability_risk = max(0.0, 1.0 - _availability_factor(p.chance_of_playing_next_round, p.news))
+    pressure = ((max(0.0, 4.0 - form) / 4.0) * 0.45) + ((max(0.0, 4.0 - ppg) / 4.0) * 0.25) + (availability_risk * 0.30)
+    return round(min(1.0, max(0.0, pressure)), 3)
+
+
+def _calibrate_confidence(raw: float, *, risk_score: float, hit: int, value_urgency: float) -> tuple[float, str]:
+    calibrated = raw
+    calibrated += value_urgency * 0.06
+    calibrated -= risk_score * 0.10
+    if hit > 0:
+        calibrated -= 0.03
+    calibrated = max(0.2, min(0.94, calibrated))
+
+    if calibrated >= 0.72:
+        bucket = "high"
+    elif calibrated >= 0.5:
+        bucket = "medium"
+    else:
+        bucket = "low"
+    return round(calibrated, 3), bucket
+
+
+def _price_change_eta_hours(pressure: float) -> int:
+    """Heuristic ETA in hours for next price move.
+
+    Higher pressure => sooner move. Clamped to [6h, 14d].
+    """
+    p = max(0.0, min(1.0, pressure))
+    # Non-linear curve for sharper response at high pressure.
+    hours = int(round(6 + ((1.0 - p) ** 1.6) * (14 * 24 - 6)))
+    return max(6, min(14 * 24, hours))
+
+
+def _format_eta(hours: int) -> str:
+    if hours < 24:
+        return f"{hours}h"
+    days = max(1, int(round(hours / 24)))
+    return f"{days}d"
+
+
 @router.get("/api/fpl/team/{entry_id}/what-if")
 def what_if_simulator(
     entry_id: int,
@@ -316,7 +367,12 @@ def what_if_simulator(
                     continue
                 transfers = 1
                 hit = max(0, transfers - free_transfers) * hit_cost
+                rise_in = _price_rise_pressure(in_p)
+                fall_out = _price_fall_pressure(out_p)
+                value_urgency = round(min(1.0, (rise_in * 0.55) + (fall_out * 0.45)), 3)
+                price_change_bonus = round(value_urgency * 0.6, 3)
                 net = round(gain - hit, 2)
+                ranking_score = round(net + price_change_bonus, 3)
                 scenarios.append(
                     {
                         "transfers": [
@@ -327,11 +383,17 @@ def what_if_simulator(
                                 "in_id": in_p.id,
                                 "position": POSITION_MAP.get(out_p.element_type, str(out_p.element_type)),
                                 "gain": round(gain, 2),
+                                "price_rise_pressure_in": rise_in,
+                                "price_fall_pressure_out": fall_out,
+                                "value_urgency_score": value_urgency,
                             }
                         ],
                         "hit": hit,
                         "projected_gain": round(gain, 2),
                         "net_gain": net,
+                        "price_change_bonus": price_change_bonus,
+                        "value_urgency_score": value_urgency,
+                        "ranking_score": ranking_score,
                         "horizon": horizon,
                     }
                 )
@@ -353,6 +415,15 @@ def what_if_simulator(
                         transfers = 2
                         hit = max(0, transfers - free_transfers) * hit_cost
                         net = round(projected - hit, 2)
+
+                        rise_a = _price_rise_pressure(in_a)
+                        rise_b = _price_rise_pressure(in_b)
+                        fall_a = _price_fall_pressure(out_a)
+                        fall_b = _price_fall_pressure(out_b)
+                        value_urgency = round(min(1.0, ((rise_a + rise_b) * 0.275) + ((fall_a + fall_b) * 0.225)), 3)
+                        price_change_bonus = round(value_urgency * 0.6, 3)
+                        ranking_score = round(net + price_change_bonus, 3)
+
                         scenarios.append(
                             {
                                 "transfers": [
@@ -363,6 +434,9 @@ def what_if_simulator(
                                         "in_id": in_a.id,
                                         "position": POSITION_MAP.get(out_a.element_type, str(out_a.element_type)),
                                         "gain": round(gain_a, 2),
+                                        "price_rise_pressure_in": rise_a,
+                                        "price_fall_pressure_out": fall_a,
+                                        "value_urgency_score": round(min(1.0, rise_a * 0.55 + fall_a * 0.45), 3),
                                     },
                                     {
                                         "out": out_b.web_name,
@@ -371,16 +445,22 @@ def what_if_simulator(
                                         "in_id": in_b.id,
                                         "position": POSITION_MAP.get(out_b.element_type, str(out_b.element_type)),
                                         "gain": round(gain_b, 2),
+                                        "price_rise_pressure_in": rise_b,
+                                        "price_fall_pressure_out": fall_b,
+                                        "value_urgency_score": round(min(1.0, rise_b * 0.55 + fall_b * 0.45), 3),
                                     },
                                 ],
                                 "hit": hit,
                                 "projected_gain": round(projected, 2),
                                 "net_gain": net,
+                                "price_change_bonus": price_change_bonus,
+                                "value_urgency_score": value_urgency,
+                                "ranking_score": ranking_score,
                                 "horizon": horizon,
                             }
                         )
 
-        scenarios.sort(key=lambda x: x["net_gain"], reverse=True)
+        scenarios.sort(key=lambda x: (x.get("ranking_score", x.get("net_gain", 0.0))), reverse=True)
 
         return {
             "entry_id": entry_id,
@@ -537,6 +617,26 @@ def weekly_cockpit(
             elif action != "sell" and (risk >= 0.3 or xp3 < 5.3):
                 action = "watch"
 
+            rise_pressure = _price_rise_pressure(p)
+            fall_pressure = _price_fall_pressure(p)
+
+            # Direction + ETA estimate (rebalance to avoid "always up" bias)
+            score = rise_pressure - (fall_pressure * 1.08)
+            if action == "sell" and fall_pressure >= 0.28 and score < 0.18:
+                direction = "down"
+                dir_pressure = fall_pressure
+            elif score >= 0.18:
+                direction = "up"
+                dir_pressure = rise_pressure
+            elif score <= -0.06:
+                direction = "down"
+                dir_pressure = fall_pressure
+            else:
+                direction = "flat"
+                dir_pressure = max(rise_pressure, fall_pressure)
+
+            eta_hours = _price_change_eta_hours(dir_pressure)
+
             health_rows.append(
                 {
                     "id": p.id,
@@ -554,6 +654,11 @@ def weekly_cockpit(
                     "availability_risk": availability_risk,
                     "injury_news": p.news or "",
                     "upside_safety_score": upside_safety,
+                    "price_rise_pressure": rise_pressure,
+                    "price_fall_pressure": fall_pressure,
+                    "price_change_direction": direction,
+                    "price_change_eta_hours": eta_hours,
+                    "price_change_eta": _format_eta(eta_hours),
                     "action": action,
                 }
             )
@@ -597,6 +702,9 @@ def weekly_cockpit(
                 in_upside_safety = round((in_xp3 - 5.5) - ((in_availability_risk * 0.6 + in_minutes_risk * 0.4) * 2.0), 2)
                 in_fixture_window = _fixture_window_next_3(in_p)
                 transfer_risk = min(1.0, (in_availability_risk * 0.6) + (in_minutes_risk * 0.25) + (0.15 if in_fixture_window["blanks"] > 0 else 0.0))
+                rise_in = _price_rise_pressure(in_p)
+                fall_out = _price_fall_pressure(out_p)
+                value_urgency = round(min(1.0, (rise_in * 0.55) + (fall_out * 0.45)), 3)
                 risk_components.append(transfer_risk)
                 transfers.append(
                     {
@@ -614,34 +722,75 @@ def weekly_cockpit(
                         "injury_news_in": in_p.news or "",
                         "upside_safety_score_in": in_upside_safety,
                         "risk_score_in": round(transfer_risk, 2),
+                        "price_rise_pressure_in": rise_in,
+                        "price_fall_pressure_out": fall_out,
+                        "value_urgency_score": value_urgency,
                     }
                 )
 
-            projected_gain = float(plan.get("projected_gain", 0.0) or 0.0)
-            net_gain = float(plan.get("net_gain", 0.0) or 0.0)
             hit = int(plan.get("hit", 0) or 0)
+
+            projected_gain_1 = round(
+                sum((float(t.get("projected_points_1_in", 0.0) or 0.0) - float(t.get("projected_points_1_out", 0.0) or 0.0)) for t in transfers),
+                2,
+            )
+            projected_gain_3 = round(
+                sum((float(t.get("projected_points_3_in", 0.0) or 0.0) - float(t.get("projected_points_3_out", 0.0) or 0.0)) for t in transfers),
+                2,
+            )
+            projected_gain_5 = round(
+                sum((float(t.get("projected_points_5_in", 0.0) or 0.0) - float(t.get("projected_points_5_out", 0.0) or 0.0)) for t in transfers),
+                2,
+            )
+
+            net_gain_1 = round(projected_gain_1 - hit, 2)
+            net_gain_3 = round(projected_gain_3 - hit, 2)
+            net_gain_5 = round(projected_gain_5 - hit, 2)
+
+            # Backward-compatible aliases default to 3GW horizon values.
+            projected_gain = projected_gain_3
+            net_gain = net_gain_3
             avg_risk = sum(risk_components) / len(risk_components) if risk_components else 0.0
             risk_score = min(1.0, avg_risk + (0.08 if hit > 0 else 0.0))
 
-            gain_signal = max(0.0, min(1.0, net_gain / 6.0))
-            confidence = max(0.25, min(0.92, (0.35 + (gain_signal * 0.55)) - (risk_score * 0.28)))
-            if confidence >= 0.75:
-                confidence_bucket = "high"
-            elif confidence >= 0.55:
-                confidence_bucket = "medium"
-            else:
-                confidence_bucket = "low"
+            value_urgency_score = max(
+                0.0,
+                min(1.0, sum(float(t.get("value_urgency_score", 0.0) or 0.0) for t in transfers) / max(1, len(transfers))),
+            )
+            price_change_bonus = round(value_urgency_score * 0.6, 3)
+
+            gain_signal = max(0.0, min(1.0, (net_gain + price_change_bonus) / 6.0))
+            raw_confidence = max(0.25, min(0.92, (0.35 + (gain_signal * 0.55)) - (risk_score * 0.28)))
+            confidence, confidence_bucket = _calibrate_confidence(
+                raw_confidence,
+                risk_score=risk_score,
+                hit=hit,
+                value_urgency=value_urgency_score,
+            )
 
             return {
                 "plan": label,
                 "transfer_count": len(transfers),
                 "projected_gain": round(projected_gain, 2),
+                "projected_gain_1": projected_gain_1,
+                "projected_gain_3": projected_gain_3,
+                "projected_gain_5": projected_gain_5,
                 "net_gain": round(net_gain, 2),
+                "net_gain_1": net_gain_1,
+                "net_gain_3": net_gain_3,
+                "net_gain_5": net_gain_5,
                 "hit": hit,
-                "ev": round(net_gain, 2),
+                "ev": round(net_gain + price_change_bonus, 2),
                 "risk_score": round(risk_score, 2),
+                "price_change_bonus": round(price_change_bonus, 3),
+                "value_urgency_score": round(value_urgency_score, 3),
+                "confidence_raw": round(raw_confidence, 3),
                 "confidence": round(confidence, 2),
                 "confidence_bucket": confidence_bucket,
+                "confidence_calibration": {
+                    "version": "cal_v1",
+                    "method": "rule-calibrated",
+                },
                 "transfers": transfers,
             }
 
@@ -657,7 +806,13 @@ def weekly_cockpit(
                         "plan": label,
                         "transfer_count": transfer_count,
                         "projected_gain": 0.0,
+                        "projected_gain_1": 0.0,
+                        "projected_gain_3": 0.0,
+                        "projected_gain_5": 0.0,
                         "net_gain": 0.0,
+                        "net_gain_1": 0.0,
+                        "net_gain_3": 0.0,
+                        "net_gain_5": 0.0,
                         "hit": 0,
                         "ev": 0.0,
                         "risk_score": 0.0,

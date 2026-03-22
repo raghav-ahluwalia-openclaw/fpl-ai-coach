@@ -183,7 +183,7 @@ export default function LeaguesPage() {
     <main className="min-h-screen p-3 sm:p-4 md:p-8 max-w-6xl mx-auto text-white">
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2 mb-3 sm:mb-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-black">Leagues</h1>
+          <h1 className="text-2xl sm:text-2xl sm:text-3xl font-black">Leagues</h1>
         </div>
       </div>
 
@@ -194,12 +194,12 @@ export default function LeaguesPage() {
             onChange={(e) => setTeamId(e.target.value.replace(/\D/g, ""))}
             placeholder="FPL Team ID"
             inputMode="numeric"
-            className="rounded-md px-3 py-2 bg-black/30 border border-white/20 w-full sm:min-w-[240px] sm:w-auto"
+            className="rounded-md h-10 px-3 bg-black/30 border border-white/20 w-full sm:min-w-[240px] sm:w-auto"
           />
           <button
             onClick={() => void run()}
             disabled={loading || !/^\d+$/.test(teamId.trim())}
-            className="px-4 py-2 rounded-md bg-[#00ff87] text-[#37003c] font-bold disabled:opacity-60 w-full sm:w-auto"
+            className="px-4 h-10 rounded-md bg-[#00ff87] text-[#37003c] font-bold disabled:opacity-60 w-full sm:w-auto"
           >
             {loading ? "Loading..." : "Load Leagues"}
           </button>

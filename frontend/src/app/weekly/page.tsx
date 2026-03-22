@@ -19,6 +19,9 @@ type HealthRow = {
   fixture_badge: "DGW" | "SGW" | "BLANK";
   injury_news: string;
   upside_safety_score: number;
+  price_change_direction?: "up" | "down" | "flat" | string;
+  price_change_eta_hours?: number;
+  price_change_eta?: string;
 };
 
 type TransferMove = {
@@ -26,6 +29,8 @@ type TransferMove = {
   in: string;
   position?: string;
   gain: number;
+  projected_points_1_in?: number;
+  projected_points_1_out?: number;
   projected_points_3_in: number;
   projected_points_3_out: number;
   fixture_window_next_3_in: FixtureWindow;
@@ -35,7 +40,13 @@ type TransferPlan = {
   plan: string;
   transfer_count: number;
   projected_gain: number;
+  projected_gain_1?: number;
+  projected_gain_3?: number;
+  projected_gain_5?: number;
   net_gain: number;
+  net_gain_1?: number;
+  net_gain_3?: number;
+  net_gain_5?: number;
   hit: number;
   ev?: number;
   risk_score?: number;
@@ -143,6 +154,18 @@ function planConfidenceClass(confidence?: number): string {
   return "text-orange-300"; // low confidence
 }
 
+function priceEtaClass(direction?: string): string {
+  if (direction === "up") return "text-emerald-300";
+  if (direction === "down") return "text-rose-300";
+  return "text-white/75";
+}
+
+function priceEtaLabel(direction?: string, eta?: string): string {
+  if (direction === "up") return `▲ ${eta ?? "—"}`;
+  if (direction === "down") return `▼ ${eta ?? "—"}`;
+  return `▷ ${eta ?? "—"}`;
+}
+
 type KpiTone = "good" | "watch" | "bad";
 
 function kpiToneClass(tone: KpiTone): string {
@@ -246,7 +269,7 @@ export default function WeeklyPage() {
     <main className="min-h-screen p-3 sm:p-4 md:p-8 max-w-6xl mx-auto text-white">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-black">Gameweek Hub</h1>
+          <h1 className="text-2xl sm:text-2xl sm:text-3xl font-black">Gameweek Hub</h1>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="inline-flex rounded-md border border-white/20 overflow-hidden">
@@ -268,7 +291,7 @@ export default function WeeklyPage() {
           <select
             value={mode}
             onChange={(e) => setMode(e.target.value as Mode)}
-            className="rounded-md px-3 py-2 bg-black/30 border border-white/20"
+            className="rounded-md h-10 px-3 bg-black/30 border border-white/20"
           >
             <option value="safe">Safe</option>
             <option value="balanced">Balanced</option>
@@ -284,12 +307,12 @@ export default function WeeklyPage() {
             onChange={(e) => setTeamId(e.target.value.replace(/\D/g, ""))}
             placeholder="FPL Team ID"
             inputMode="numeric"
-            className="rounded-md px-3 py-2 bg-black/30 border border-white/20 w-full sm:min-w-[220px] sm:w-auto"
+            className="rounded-md h-10 px-3 bg-black/30 border border-white/20 w-full sm:min-w-[220px] sm:w-auto"
           />
           <button
             onClick={() => void run()}
             disabled={loading || !/^\d+$/.test(teamId.trim())}
-            className="px-4 py-2 rounded-md bg-[#00ff87] text-[#37003c] font-bold disabled:opacity-60 w-full sm:w-auto"
+            className="px-4 h-10 rounded-md bg-[#00ff87] text-[#37003c] font-bold disabled:opacity-60 w-full sm:w-auto"
           >
             {loading ? "Loading..." : "Run Weekly Plan"}
           </button>
@@ -485,9 +508,19 @@ export default function WeeklyPage() {
                   <tr className="text-left text-white/70 border-b border-white/10">
                     <th className="py-2 whitespace-nowrap">Player</th>
                     <th className="py-2 whitespace-nowrap">Pos</th>
-                    <th className="py-2 whitespace-nowrap">{xpView === "1gw" ? "xP (1GW)" : "xP (3GW)"}</th>
                     <th className="py-2 whitespace-nowrap">GW</th>
                     <th className="py-2 whitespace-nowrap">Action</th>
+                    <th className="py-2 whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1">
+                        Price Delta
+                        <span
+                          className="text-[11px] text-white/65 border border-white/30 rounded-full h-4 w-4 inline-flex items-center justify-center"
+                          title="Price Delta shows estimated direction and time to next price move: ▲ up, ▼ down, ▷ flat. ETA is a heuristic from ownership/form, points profile, and availability risk."
+                        >
+                          i
+                        </span>
+                      </span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -497,11 +530,15 @@ export default function WeeklyPage() {
                       <tr key={`h-${p.name}`} className="border-b border-white/5">
                         <td className="py-2 font-medium">{p.name}</td>
                         <td className="py-2">{p.position}</td>
-                        <td className="py-2">{xpVal(xpView, p.projected_points_1, p.projected_points_3).toFixed(2)}</td>
                         <td className="py-2"><span className={`text-xs rounded-full px-2 py-0.5 border ${badgeClass(p.fixture_badge)}`}>{p.fixture_badge}</span></td>
                         <td className="py-2">
                           <span className={`text-xs rounded-full px-2 py-0.5 border ${action === "sell" ? "border-rose-300 text-rose-200" : action === "watch" ? "border-amber-300 text-amber-200" : "border-emerald-300 text-emerald-200"}`}>
                             {action.toUpperCase()}
+                          </span>
+                        </td>
+                        <td className="py-2">
+                          <span className={`text-xs rounded-full px-2 py-0.5 border ${p.price_change_direction === "up" ? "border-emerald-300/60" : p.price_change_direction === "down" ? "border-rose-300/60" : "border-white/25"} ${priceEtaClass(p.price_change_direction)}`}>
+                            {priceEtaLabel(p.price_change_direction, p.price_change_eta)}
                           </span>
                         </td>
                       </tr>
@@ -519,12 +556,12 @@ export default function WeeklyPage() {
                 <h3 className="font-semibold mb-2">1FT</h3>
                 {data.top_transfer_plans.one_ft.map((p) => (
                   <div key={`1ft-${p.plan}`} className="rounded-lg border border-white/10 p-3 bg-black/20 mb-2">
-                    <p className="font-medium">{p.plan} • Expected Net Gain {p.ev ?? p.net_gain} • Hit {p.hit}</p>
+                    <p className="font-medium">{p.plan} • Expected Net Gain {xpView === "1gw" ? (p.net_gain_1 ?? p.net_gain) : (p.net_gain_3 ?? p.net_gain)} • Hit {p.hit}</p>
                     <p className="text-xs text-white/70">Risk {(p.risk_score ?? 0).toFixed(2)} • <span className={planConfidenceClass(p.confidence)}>Confidence {Math.round((p.confidence ?? 0) * 100)}%</span></p>
                     {p.note ? <p className="text-xs text-white/65 mt-1">{p.note}</p> : null}
                     {p.transfers.map((t, i) => (
                       <p key={`${p.plan}-1-${i}`} className="text-white/80">
-                        [{t.position || "POS"}] {t.out} (xP3 {t.projected_points_3_out}) → {t.in} (xP3 {t.projected_points_3_in})
+                        [{t.position || "POS"}] {t.out} ({xpView === "1gw" ? "xP1" : "xP3"} {xpView === "1gw" ? (t.projected_points_1_out ?? t.projected_points_3_out) : t.projected_points_3_out}) → {t.in} ({xpView === "1gw" ? "xP1" : "xP3"} {xpView === "1gw" ? (t.projected_points_1_in ?? t.projected_points_3_in) : t.projected_points_3_in})
                       </p>
                     ))}
                   </div>
@@ -534,12 +571,12 @@ export default function WeeklyPage() {
                 <h3 className="font-semibold mb-2">2FT</h3>
                 {data.top_transfer_plans.two_ft.map((p) => (
                   <div key={`2ft-${p.plan}`} className="rounded-lg border border-white/10 p-3 bg-black/20 mb-2">
-                    <p className="font-medium">{p.plan} • Expected Net Gain {p.ev ?? p.net_gain} • Hit {p.hit}</p>
+                    <p className="font-medium">{p.plan} • Expected Net Gain {xpView === "1gw" ? (p.net_gain_1 ?? p.net_gain) : (p.net_gain_3 ?? p.net_gain)} • Hit {p.hit}</p>
                     <p className="text-xs text-white/70">Risk {(p.risk_score ?? 0).toFixed(2)} • <span className={planConfidenceClass(p.confidence)}>Confidence {Math.round((p.confidence ?? 0) * 100)}%</span></p>
                     {p.note ? <p className="text-xs text-white/65 mt-1">{p.note}</p> : null}
                     {p.transfers.map((t, i) => (
                       <p key={`${p.plan}-2-${i}`} className="text-white/80">
-                        [{t.position || "POS"}] {t.out} (xP3 {t.projected_points_3_out}) → {t.in} (xP3 {t.projected_points_3_in})
+                        [{t.position || "POS"}] {t.out} ({xpView === "1gw" ? "xP1" : "xP3"} {xpView === "1gw" ? (t.projected_points_1_out ?? t.projected_points_3_out) : t.projected_points_3_out}) → {t.in} ({xpView === "1gw" ? "xP1" : "xP3"} {xpView === "1gw" ? (t.projected_points_1_in ?? t.projected_points_3_in) : t.projected_points_3_in})
                       </p>
                     ))}
                   </div>

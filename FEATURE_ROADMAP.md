@@ -75,8 +75,8 @@
 
 ## Remaining P3
 
-1. Weekly digest card v3
-   - Add optional image renderer payload for richer Telegram card visuals
+1. (Completed) Weekly digest card v3
+   - Optional image renderer payload shipped for richer Telegram card visuals
 
 ## Success metrics
 
@@ -115,11 +115,13 @@
 
 5. Price-change aware transfer scoring
    - Goal: include rise/fall pressure in transfer ranking.
-   - Status: ⛔ Not started.
+   - Status: ✅ Completed.
+   - Delivered value urgency scoring (`price_rise_pressure_in`, `price_fall_pressure_out`, `value_urgency_score`) and ranking bonus in transfer simulation + Gameweek Hub plans.
 
 6. Calibration + reliability
    - Goal: confidence calibration + bucketed confidence reporting.
-   - Status: ⚠️ Partial (guardrails exist; no explicit calibration layer yet).
+   - Status: ✅ Completed (v1 rule calibration).
+   - Delivered calibrated plan confidence with bucket + calibration metadata (`confidence_raw`, `confidence`, `confidence_bucket`, `confidence_calibration`).
 
 ### Phase 3 — measurement loop
 

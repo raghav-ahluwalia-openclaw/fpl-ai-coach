@@ -49,7 +49,7 @@ export default function SettingsPage() {
 
   return (
     <main className="min-h-screen p-3 sm:p-4 md:p-8 max-w-4xl mx-auto text-white">
-      <h1 className="text-2xl sm:text-3xl font-black mb-4">Settings</h1>
+      <h1 className="text-2xl sm:text-2xl sm:text-3xl font-black mb-4">Settings</h1>
 
       <section className={cardClass}>
         <p className="text-sm text-white/75 mb-4">
@@ -64,7 +64,7 @@ export default function SettingsPage() {
             <input
               value={entryId}
               onChange={(e) => setEntryId(e.target.value.replace(/\D/g, ""))}
-              className="w-full mt-1 rounded-md px-3 py-2 bg-black/30 border border-white/20"
+              className="w-full mt-1 rounded-md h-10 px-3 bg-black/30 border border-white/20"
               inputMode="numeric"
               placeholder="e.g. 538572"
             />
@@ -75,7 +75,7 @@ export default function SettingsPage() {
             <input
               value={rivalEntryId}
               onChange={(e) => setRivalEntryId(e.target.value.replace(/\D/g, ""))}
-              className="w-full mt-1 rounded-md px-3 py-2 bg-black/30 border border-white/20"
+              className="w-full mt-1 rounded-md h-10 px-3 bg-black/30 border border-white/20"
               inputMode="numeric"
               placeholder="Used by Planner > Rival Intelligence"
             />
@@ -88,7 +88,7 @@ export default function SettingsPage() {
           <button
             onClick={save}
             disabled={saving}
-            className="px-4 py-2 rounded-md bg-[#00ff87] text-[#37003c] font-bold disabled:opacity-60 w-full sm:w-auto"
+            className="px-4 h-10 rounded-md bg-[#00ff87] text-[#37003c] font-bold disabled:opacity-60 w-full sm:w-auto"
           >
             {saving ? "Saving..." : "Save Settings"}
           </button>

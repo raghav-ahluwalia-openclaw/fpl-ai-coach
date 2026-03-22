@@ -100,7 +100,7 @@ export default function TopPage() {
   return (
     <main className="min-h-screen p-3 sm:p-4 md:p-8 max-w-6xl mx-auto text-white">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-        <h1 className="text-2xl sm:text-3xl font-black">Top Picks</h1>
+        <h1 className="text-2xl sm:text-2xl sm:text-3xl font-black">Top Picks</h1>
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
           <label className="text-sm text-white/85 flex items-center gap-2">
             <input
@@ -113,7 +113,7 @@ export default function TopPage() {
           <select
             value={limit}
             onChange={(e) => setLimit(Number(e.target.value))}
-            className="rounded-md px-3 py-2 bg-black/30 border border-white/20 w-full sm:w-auto"
+            className="rounded-md h-10 px-3 bg-black/30 border border-white/20 w-full sm:w-auto"
           >
             <option value={10}>Top 10</option>
             <option value={20}>Top 20</option>
