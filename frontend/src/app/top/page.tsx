@@ -113,7 +113,10 @@ export default function TopPage() {
   return (
     <main className="min-h-screen p-3 sm:p-4 md:p-8 max-w-6xl mx-auto text-white">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-        <h1 className="text-2xl sm:text-2xl sm:text-3xl font-black">Top Picks</h1>
+        <div>
+          <h1 className="text-2xl sm:text-2xl sm:text-3xl font-black">Research Hub</h1>
+          <p className="text-sm text-white/75 mt-1">Top picks + explainability insights in one place.</p>
+        </div>
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
           <label className="text-sm text-white/85 flex items-center gap-2">
             <input
