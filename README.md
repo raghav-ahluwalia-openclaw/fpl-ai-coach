@@ -142,10 +142,19 @@ Or individually:
 ./scripts/validate_integration.py
 ```
 
-Install pre-commit hook:
+Install git workflow hooks:
 
 ```bash
 ./scripts/install_hooks.sh
+```
+
+This enforces PR-first workflow locally:
+- blocks direct commit on `main`/`master`
+- blocks direct push on `main`/`master`
+- use helper to create a branch:
+
+```bash
+./scripts/new_pr_branch.sh my-change-name
 ```
 
 ---

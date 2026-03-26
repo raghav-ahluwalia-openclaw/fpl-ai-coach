@@ -4,6 +4,15 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+branch="$(git rev-parse --abbrev-ref HEAD)"
+if [[ "$branch" == "main" || "$branch" == "master" ]]; then
+  echo "[pre-commit] ❌ Direct commits to '$branch' are blocked."
+  echo "[pre-commit] Create a PR branch first, e.g.:"
+  echo "  ./scripts/new_pr_branch.sh your-change-name"
+  echo "Then commit again."
+  exit 1
+fi
+
 echo "[pre-commit] Running validation suite..."
 ./scripts/validate_all.sh
 
