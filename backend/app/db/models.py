@@ -84,3 +84,33 @@ class UserSquadPick(Base):
     purchase_price = Column(Integer, nullable=True)
     selling_price = Column(Integer, nullable=True)
     imported_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+
+
+class PlayerPrediction(Base):
+    """
+    Log model predictions (XP) vs actual points for model drift analysis.
+    Part of the 'Pro' feature set for performance transparency.
+    """
+    __tablename__ = "player_predictions"
+    __table_args__ = (
+        Index("ix_player_predictions_event_player", "event", "player_id"),
+        Index("ix_player_predictions_created_at", "created_at"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    event = Column(Integer, nullable=False)
+    player_id = Column(Integer, nullable=False)
+    
+    # Projections at time of calculation
+    xp_1gw = Column(Float, nullable=False)
+    xp_3gw = Column(Float, nullable=True)
+    
+    # Confidence metrics
+    model_version = Column(String, nullable=False)
+    confidence_score = Column(Float, nullable=True)
+    
+    # Outcome tracking (filled post-matchday)
+    actual_points = Column(Integer, nullable=True)
+    prediction_error = Column(Float, nullable=True)
+    
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))

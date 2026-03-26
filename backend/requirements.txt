@@ -1,9 +1,35 @@
+# Core Framework
 fastapi==0.135.1
 uvicorn[standard]==0.41.0
+
+# Configuration & Environment
 python-dotenv==1.2.2
+pydantic-settings==2.7.0
+
+# Database
 SQLAlchemy==2.0.48
 psycopg2-binary==2.9.11
-requests==2.32.5
+# asyncpg==0.30.0  # Deferred: requires build tools (gcc-12)
+alembic==1.14.0
+
+# HTTP Client (async)
 httpx==0.28.1
+# requests==2.32.5  # Removed - using httpx instead
+
+# ML & Data
 xgboost==3.2.0
 scikit-learn==1.8.0
+numpy==2.2.0
+
+# Security & Rate Limiting
+fastapi-limiter==0.1.6
+redis==5.2.0
+
+# Observability
+structlog==24.4.0
+psutil==6.1.0
+
+# Testing (development)
+pytest==8.3.0
+pytest-asyncio==0.24.0
+pytest-cov==6.0.0
