@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
 export default function CaptaincyPage() {
-  redirect("/weekly");
+  // Captain deep-dive is consolidated into Research Hub.
+  redirect("/top");
 }

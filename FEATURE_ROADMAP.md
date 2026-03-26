@@ -256,3 +256,7 @@ Move FPL AI Coach from "functional" to "premium" with polished motion, clearer h
 - `storybook-args-controls`
 - `data-visualization`
 - `dashboard-builder`
+
+### IA simplification follow-up
+- Added page consolidation map and naming standards doc: `docs/IA_CONSOLIDATION_PLAN.md`.
+- Objective: simpler nav + fewer overlapping pages while preserving all decision workflows.

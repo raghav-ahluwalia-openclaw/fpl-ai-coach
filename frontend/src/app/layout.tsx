@@ -24,7 +24,7 @@ const navItems = [
   { href: "/planner", label: "Planner" },
   { href: "/leagues", label: "Leagues" },
   { href: "/top", label: "Research" },
-  { href: "/socials", label: "FPL Socials" },
+  { href: "/socials", label: "Social Intel" },
 ];
 
 export default function RootLayout({
