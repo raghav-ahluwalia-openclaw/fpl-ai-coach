@@ -20,6 +20,7 @@ export const metadata: Metadata = {
 
 const navItems = [
   { href: "/weekly", label: "Gameweek Hub" },
+  { href: "/live", label: "Live" },
   { href: "/planner", label: "Planner" },
   { href: "/leagues", label: "Leagues" },
   { href: "/top", label: "Research" },

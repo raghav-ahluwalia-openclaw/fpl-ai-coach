@@ -137,3 +137,122 @@
 - ✅ Leagues feature MVP shipped (`/leagues`) with classic + H2H standings, rank/gap insights, and embedded overall rank trend.
 - ✅ "Weekly Cockpit" terminology migrated to **Gameweek Hub** across frontend and backend API aliasing.
 - ✅ Target Radar removed from frontend and backend (`/targets`, `/api/fpl/targets`) to simplify product surface.
+
+---
+
+## Phase 4 — Uplevel to market leader (started 2026-03-25)
+
+### ✅ Started / shipped now
+
+1. Live Team View MVP
+   - Backend: `GET /api/fpl/team/{entry_id}/live`
+   - Frontend: new `/live` page + home navigation card
+   - Includes: live total, starters vs bench split, captain impact, player-level live points.
+
+2. Better logging + troubleshooting baseline
+   - Request middleware adds timing + request id (`x-request-id`) and structured log line per request.
+   - New diagnostics endpoint: `GET /api/fpl/diagnostics` with data freshness + quick fix hints.
+
+### Next high-ROI items
+
+3. Live rank + mini-league delta tracker
+   - Estimate live rank swing and mini-league position movement during GW.
+
+4. Smart alerting engine v2
+   - Goal alerts (captain haul, rival swing, bench haul risk, injury/sub confirmations).
+
+5. Explainability v2 (decision confidence provenance)
+   - Show why plan changed since previous run with factor deltas + confidence drift.
+
+6. Simulation lab
+   - Monte Carlo outcome bands for captain and transfer choices.
+
+7. Retention loop
+   - Personalized push digest (morning/evening) with one recommended action.
+
+### Phase 4 execution plan (captured from chat)
+
+- **P4.1 (done):** Live Team View MVP (`/api/fpl/team/{entry_id}/live`, `/live` page).
+- **P4.2 (done):** Logging + diagnostics baseline (`x-request-id`, request timing logs, `/api/fpl/diagnostics`).
+- **P4.3 (next):** Live rank + mini-league delta tracker.
+- **P4.4:** Smart alerting engine v2 (captain haul, rival swing, bench haul risk, injury/sub confirmations).
+- **P4.5:** Explainability v2 (why recommendation changed + confidence drift).
+- **P4.6:** Simulation lab (Monte Carlo outcome bands for captain + transfer decisions).
+- **P4.7:** Retention loop (personalized AM/PM digest with one suggested action).
+
+### Suggested implementation order (highest ROI first)
+
+1. P4.3 Live rank + mini-league delta tracker
+2. P4.4 Smart alerting engine v2
+3. P4.5 Explainability v2
+4. P4.6 Simulation lab
+5. P4.7 Retention loop
+
+---
+
+## Phase 4.8 — Visual + Motion Uplevel Plan (added 2026-03-25)
+
+### Goal
+Move FPL AI Coach from "functional" to "premium" with polished motion, clearer hierarchy, and richer visual analytics while preserving speed.
+
+### Principles
+- Motion should clarify state change, not distract.
+- Keep performance first (GPU-friendly transforms, avoid layout thrash).
+- Respect accessibility (`prefers-reduced-motion`, keyboard focus visibility, contrast).
+
+### Foundation work (Sprint V1)
+1. Design token baseline
+   - Color tokens: `bg/surface/surface-elevated/text/muted/success/warn/danger/info/accent`.
+   - Spacing scale: 4/8/12/16/24/32.
+   - Radius + shadow tokens for consistent card depth.
+
+2. Motion token baseline
+   - Durations: 120ms / 200ms / 320ms.
+   - Easing presets: `ease-out`, `ease-in-out`, `spring-soft`.
+   - Global reduced-motion guard + fallback transitions.
+
+3. Core reusable UI components
+   - `MetricCard`, `DeltaChip`, `ConfidenceMeter`, `RiskPill`, `SkeletonBlock`, `EmptyState`.
+
+### Screen-level upgrades (Sprint V2)
+4. Gameweek Hub (`/weekly`)
+   - Animated card entrance (staggered).
+   - Delta highlight animations for rank/EV changes.
+   - Confidence meter for A/B/C transfer plans.
+
+5. Live (`/live`) + Leagues (`/leagues`)
+   - Live score tick animation + captain impact pulse.
+   - Mini-league position movement indicators.
+   - Trend sparklines for rank and points movement.
+
+6. Captaincy + Planner
+   - Captain comparison visuals (probability/confidence bands).
+   - Chip planner status visualization with clearer state coding.
+
+### Data viz upgrades (Sprint V3)
+7. Visualization layer
+   - Add chart system for: trend lines, confidence bands, EV vs risk scatter, movement ladders.
+   - Standardize chart color semantics + tooltip patterns.
+
+8. Loading/error/empty state polish
+   - Skeletons for all major data cards.
+   - Uniform retry/error cards with diagnostics links.
+
+### Performance + QA gates
+9. Performance budgets
+   - LCP < 2.5s on core pages (p75), animation FPS target 50+.
+   - Limit heavy animations to above-the-fold key moments only.
+
+10. Accessibility gates
+   - WCAG AA contrast checks.
+   - Keyboard focus states on interactive controls.
+   - Reduced-motion mode parity checks.
+
+### Skills installed to support this plan
+- `ui-ux-pro-max`
+- `frontend-ui-animator`
+- `lottie-animations`
+- `storybook-story-writing`
+- `storybook-args-controls`
+- `data-visualization`
+- `dashboard-builder`

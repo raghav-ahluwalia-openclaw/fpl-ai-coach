@@ -667,6 +667,16 @@ def weekly_cockpit(
         holds = sorted([x for x in health_rows if x["action"] == "hold"], key=lambda x: x["projected_points_3"], reverse=True)[:6]
         watch = sorted([x for x in health_rows if x["action"] == "watch"], key=lambda x: (x["minutes_risk"] + x["availability_risk"]), reverse=True)[:6]
 
+        action_rank = {"sell": 0, "watch": 1, "hold": 2}
+        all_rows = sorted(
+            health_rows,
+            key=lambda x: (
+                action_rank.get(str(x.get("action")), 9),
+                -float(x.get("projected_points_3", 0)),
+                str(x.get("name", "")),
+            ),
+        )
+
         # Transfer plans (1FT + 2FT)
         sim = what_if_simulator(
             entry_id=entry_id,
@@ -952,6 +962,7 @@ def weekly_cockpit(
                 "sell": sells,
                 "watch": watch,
                 "hold": holds,
+                "all": all_rows,
             },
             "top_transfer_plans": {
                 "one_ft": one_ft_plans,
@@ -1552,3 +1563,97 @@ def _performance_weekly(*, entry_id: int, lookback: int) -> dict:
         },
         "dashboard_card": dashboard_card,
     }
+
+
+@router.get("/api/fpl/team/{entry_id}/live")
+def team_live_view(
+    entry_id: int,
+    gameweek: Optional[int] = Query(default=None, ge=1, le=38),
+):
+    db = SessionLocal()
+    try:
+        current_gw = _int(_get_meta(db, "current_gw"), 0)
+        target_gw = gameweek or current_gw or _resolve_gameweek(db, None)
+
+        picks_payload, resolved_gw = _fetch_entry_picks_with_fallback(entry_id, target_gw, [current_gw, target_gw - 1])
+        picks = picks_payload.get("picks", [])
+        if not picks:
+            raise HTTPException(status_code=404, detail=f"No picks found for entry {entry_id} in GW {resolved_gw}")
+
+        live_payload = fetch_json(
+            f"https://fantasy.premierleague.com/api/event/{resolved_gw}/live/",
+            timeout=20,
+            upstream_error_prefix="Could not fetch live event data from FPL",
+        )
+        live_elements = {int(e.get("id")): e for e in (live_payload.get("elements", []) or [])}
+
+        players = db.query(Player).all()
+        player_by_id = {p.id: p for p in players}
+
+        starters_live = 0
+        bench_live = 0
+        total_live = 0
+        captain = None
+        vice_captain = None
+        rows = []
+
+        for p in sorted(picks, key=lambda x: _int(x.get("position"), 99)):
+            pid = _int(p.get("element"), 0)
+            pos = _int(p.get("position"), 0)
+            mult = _int(p.get("multiplier"), 1)
+            el = live_elements.get(pid, {})
+            stats = el.get("stats", {}) if isinstance(el, dict) else {}
+            base_points = _int(stats.get("total_points"), 0)
+            live_points = base_points * max(0, mult)
+            total_live += live_points
+            if pos <= 11:
+                starters_live += live_points
+            else:
+                bench_live += live_points
+
+            if bool(p.get("is_captain")):
+                captain = {
+                    "id": pid,
+                    "name": (player_by_id.get(pid).web_name if player_by_id.get(pid) else f"Player {pid}"),
+                    "base_points": base_points,
+                    "multiplier": mult,
+                    "live_points": live_points,
+                }
+            if bool(p.get("is_vice_captain")):
+                vice_captain = {
+                    "id": pid,
+                    "name": (player_by_id.get(pid).web_name if player_by_id.get(pid) else f"Player {pid}"),
+                    "base_points": base_points,
+                    "multiplier": mult,
+                    "live_points": live_points,
+                }
+
+            rows.append(
+                {
+                    "id": pid,
+                    "name": (player_by_id.get(pid).web_name if player_by_id.get(pid) else f"Player {pid}"),
+                    "position": pos,
+                    "role": "starter" if pos <= 11 else "bench",
+                    "multiplier": mult,
+                    "base_points": base_points,
+                    "live_points": live_points,
+                    "is_captain": bool(p.get("is_captain", False)),
+                    "is_vice_captain": bool(p.get("is_vice_captain", False)),
+                }
+            )
+
+        return {
+            "entry_id": entry_id,
+            "gameweek": resolved_gw,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "live_summary": {
+                "total_live_points": total_live,
+                "starters_live_points": starters_live,
+                "bench_live_points": bench_live,
+            },
+            "captain": captain,
+            "vice_captain": vice_captain,
+            "players": rows,
+        }
+    finally:
+        db.close()

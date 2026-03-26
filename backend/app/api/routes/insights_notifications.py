@@ -5,7 +5,16 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, Query
 
-from .base import SessionLocal, _get_meta, _int, _set_meta, router
+from .base import (
+    FPL_BOOTSTRAP_URL,
+    SessionLocal,
+    _get_meta,
+    _int,
+    _set_meta,
+    _sync_gameweek_meta_if_needed,
+    fetch_json,
+    router,
+)
 from .insights import NOTIF_CHECK_INTERVAL_MINUTES, REMINDER_STATE_PATH
 from .insights_settings import notification_settings_get
 from app.services.ml_recommender import DEFAULT_MODEL_VERSION
@@ -35,6 +44,109 @@ def deadline_next(lead_hours: int = Query(default=6, ge=1, le=72)):
             "seconds_until_deadline": int((deadline_dt - now_dt).total_seconds()),
             "seconds_until_reminder": int((reminder_dt - now_dt).total_seconds()),
             "is_reminder_due": reminder_dt <= now_dt,
+        }
+    finally:
+        db.close()
+
+
+@router.get("/api/fpl/gameweek-status")
+def gameweek_status():
+    db = SessionLocal()
+    try:
+        now_dt = datetime.now(timezone.utc)
+        _sync_gameweek_meta_if_needed(db)
+
+        current_gw = _int(_get_meta(db, "current_gw"), 0) or None
+        next_gw = _int(_get_meta(db, "next_gw"), 0) or None
+        deadline_raw = _get_meta(db, "next_deadline_utc")
+
+        deadline_dt = None
+        if deadline_raw:
+            try:
+                deadline_dt = datetime.fromisoformat(str(deadline_raw).replace("Z", "+00:00"))
+            except ValueError:
+                deadline_dt = None
+
+        current_gw_finished = None
+        current_gw_data_checked = None
+        completed_gw = None
+        gw_in_progress = False
+        current_gw_status = "unknown"
+        source = "meta"
+
+        try:
+            bootstrap = fetch_json(
+                FPL_BOOTSTRAP_URL,
+                timeout=20,
+                upstream_error_prefix="FPL bootstrap source unavailable",
+            )
+            events = bootstrap.get("events", [])
+            current_event = next((e for e in events if e.get("is_current")), None)
+            next_event = next((e for e in events if e.get("is_next")), None)
+
+            if current_event:
+                official_current = _int(current_event.get("id"), current_gw or 0) or current_gw
+                current_gw_finished = bool(current_event.get("finished"))
+                current_gw_data_checked = bool(current_event.get("data_checked"))
+                completed_gw = official_current if current_gw_finished else None
+                current_gw = official_current
+
+            if next_event:
+                next_gw = _int(next_event.get("id"), next_gw or 0) or next_gw
+                nd = next_event.get("deadline_time")
+                if nd:
+                    deadline_dt = datetime.fromisoformat(str(nd).replace("Z", "+00:00"))
+
+            # Product rule: once a GW is finished, shift planning current GW to the upcoming GW,
+            # and surface "next_gw" as the GW after that.
+            if current_gw_finished and next_gw:
+                planning_gw = next_gw
+                following_event = next((e for e in events if _int(e.get("id"), 0) == planning_gw + 1), None)
+                current_gw = planning_gw
+                next_gw = _int((following_event or {}).get("id"), planning_gw + 1) or (planning_gw + 1)
+                current_gw_status = "upcoming"
+                gw_in_progress = False
+            else:
+                gw_in_progress = not bool(current_gw_finished)
+                current_gw_status = "in_progress" if gw_in_progress else "finished"
+
+            source = "official_fpl_api"
+        except Exception:  # noqa: BLE001
+            if current_gw and next_gw and next_gw > current_gw:
+                current_gw_status = "finished"
+            elif current_gw:
+                current_gw_status = "in_progress"
+                gw_in_progress = True
+
+        seconds_until_deadline = int((deadline_dt - now_dt).total_seconds()) if deadline_dt else None
+        transfer_window_open = None if seconds_until_deadline is None else seconds_until_deadline > 0
+
+        season_phase = "unknown"
+        if gw_in_progress:
+            season_phase = "current_gw_live"
+        elif current_gw_status == "upcoming" and transfer_window_open is True:
+            season_phase = "pre_deadline_window"
+        elif current_gw_status == "finished" and transfer_window_open is True:
+            season_phase = "between_gameweeks"
+        elif current_gw_status == "finished" and transfer_window_open is False:
+            season_phase = "deadline_passed_pending_update"
+
+        return {
+            "generated_at": now_dt.isoformat(),
+            "source": source,
+            "current_gw": current_gw,
+            "planning_gw": current_gw,
+            "completed_gw": completed_gw,
+            "current_gw_status": current_gw_status,
+            "current_gw_finished": current_gw_finished,
+            "current_gw_data_checked": current_gw_data_checked,
+            "gw_in_progress": gw_in_progress,
+            "next_gw": next_gw,
+            "next_deadline_utc": deadline_dt.isoformat() if deadline_dt else None,
+            "transfer_deadline_utc": deadline_dt.isoformat() if deadline_dt else None,
+            "seconds_until_deadline": seconds_until_deadline,
+            "transfer_window_open": transfer_window_open,
+            "season_phase": season_phase,
         }
     finally:
         db.close()

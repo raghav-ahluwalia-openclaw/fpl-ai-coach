@@ -37,6 +37,42 @@ def health():
     return {"ok": ok, "db": "up" if ok else "down", "db_error": err}
 
 
+@router.get("/api/fpl/diagnostics")
+def diagnostics():
+    db = SessionLocal()
+    try:
+        with engine.connect() as c:
+            c.exec_driver_sql("SELECT 1")
+        players = db.query(Player).count()
+        teams = db.query(Team).count()
+        fixtures = db.query(Fixture).count()
+        return {
+            "ok": True,
+            "db": "up",
+            "counts": {
+                "players": players,
+                "teams": teams,
+                "fixtures": fixtures,
+            },
+            "meta": {
+                "current_gw": _int(_get_meta(db, "current_gw"), 0) or None,
+                "next_gw": _int(_get_meta(db, "next_gw"), 0) or None,
+                "next_deadline_utc": _get_meta(db, "next_deadline_utc"),
+                "last_ingested_at": _get_meta(db, "last_ingested_at"),
+                "last_gw_meta_sync_at": _get_meta(db, "last_gw_meta_sync_at"),
+            },
+            "troubleshooting": [
+                "If counts.players is low, run POST /api/fpl/ingest/bootstrap?force=true",
+                "If GW looks stale, hit GET /api/fpl/gameweek-status then re-check diagnostics",
+                "Use x-request-id response header to trace request logs",
+            ],
+        }
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Diagnostics failed: {e}")
+    finally:
+        db.close()
+
+
 @router.post("/api/fpl/ingest/bootstrap")
 def ingest_bootstrap(force: bool = Query(default=False)):
     db = SessionLocal()

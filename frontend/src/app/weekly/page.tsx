@@ -9,6 +9,22 @@ type XpView = "1gw" | "3gw";
 
 type AppSettings = { fpl_entry_id: number | null };
 
+type GameweekStatus = {
+  generated_at: string;
+  source: string;
+  current_gw: number | null;
+  current_gw_status: "in_progress" | "finished" | "unknown" | string;
+  current_gw_finished: boolean | null;
+  current_gw_data_checked: boolean | null;
+  gw_in_progress: boolean;
+  next_gw: number | null;
+  next_deadline_utc: string | null;
+  transfer_deadline_utc: string | null;
+  seconds_until_deadline: number | null;
+  transfer_window_open: boolean | null;
+  season_phase: string;
+};
+
 type FixtureWindow = { counts: number[]; blanks: number; doubles: number; singles: number; label: string };
 
 type HealthRow = {
@@ -22,6 +38,7 @@ type HealthRow = {
   price_change_direction?: "up" | "down" | "flat" | string;
   price_change_eta_hours?: number;
   price_change_eta?: string;
+  action?: "sell" | "watch" | "hold" | string;
 };
 
 type TransferMove = {
@@ -123,6 +140,7 @@ type GameweekHub = {
     sell: HealthRow[];
     watch: HealthRow[];
     hold: HealthRow[];
+    all?: HealthRow[];
   };
   top_transfer_plans: {
     one_ft: TransferPlan[];
@@ -180,6 +198,30 @@ function kpiToneLabel(tone: KpiTone): string {
   return "Watch";
 }
 
+function formatUtc(value?: string | null): string {
+  if (!value) return "—";
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return value;
+  return dt.toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
+}
+
+function formatCountdown(seconds?: number | null): string {
+  if (seconds === null || seconds === undefined) return "—";
+  const abs = Math.abs(seconds);
+  const days = Math.floor(abs / 86400);
+  const hours = Math.floor((abs % 86400) / 3600);
+  const minutes = Math.floor((abs % 3600) / 60);
+  const label = `${days}d ${hours}h ${minutes}m`;
+  return seconds >= 0 ? label : `-${label}`;
+}
+
 function evaluateKpi(
   key: "captain_hit_rate" | "transfer_positive_rate" | "missed_captain_points" | "transfer_roi" | "hit_efficiency" | "benching_loss" | "bench_order_accuracy" | "xi_optimization_gap",
   value: number | null,
@@ -217,6 +259,7 @@ export default function WeeklyPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<GameweekHub | null>(null);
+  const [gwStatus, setGwStatus] = useState<GameweekStatus | null>(null);
   const [performance, setPerformance] = useState<PerformanceWeekly | null>(null);
   const [performanceInfoOpen, setPerformanceInfoOpen] = useState(false);
   const [performanceInfoPinned, setPerformanceInfoPinned] = useState(false);
@@ -233,6 +276,19 @@ export default function WeeklyPage() {
       })
       .catch(() => null);
   }, []);
+
+  const loadGameweekStatus = useCallback(async () => {
+    try {
+      const status = await fetchJson<GameweekStatus>("/api/fpl/gameweek-status");
+      setGwStatus(status);
+    } catch {
+      // status panel is informative; fail silently
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadGameweekStatus();
+  }, [loadGameweekStatus]);
 
   const run = useCallback(async (idOverride?: string) => {
     const id = (idOverride ?? teamId).trim();
@@ -251,12 +307,13 @@ export default function WeeklyPage() {
       ]);
       setData(hub);
       setPerformance(perf);
+      await loadGameweekStatus();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load Gameweek Hub");
     } finally {
       setLoading(false);
     }
-  }, [mode, teamId]);
+  }, [loadGameweekStatus, mode, teamId]);
 
   useEffect(() => {
     if (!hasAutoRun.current && /^\d+$/.test(teamId.trim())) {
@@ -319,6 +376,24 @@ export default function WeeklyPage() {
         </div>
       </section>
 
+      {gwStatus ? (
+        <section className={`${cardClass} mb-4`}>
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <h2 className="font-semibold text-[#00ff87]">Gameweek Status</h2>
+            <span className={`text-xs rounded-full px-2 py-0.5 border ${gwStatus.gw_in_progress ? "border-emerald-300 text-emerald-200" : "border-amber-300 text-amber-200"}`}>
+              {gwStatus.gw_in_progress ? "GW in progress" : "Between gameweeks"}
+            </span>
+          </div>
+          <div className="grid md:grid-cols-2 gap-2 text-sm text-white/85">
+            <p>Current GW: <strong>{gwStatus.current_gw ?? "—"}</strong> ({gwStatus.current_gw_status.replace("_", " ")})</p>
+            <p>Next GW: <strong>{gwStatus.next_gw ?? "—"}</strong></p>
+            <p>Transfer deadline: <strong>{formatUtc(gwStatus.transfer_deadline_utc)}</strong></p>
+            <p>Time to deadline: <strong>{formatCountdown(gwStatus.seconds_until_deadline)}</strong></p>
+          </div>
+          <p className="text-xs text-white/60 mt-2">Season phase: {gwStatus.season_phase.replace("_", " ")} • Source: {gwStatus.source}</p>
+        </section>
+      ) : null}
+
       {error ? <p className="text-red-300 mb-4">{error}</p> : null}
 
       {data ? (
@@ -329,7 +404,7 @@ export default function WeeklyPage() {
             </p>
             <p className="text-sm text-white/75">Bank: £{data.team_overview.bank.toFixed(1)} • Squad value: £{data.team_overview.squad_value.toFixed(1)}</p>
             {typeof data.picks_source_gw === "number" && data.picks_source_gw !== data.team_overview.gameweek ? (
-              <p className="text-xs text-white/60 mt-2">Using latest available squad snapshot from GW {data.picks_source_gw}.</p>
+              <p className="text-xs text-white/60 mt-2">Planning GW {data.team_overview.gameweek} using your latest published squad (GW {data.picks_source_gw}).</p>
             ) : null}
           </section>
 
@@ -501,7 +576,8 @@ export default function WeeklyPage() {
           </section>
 
           <section className={cardClass}>
-            <h2 className="font-semibold text-[#00ff87] mb-2">Team Health</h2>
+            <h2 className="font-semibold text-[#00ff87] mb-1">Team Health</h2>
+            <p className="text-xs text-white/65 mb-2">Showing {(data.team_health.all ?? [...data.team_health.sell, ...data.team_health.watch, ...data.team_health.hold]).length} players from your squad.</p>
             <div className="overflow-x-auto">
               <table className="w-full text-xs md:text-sm">
                 <thead>
@@ -524,8 +600,8 @@ export default function WeeklyPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {[...data.team_health.sell, ...data.team_health.watch, ...data.team_health.hold].map((p) => {
-                    const action = data.team_health.sell.includes(p) ? "sell" : data.team_health.watch.includes(p) ? "watch" : "hold";
+                  {(data.team_health.all ?? [...data.team_health.sell, ...data.team_health.watch, ...data.team_health.hold]).map((p) => {
+                    const action = p.action ?? (data.team_health.sell.includes(p) ? "sell" : data.team_health.watch.includes(p) ? "watch" : "hold");
                     return (
                       <tr key={`h-${p.name}`} className="border-b border-white/5">
                         <td className="py-2 font-medium">{p.name}</td>

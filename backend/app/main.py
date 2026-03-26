@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import logging
+import time
+import uuid
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -28,6 +30,35 @@ app.add_middleware(
 
 register_error_handlers(app)
 app.include_router(fpl_router)
+
+
+@app.middleware("http")
+async def request_logging_middleware(request: Request, call_next):
+    req_id = str(uuid.uuid4())[:8]
+    started = time.perf_counter()
+    try:
+        response = await call_next(request)
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        logging.getLogger("fpl.http").info(
+            "%s %s -> %s (%sms) req=%s",
+            request.method,
+            request.url.path,
+            response.status_code,
+            duration_ms,
+            req_id,
+        )
+        response.headers["x-request-id"] = req_id
+        return response
+    except Exception:
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        logging.getLogger("fpl.http").exception(
+            "%s %s -> 500 (%sms) req=%s",
+            request.method,
+            request.url.path,
+            duration_ms,
+            req_id,
+        )
+        raise
 
 
 @app.on_event("startup")

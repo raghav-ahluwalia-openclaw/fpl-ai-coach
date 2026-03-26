@@ -32,8 +32,18 @@
 - [x] Transfer planner now includes price-change urgency and bonus-aware ranking signals
 - [x] Gameweek Hub transfer plans now expose calibrated confidence metadata (`cal_v1`)
 
+## Phase 4 (market leader push)
+
+- [x] Live Team View MVP (`/api/fpl/team/{entry_id}/live` + `/live` page)
+- [x] Request tracing and request-id logging middleware
+- [x] Troubleshooting endpoint (`/api/fpl/diagnostics`)
+- [ ] Live rank + mini-league live delta tracker
+- [ ] Smart alerts v2 (captain haul / rival swing / bench haul risk)
+- [ ] Explainability v2 with change-diff vs last recommendation
+- [ ] Simulation lab (Monte Carlo outcome bands)
+
 ## Verification
 
-- [x] Backend validation
+- [x] Backend tests for live endpoint + diagnostics
 - [x] Frontend lint/build
 - [x] Integration validation

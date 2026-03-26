@@ -12,6 +12,11 @@ const primaryCards = [
     href: "/planner",
   },
   {
+    title: "Live Team",
+    desc: "Track your in-progress GW score with starter/bench split and captain impact.",
+    href: "/live",
+  },
+  {
     title: "Leagues",
     desc: "See your rank across leagues, gap-to-next, and rivalry insights.",
     href: "/leagues",

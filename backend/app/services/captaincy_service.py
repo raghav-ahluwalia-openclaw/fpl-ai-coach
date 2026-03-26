@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from app.api.routes.base import (
     POSITION_MAP,
@@ -122,7 +122,44 @@ def build_captaincy_lab(players: List[Player], fixtures: List[Fixture], gw: int,
     }
 
 
-def build_explainability_top(players: List[Player], fixtures: List[Fixture], gw: int, limit: int) -> dict:
+def _next_five_opposition(player: Player, fixtures: List[Fixture], gw: int, team_names: Dict[int, str]) -> list[dict]:
+    windows: list[dict] = []
+    for g in range(gw, gw + 5):
+        slots = []
+        for fx in fixtures:
+            if fx.event != g:
+                continue
+            if fx.team_h == player.team_id:
+                opp = team_names.get(fx.team_a, str(fx.team_a))
+                slots.append(
+                    {
+                        "opponent": opp,
+                        "ha": "H",
+                        "difficulty": int(fx.team_h_difficulty),
+                    }
+                )
+            elif fx.team_a == player.team_id:
+                opp = team_names.get(fx.team_h, str(fx.team_h))
+                slots.append(
+                    {
+                        "opponent": opp,
+                        "ha": "A",
+                        "difficulty": int(fx.team_a_difficulty),
+                    }
+                )
+
+        windows.append(
+            {
+                "gw": g,
+                "fixtures": sorted(slots, key=lambda x: x["difficulty"]),
+                "is_blank": len(slots) == 0,
+                "is_double": len(slots) >= 2,
+            }
+        )
+    return windows
+
+
+def build_explainability_top(players: List[Player], fixtures: List[Fixture], gw: int, limit: int, team_names: Optional[Dict[int, str]] = None) -> dict:
     scored = []
     for p in players:
         xp = _expected_points(p, fixtures, gw)
@@ -132,6 +169,7 @@ def build_explainability_top(players: List[Player], fixtures: List[Fixture], gw:
     scored.sort(key=lambda x: x[0], reverse=True)
 
     out = []
+    team_names = team_names or {}
     for xp, p, breakdown in scored[:limit]:
         fixture_count = _fixture_count_for_gw(p, fixtures, gw)
         fixture_badge = "DGW" if fixture_count >= 2 else ("BLANK" if fixture_count == 0 else "SGW")
@@ -140,12 +178,14 @@ def build_explainability_top(players: List[Player], fixtures: List[Fixture], gw:
                 "id": p.id,
                 "name": p.web_name,
                 "position": POSITION_MAP.get(p.element_type, str(p.element_type)),
+                "club": team_names.get(int(p.team_id), str(p.team_id)),
                 "price": round(p.now_cost / 10.0, 1),
                 "xP": round(xp, 2),
                 "fixture_count": fixture_count,
                 "fixture_badge": fixture_badge,
                 "breakdown": breakdown,
                 "reason": _reason(p, xp),
+                "next_5_opposition": _next_five_opposition(p, fixtures, gw, team_names),
             }
         )
 

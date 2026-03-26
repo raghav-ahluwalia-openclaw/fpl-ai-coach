@@ -32,6 +32,7 @@ type ExplainedPlayer = {
   id: number;
   name: string;
   position: string;
+  club?: string;
   price: number;
   xP: number;
   fixture_count: number;
@@ -44,6 +45,12 @@ type ExplainedPlayer = {
     ownership_risk: number;
     volatility: number;
   };
+  next_5_opposition?: Array<{
+    gw: number;
+    fixtures: Array<{ opponent: string; ha: "H" | "A"; difficulty: number }>;
+    is_blank: boolean;
+    is_double: boolean;
+  }>;
   reason: string;
 };
 
@@ -57,6 +64,12 @@ const cardClass = "rounded-2xl border border-white/15 bg-white/5 backdrop-blur-m
 
 function safeNum(value: unknown, fallback = 0): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function difficultyClass(difficulty: number): string {
+  if (difficulty <= 2) return "border-emerald-300/60 text-emerald-200 bg-emerald-500/10";
+  if (difficulty === 3) return "border-amber-300/60 text-amber-200 bg-amber-500/10";
+  return "border-rose-300/60 text-rose-200 bg-rose-500/10";
 }
 
 export default function TopPage() {
@@ -183,7 +196,7 @@ export default function TopPage() {
               .map((p) => (
               <div key={p.id} className={`border border-white/10 rounded-lg p-3 bg-black/20 text-sm ${myTeamIds.has(p.id) ? "opacity-45" : ""}`}>
                 <p className="font-semibold">
-                  {p.name} <span className="text-white/60">({p.position})</span>
+                  {p.name} <span className="text-white/60">({p.position}{p.club ? ` • ${p.club}` : ""})</span>
                   <span
                     className={`ml-2 text-[11px] rounded-full px-2 py-0.5 border ${
                       p.fixture_badge === "DGW"
@@ -203,6 +216,33 @@ export default function TopPage() {
                   <span>Minutes: {p.breakdown.minutes_security.toFixed(1)}</span>
                   <span>Availability: {p.breakdown.availability_score.toFixed(1)}</span>
                 </div>
+
+                {p.next_5_opposition?.length ? (
+                  <div className="mt-2">
+                    <p className="text-xs text-white/65 mb-1">Next 5 GW opposition</p>
+                    <div className="space-y-1">
+                      {p.next_5_opposition.map((w) => (
+                        <div key={`${p.id}-${w.gw}`} className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[11px] text-white/60 min-w-[42px]">GW{w.gw}</span>
+                          {w.is_blank ? (
+                            <span className="text-[11px] rounded-full px-2 py-0.5 border border-white/25 text-white/70">BLANK</span>
+                          ) : (
+                            w.fixtures.map((f, idx) => (
+                              <span
+                                key={`${p.id}-${w.gw}-${f.opponent}-${idx}`}
+                                className={`text-[11px] rounded-full px-2 py-0.5 border ${difficultyClass(f.difficulty)}`}
+                                title={`Difficulty ${f.difficulty}`}
+                              >
+                                {f.opponent} ({f.ha})
+                              </span>
+                            ))
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
                 <p className="text-white/65 mt-2">{p.reason}</p>
               </div>
             ))}

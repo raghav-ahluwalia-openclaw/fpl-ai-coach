@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -74,6 +75,32 @@ class NotificationEndpointsTest(unittest.TestCase):
         self.assertTrue(payload.get("ok"))
         self.assertTrue(payload.get("dry_run"))
         self.assertIsInstance(payload.get("test_message"), str)
+
+    def test_gameweek_status_shape(self) -> None:
+        fake_bootstrap = {
+            "events": [
+                {"id": 31, "is_current": True, "is_next": False, "finished": True, "data_checked": True},
+                {"id": 32, "is_current": False, "is_next": True, "deadline_time": "2026-04-10T17:30:00Z"},
+            ]
+        }
+        with patch("app.api.routes.insights_notifications.fetch_json", return_value=fake_bootstrap):
+            r = self.client.get("/api/fpl/gameweek-status")
+        self.assertEqual(r.status_code, 200)
+        payload = r.json()
+        for key in [
+            "current_gw",
+            "next_gw",
+            "current_gw_status",
+            "gw_in_progress",
+            "transfer_deadline_utc",
+            "seconds_until_deadline",
+            "season_phase",
+        ]:
+            self.assertIn(key, payload)
+        self.assertEqual(payload.get("current_gw"), 32)
+        self.assertEqual(payload.get("next_gw"), 33)
+        self.assertEqual(payload.get("completed_gw"), 31)
+        self.assertEqual(payload.get("current_gw_status"), "upcoming")
 
 
 if __name__ == "__main__":

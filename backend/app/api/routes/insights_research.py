@@ -14,6 +14,7 @@ from .base import (
     POSITION_MAP,
     Fixture,
     Player,
+    Team,
     SessionLocal,
     _expected_points,
     _expected_points_horizon,
@@ -608,7 +609,9 @@ def explainability_top(
             raise HTTPException(status_code=400, detail="No data found. Run POST /api/fpl/ingest/bootstrap first.")
 
         fixtures = db.query(Fixture).all()
+        teams = db.query(Team).all()
+        team_names = {int(t.id): str(t.short_name or t.name or t.id) for t in teams}
         gw = _resolve_gameweek(db, gameweek)
-        return build_explainability_top(players, fixtures, gw, limit)
+        return build_explainability_top(players, fixtures, gw, limit, team_names=team_names)
     finally:
         db.close()

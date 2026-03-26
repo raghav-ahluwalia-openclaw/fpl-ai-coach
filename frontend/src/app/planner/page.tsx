@@ -29,6 +29,15 @@ type AppSettings = {
   rival_entry_id: number | null;
 };
 
+type GameweekStatus = {
+  current_gw: number | null;
+  current_gw_status: string;
+  gw_in_progress: boolean;
+  next_gw: number | null;
+  transfer_deadline_utc: string | null;
+  seconds_until_deadline: number | null;
+};
+
 type RivalIntelResponse = {
   gameweek: number;
   entry_overall_rank?: number | null;
@@ -54,8 +63,23 @@ type RivalIntelResponse = {
 const API_BASE = "";
 const cardClass = "rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md p-4 md:p-5";
 
+function formatUtc(value?: string | null): string {
+  if (!value) return "—";
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return value;
+  return dt.toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
+}
+
 export default function PlannerPage() {
   const [chip, setChip] = useState<ChipPlannerResponse | null>(null);
+  const [gwStatus, setGwStatus] = useState<GameweekStatus | null>(null);
   const [rival, setRival] = useState<RivalIntelResponse | null>(null);
   const [entryId, setEntryId] = useState("");
   const [rivalEntryId, setRivalEntryId] = useState("");
@@ -68,6 +92,12 @@ export default function PlannerPage() {
         if (s.fpl_entry_id) setEntryId((prev) => prev || String(s.fpl_entry_id));
         if (s.rival_entry_id) setRivalEntryId((prev) => prev || String(s.rival_entry_id));
       })
+      .catch(() => null);
+  }, []);
+
+  useEffect(() => {
+    fetchJson<GameweekStatus>(`${API_BASE}/api/fpl/gameweek-status`)
+      .then(setGwStatus)
       .catch(() => null);
   }, []);
 
@@ -117,6 +147,18 @@ export default function PlannerPage() {
     <main className="min-h-screen p-3 sm:p-4 md:p-8 max-w-6xl mx-auto text-white">
       <h1 className="text-2xl sm:text-2xl sm:text-3xl font-black mb-4">Planner</h1>
       {error ? <p className="text-red-300 mb-3">{error}</p> : null}
+
+      {gwStatus ? (
+        <section className={`${cardClass} mb-4`}>
+          <h2 className="font-semibold text-[#00ff87] mb-2">Gameweek Status</h2>
+          <div className="grid md:grid-cols-2 gap-2 text-sm text-white/85">
+            <p>Current GW: <strong>{gwStatus.current_gw ?? "—"}</strong> ({gwStatus.current_gw_status.replace("_", " ")})</p>
+            <p>Next GW: <strong>{gwStatus.next_gw ?? "—"}</strong></p>
+            <p>Transfer deadline: <strong>{formatUtc(gwStatus.transfer_deadline_utc)}</strong></p>
+            <p>Status: <strong>{gwStatus.gw_in_progress ? "GW in progress" : "Between gameweeks"}</strong></p>
+          </div>
+        </section>
+      ) : null}
 
       {chip ? (
         <section className={cardClass}>
