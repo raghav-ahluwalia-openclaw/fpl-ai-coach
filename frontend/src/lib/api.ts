@@ -20,16 +20,22 @@ function coerceErrorMessage(raw: string): string {
   return "Request failed";
 }
 
-export async function fetchJson<T>(input: string, init?: RequestInit): Promise<T> {
+export type FetchJsonOptions = RequestInit & {
+  cacheMode?: RequestCache;
+};
+
+export async function fetchJson<T>(input: string, init?: FetchJsonOptions): Promise<T> {
   const headers = new Headers(init?.headers);
   const apiKey = process.env.NEXT_PUBLIC_FPL_API_KEY;
   if (apiKey && !headers.has("X-API-Key")) {
     headers.set("X-API-Key", apiKey);
   }
 
+  const { cacheMode, ...rest } = init ?? {};
+
   const res = await fetch(input, {
-    cache: "no-store",
-    ...init,
+    ...rest,
+    cache: cacheMode ?? "default",
     headers,
   });
 

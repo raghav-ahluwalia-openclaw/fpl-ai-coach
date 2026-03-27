@@ -6,6 +6,7 @@ from fastapi import Depends, HTTPException, Query, Request
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.security import diagnostics_access_check, rate_limit_admin_ops, require_admin
+from app.services.ttl_cache import api_ttl_cache
 
 from .base import (
     FPL_BOOTSTRAP_URL,
@@ -175,6 +176,7 @@ def ingest_bootstrap(force: bool = Query(default=False)):
         _set_meta(db, "next_deadline_utc", str(next_deadline_utc) if next_deadline_utc else "")
 
         db.commit()
+        api_ttl_cache.clear()
         logger.info(
             "ingest completed",
             extra={"teams": len(teams), "players": len(players), "fixtures": len(fixtures), "next_gw": next_gw},

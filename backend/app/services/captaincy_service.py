@@ -159,7 +159,14 @@ def _next_five_opposition(player: Player, fixtures: List[Fixture], gw: int, team
     return windows
 
 
-def build_explainability_top(players: List[Player], fixtures: List[Fixture], gw: int, limit: int, team_names: Optional[Dict[int, str]] = None) -> dict:
+def build_explainability_top(
+    players: List[Player],
+    fixtures: List[Fixture],
+    gw: int,
+    limit: int,
+    team_names: Optional[Dict[int, str]] = None,
+    include_next_5: bool = False,
+) -> dict:
     scored = []
     for p in players:
         xp = _expected_points(p, fixtures, gw)
@@ -185,7 +192,7 @@ def build_explainability_top(players: List[Player], fixtures: List[Fixture], gw:
                 "fixture_badge": fixture_badge,
                 "breakdown": breakdown,
                 "reason": _reason(p, xp),
-                "next_5_opposition": _next_five_opposition(p, fixtures, gw, team_names),
+                "next_5_opposition": _next_five_opposition(p, fixtures, gw, team_names) if include_next_5 else [],
             }
         )
 

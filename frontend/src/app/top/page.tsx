@@ -15,11 +15,16 @@ type TopPlayer = {
   ppg?: number;
 };
 
-type AppSettings = { fpl_entry_id: number | null };
+type AppSettings = {
+  fpl_entry_id: number | null;
+  entry_name?: string | null;
+  player_name?: string | null;
+};
 
 type TeamRecommendationLite = {
   starting_xi: Array<{ id: number }>;
   bench: Array<{ id: number }>;
+  generated_at?: string;
 };
 
 type TopPlayersResponse = {
@@ -74,6 +79,7 @@ function difficultyClass(difficulty: number): string {
 
 export default function TopPage() {
   const [limit, setLimit] = useState(20);
+  const [posFilter, setPosFilter] = useState("All");
   const [data, setData] = useState<TopPlayersResponse | null>(null);
   const [explain, setExplain] = useState<ExplainabilityResponse | null>(null);
   const [myTeamIds, setMyTeamIds] = useState<Set<number>>(new Set());
@@ -97,18 +103,27 @@ export default function TopPage() {
     fetchJson<AppSettings>(`${API_BASE}/api/fpl/settings`)
       .then(async (s) => {
         if (!s.fpl_entry_id) return;
-        await fetchJson(`${API_BASE}/api/fpl/team/${s.fpl_entry_id}/import`, { method: "POST" });
-        const rec = await fetchJson<TeamRecommendationLite>(
-          `${API_BASE}/api/fpl/team/${s.fpl_entry_id}/recommendation?mode=balanced`,
-        );
-        const ids = new Set<number>([
-          ...rec.starting_xi.map((p) => p.id),
-          ...rec.bench.map((p) => p.id),
-        ]);
-        setMyTeamIds(ids);
+        try {
+          const rec = await fetchJson<TeamRecommendationLite>(
+            `${API_BASE}/api/fpl/team/${s.fpl_entry_id}/recommendation?mode=balanced`,
+          );
+          const ids = new Set<number>([
+            ...rec.starting_xi.map((p) => p.id),
+            ...rec.bench.map((p) => p.id),
+          ]);
+          setMyTeamIds(ids);
+        } catch { /* ignore */ }
       })
       .catch(() => null);
   }, []);
+
+  const filteredPlayers = (data?.players ?? [])
+    .filter((p) => !(hideInTeam && myTeamIds.has(p.id)))
+    .filter((p) => posFilter === "All" || p.position === posFilter);
+
+  const filteredExplain = (explain?.players ?? [])
+    .filter((p) => !(hideInTeam && myTeamIds.has(p.id)))
+    .filter((p) => posFilter === "All" || p.position === posFilter);
 
   return (
     <main className="min-h-screen p-3 sm:p-4 md:p-8 max-w-6xl mx-auto text-white">
@@ -124,8 +139,19 @@ export default function TopPage() {
               checked={hideInTeam}
               onChange={(e) => setHideInTeam(e.target.checked)}
             />
-            Hide players already in my team
+            Hide in my team
           </label>
+          <select
+            value={posFilter}
+            onChange={(e) => setPosFilter(e.target.value)}
+            className="rounded-md h-10 px-3 bg-black/30 border border-white/20 w-full sm:w-auto"
+          >
+            <option value="All">All Positions</option>
+            <option value="Goalkeeper">Goalkeepers</option>
+            <option value="Defender">Defenders</option>
+            <option value="Midfielder">Midfielders</option>
+            <option value="Forward">Forwards</option>
+          </select>
           <select
             value={limit}
             onChange={(e) => setLimit(Number(e.target.value))}
@@ -145,7 +171,7 @@ export default function TopPage() {
       {data ? (
         <section className={cardClass}>
           <p className="text-sm text-white/75 mb-3">
-            GW {data.next_gw} • Showing {data.count} players
+            GW {data.next_gw} • Showing {filteredPlayers.length} players
           </p>
 
           <div className="overflow-x-auto">
@@ -162,27 +188,25 @@ export default function TopPage() {
                 </tr>
               </thead>
               <tbody>
-                {data.players
-                  .filter((p) => !(hideInTeam && myTeamIds.has(p.id)))
-                  .map((p, idx) => {
-                    const xP = safeNum(p.xP ?? p.expected_points, 0);
-                    const form = safeNum(p.form, 0);
-                    const ppg = safeNum(p.ppg, 0);
-                    const price = safeNum(p.price, 0);
-                    const inMyTeam = myTeamIds.has(p.id);
+                {filteredPlayers.map((p, idx) => {
+                  const xP = safeNum(p.xP ?? p.expected_points, 0);
+                  const form = safeNum(p.form, 0);
+                  const ppg = safeNum(p.ppg, 0);
+                  const price = safeNum(p.price, 0);
+                  const inMyTeam = myTeamIds.has(p.id);
 
-                    return (
-                      <tr key={p.id} className={`border-b border-white/5 ${inMyTeam ? "opacity-45" : ""}`}>
-                        <td className="py-2">{idx + 1}</td>
-                        <td className="py-2 font-medium">{p.name}</td>
-                        <td className="py-2">{p.position}</td>
-                        <td className="py-2">£{price.toFixed(1)}</td>
-                        <td className="py-2 text-[#00ff87] font-semibold">{xP.toFixed(2)}</td>
-                        <td className="py-2">{form.toFixed(1)}</td>
-                        <td className="py-2">{ppg.toFixed(1)}</td>
-                      </tr>
-                    );
-                  })}
+                  return (
+                    <tr key={p.id} className={`border-b border-white/5 ${inMyTeam ? "opacity-45" : ""}`}>
+                      <td className="py-2">{idx + 1}</td>
+                      <td className="py-2 font-medium">{p.name}</td>
+                      <td className="py-2">{p.position}</td>
+                      <td className="py-2">£{price.toFixed(1)}</td>
+                      <td className="py-2 text-[#00ff87] font-semibold">{xP.toFixed(2)}</td>
+                      <td className="py-2">{form.toFixed(1)}</td>
+                      <td className="py-2">{ppg.toFixed(1)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -193,10 +217,7 @@ export default function TopPage() {
         <section className={`${cardClass} mt-4`}>
           <h2 className="font-semibold mb-3 text-[#00ff87]">Explainability Cards</h2>
           <div className="grid md:grid-cols-2 gap-3">
-            {explain.players
-              .filter((p) => !(hideInTeam && myTeamIds.has(p.id)))
-              .slice(0, 8)
-              .map((p) => (
+            {filteredExplain.slice(0, 8).map((p) => (
               <div key={p.id} className={`border border-white/10 rounded-lg p-3 bg-black/20 text-sm ${myTeamIds.has(p.id) ? "opacity-45" : ""}`}>
                 <p className="font-semibold">
                   {p.name} <span className="text-white/60">({p.position}{p.club ? ` • ${p.club}` : ""})</span>
