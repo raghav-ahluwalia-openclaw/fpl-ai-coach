@@ -42,10 +42,34 @@ TEAM_ID = int(os.getenv("FPL_TEAM_ID", "538572"))
 TIMEOUT_SECONDS = int(os.getenv("VALIDATION_STARTUP_TIMEOUT", "20"))
 
 
-def _request(method: str, path: str, *, timeout: int = 25) -> tuple[int, dict]:
+def _read_env_file_value(key: str) -> str:
+    env_file = BACKEND_DIR / ".env"
+    if not env_file.exists():
+        return ""
+    for line in env_file.read_text(encoding="utf-8").splitlines():
+        raw = line.strip()
+        if not raw or raw.startswith("#") or "=" not in raw:
+            continue
+        k, v = raw.split("=", 1)
+        if k.strip() == key:
+            return v.strip().strip('"').strip("'")
+    return ""
+
+
+ADMIN_API_TOKEN = (
+    os.getenv("VALIDATION_ADMIN_API_KEY")
+    or os.getenv("ADMIN_API_KEY")
+    or _read_env_file_value("ADMIN_API_KEY")
+)
+AUTH_HEADERS = {"X-Admin-Token": ADMIN_API_TOKEN} if ADMIN_API_TOKEN else {}
+
+
+def _request(method: str, path: str, *, timeout: int = 25, headers: dict[str, str] | None = None) -> tuple[int, dict]:
     url = f"{BASE}{path}"
     req = urllib.request.Request(url=url, method=method)
     req.add_header("Accept", "application/json")
+    for k, v in (headers or {}).items():
+        req.add_header(k, v)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             body = resp.read().decode("utf-8")
@@ -112,7 +136,7 @@ def main() -> int:
         _wait_for_health()
 
         # 1) Ingest (fast path may return skipped=true if cache is warm)
-        code, data = _request("POST", "/api/fpl/ingest/bootstrap")
+        code, data = _request("POST", "/api/fpl/ingest/bootstrap", headers=AUTH_HEADERS)
         _assert(code == 200, f"ingest failed: {code} {data}")
         _assert(data.get("ok") is True, f"ingest response invalid: {data}")
         if not data.get("skipped"):
@@ -132,7 +156,7 @@ def main() -> int:
 
         # 4) Team import
         path = f"/api/fpl/team/{TEAM_ID}/import"
-        code, data = _request("POST", path)
+        code, data = _request("POST", path, headers=AUTH_HEADERS)
         _assert(code == 200, f"team import failed for team {TEAM_ID}: {code} {data}")
         _assert(data.get("ok") is True, f"team import invalid: {data}")
 
@@ -153,7 +177,11 @@ def main() -> int:
         code, data = _request("GET", "/api/fpl/settings")
         _assert(code == 200, f"settings GET failed: {code} {data}")
 
-        code, data = _request("POST", "/api/fpl/settings?fpl_entry_id=538572&league_id=12345&rival_entry_id=538573")
+        code, data = _request(
+            "POST",
+            "/api/fpl/settings?fpl_entry_id=538572&league_id=12345&rival_entry_id=538573",
+            headers=AUTH_HEADERS,
+        )
         _assert(code == 200, f"settings POST failed: {code} {data}")
         _assert(data.get("fpl_entry_id") == 538572, f"settings response invalid: {data}")
 

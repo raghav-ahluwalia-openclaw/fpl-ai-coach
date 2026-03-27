@@ -8,7 +8,9 @@ from pathlib import Path
 from typing import Optional
 
 import requests
-from fastapi import HTTPException, Query
+from fastapi import Depends, HTTPException, Query
+
+from app.core.security import rate_limit_admin_ops, require_admin
 
 from .base import (
     POSITION_MAP,
@@ -256,7 +258,10 @@ def content_consensus(limit: int = Query(default=10, ge=1, le=50), include_video
     }
 
 
-@router.post("/api/fpl/socials/refresh")
+@router.post(
+    "/api/fpl/socials/refresh",
+    dependencies=[Depends(require_admin), Depends(rate_limit_admin_ops)],
+)
 def fpl_socials_refresh(videos_per_creator: int = Query(default=4, ge=1, le=8)):
     project_root = Path(__file__).resolve().parents[4]
     digest_script = project_root / "scripts" / "fpl_creator_digest.py"

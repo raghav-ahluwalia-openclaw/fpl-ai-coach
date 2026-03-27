@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import HTTPException, Query
+from fastapi import Depends, HTTPException, Query, Request
 from sqlalchemy.exc import SQLAlchemyError
+
+from app.core.security import diagnostics_access_check, rate_limit_admin_ops, require_admin
 
 from .base import (
     FPL_BOOTSTRAP_URL,
@@ -38,7 +40,8 @@ def health():
 
 
 @router.get("/api/fpl/diagnostics")
-def diagnostics():
+def diagnostics(request: Request):
+    diagnostics_access_check(request)
     db = SessionLocal()
     try:
         with engine.connect() as c:
@@ -73,7 +76,10 @@ def diagnostics():
         db.close()
 
 
-@router.post("/api/fpl/ingest/bootstrap")
+@router.post(
+    "/api/fpl/ingest/bootstrap",
+    dependencies=[Depends(require_admin), Depends(rate_limit_admin_ops)],
+)
 def ingest_bootstrap(force: bool = Query(default=False)):
     db = SessionLocal()
     try:

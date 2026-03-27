@@ -43,9 +43,33 @@ TEAM_ID = int(os.getenv("FPL_TEAM_ID", "538572"))
 TIMEOUT_SECONDS = int(os.getenv("INTEGRATION_STARTUP_TIMEOUT", "30"))
 
 
-def _request(method: str, url: str, *, timeout: int = 25) -> tuple[int, str]:
+def _read_env_file_value(key: str) -> str:
+    env_file = BACKEND_DIR / ".env"
+    if not env_file.exists():
+        return ""
+    for line in env_file.read_text(encoding="utf-8").splitlines():
+        raw = line.strip()
+        if not raw or raw.startswith("#") or "=" not in raw:
+            continue
+        k, v = raw.split("=", 1)
+        if k.strip() == key:
+            return v.strip().strip('"').strip("'")
+    return ""
+
+
+ADMIN_API_TOKEN = (
+    os.getenv("INTEGRATION_ADMIN_API_KEY")
+    or os.getenv("ADMIN_API_KEY")
+    or _read_env_file_value("ADMIN_API_KEY")
+)
+AUTH_HEADERS = {"X-Admin-Token": ADMIN_API_TOKEN} if ADMIN_API_TOKEN else {}
+
+
+def _request(method: str, url: str, *, timeout: int = 25, headers: dict[str, str] | None = None) -> tuple[int, str]:
     req = urllib.request.Request(url=url, method=method)
     req.add_header("Accept", "application/json,text/html,*/*")
+    for k, v in (headers or {}).items():
+        req.add_header(k, v)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             body = resp.read().decode("utf-8", errors="replace")
@@ -162,7 +186,7 @@ def main() -> int:
             _assert(code == 200, f"page load failed {path}: {code}")
 
         # Rewrites through frontend to backend
-        code, body = _request("POST", f"{BASE_FRONT}/api/fpl/ingest/bootstrap")
+        code, body = _request("POST", f"{BASE_FRONT}/api/fpl/ingest/bootstrap", headers=AUTH_HEADERS)
         _assert(code == 200, f"frontend rewrite ingest failed: {code} {body[:200]}")
 
         for path in [
