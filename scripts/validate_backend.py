@@ -39,7 +39,9 @@ def _pick_port() -> int:
 PORT = _pick_port()
 BASE = f"http://127.0.0.1:{PORT}"
 TEAM_ID = int(os.getenv("FPL_TEAM_ID", "538572"))
-TIMEOUT_SECONDS = int(os.getenv("VALIDATION_STARTUP_TIMEOUT", "20"))
+# Startup can be slower on fresh CI runners (cold import + heavy deps like xgboost).
+# Keep a practical default to avoid flaky false negatives.
+TIMEOUT_SECONDS = int(os.getenv("VALIDATION_STARTUP_TIMEOUT", "60"))
 
 
 def _read_env_file_value(key: str) -> str:
@@ -89,10 +91,26 @@ def _assert(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
-def _wait_for_health() -> None:
+def _tail_lines(text: str, line_count: int = 50) -> str:
+    lines = [ln for ln in text.splitlines() if ln.strip()]
+    return "\n".join(lines[-line_count:])
+
+
+def _wait_for_health(proc: subprocess.Popen[str]) -> None:
     deadline = time.time() + TIMEOUT_SECONDS
     last_err = None
     while time.time() < deadline:
+        # If backend process exited early, surface logs immediately.
+        if proc.poll() is not None:
+            output = ""
+            if proc.stdout:
+                output = proc.stdout.read() or ""
+            tail = _tail_lines(output)
+            raise RuntimeError(
+                "Backend process exited before becoming healthy. "
+                f"Exit={proc.returncode}. Logs (tail):\n{tail or '[no output]'}"
+            )
+
         try:
             code, data = _request("GET", "/health", timeout=3)
             if code == 200 and isinstance(data, dict) and data.get("ok") is True:
@@ -101,7 +119,21 @@ def _wait_for_health() -> None:
         except Exception as e:  # noqa: BLE001
             last_err = str(e)
         time.sleep(0.5)
-    raise RuntimeError(f"Backend did not become healthy in {TIMEOUT_SECONDS}s. Last error: {last_err}")
+
+    # Timed out; include any currently buffered logs for diagnosis.
+    output = ""
+    if proc.stdout:
+        proc.send_signal(signal.SIGTERM)
+        try:
+            proc.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+        output = proc.stdout.read() or ""
+    tail = _tail_lines(output)
+    raise RuntimeError(
+        f"Backend did not become healthy in {TIMEOUT_SECONDS}s. Last error: {last_err}. "
+        f"Logs (tail):\n{tail or '[no output]'}"
+    )
 
 
 def main() -> int:
@@ -133,7 +165,7 @@ def main() -> int:
     )
 
     try:
-        _wait_for_health()
+        _wait_for_health(proc)
 
         # 1) Ingest (fast path may return skipped=true if cache is warm)
         code, data = _request("POST", "/api/fpl/ingest/bootstrap", headers=AUTH_HEADERS)
