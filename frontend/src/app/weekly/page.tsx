@@ -274,62 +274,82 @@ export default function WeeklyPage() {
   const [lineupInfoOpen, setLineupInfoOpen] = useState(false);
   const [lineupInfoPinned, setLineupInfoPinned] = useState(false);
   const hasAutoRun = useRef(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  useEffect(() => {
-    fetchJson<AppSettings>("/api/fpl/settings")
-      .then((s) => {
-        setSettings(s);
-        if (s.fpl_entry_id) {
-          setTeamId(String(s.fpl_entry_id));
-        }
-      })
-      .catch(() => null);
-  }, []);
-
-  const loadGameweekStatus = useCallback(async () => {
-    try {
-      const status = await fetchJson<GameweekStatus>("/api/fpl/gameweek-status");
-      setGwStatus(status);
-    } catch {
-      // status panel is informative; fail silently
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadGameweekStatus();
-  }, [loadGameweekStatus]);
-
-  const run = useCallback(async (idOverride?: string) => {
+  const run = useCallback(async (
+    idOverride?: string,
+    options?: { forceImport?: boolean; cacheMode?: RequestCache },
+  ) => {
     const id = (idOverride ?? teamId).trim();
     if (!/^\d+$/.test(id)) {
       setError("Team ID must be numeric.");
       return;
     }
-    setLoading(true);
+
+    const forceImport = options?.forceImport ?? false;
+    const cacheMode = options?.cacheMode ?? "default";
+
+    if (forceImport) {
+      setIsRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
     setError(null);
-    setPerformance(null);
+
     try {
-      await fetchJson(`/api/fpl/team/${id}/import`, { method: "POST" });
-      const [hub, perf] = await Promise.all([
-        fetchJson<GameweekHub>(`/api/fpl/team/${id}/gameweek-hub?mode=${mode}`),
-        fetchJson<PerformanceWeekly>(`/api/fpl/team/${id}/performance/weekly?lookback=8`),
+      if (forceImport) {
+        // Heavy operation; run only on explicit refresh.
+        await fetchJson(`/api/fpl/team/${id}/import`, { method: "POST", cacheMode: "no-store" });
+      }
+
+      const [hub, perf, status] = await Promise.all([
+        fetchJson<GameweekHub>(`/api/fpl/team/${id}/gameweek-hub?mode=${mode}`, { cacheMode }),
+        fetchJson<PerformanceWeekly>(`/api/fpl/team/${id}/performance/weekly?lookback=8`, { cacheMode }),
+        fetchJson<GameweekStatus>("/api/fpl/gameweek-status", { cacheMode: "force-cache" }),
       ]);
       setData(hub);
       setPerformance(perf);
-      await loadGameweekStatus();
+      setGwStatus(status);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load Gameweek Hub");
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
-  }, [loadGameweekStatus, mode, teamId]);
+  }, [mode, teamId]);
 
   useEffect(() => {
-    if (!hasAutoRun.current && /^\d+$/.test(teamId.trim())) {
-      hasAutoRun.current = true;
-      void run(teamId.trim());
-    }
-  }, [teamId, run]);
+    let canceled = false;
+
+    (async () => {
+      try {
+        const [s, status] = await Promise.all([
+          fetchJson<AppSettings>("/api/fpl/settings", { cacheMode: "force-cache" }),
+          fetchJson<GameweekStatus>("/api/fpl/gameweek-status", { cacheMode: "force-cache" }),
+        ]);
+        if (canceled) return;
+
+        setSettings(s);
+        setGwStatus(status);
+        if (s.fpl_entry_id) {
+          const id = String(s.fpl_entry_id);
+          setTeamId(id);
+          if (!hasAutoRun.current) {
+            hasAutoRun.current = true;
+            // Fast path: avoid import on initial load.
+            void run(id, { forceImport: false, cacheMode: "force-cache" });
+          }
+        }
+      } catch {
+        // silent for initial shell rendering
+      }
+    })();
+
+    return () => {
+      canceled = true;
+    };
+  }, [run]);
 
   return (
     <main className="min-h-screen p-3 sm:p-4 md:p-8 max-w-6xl mx-auto text-white">
@@ -402,13 +422,13 @@ export default function WeeklyPage() {
           <div className="flex gap-2 w-full sm:w-auto mt-2 sm:mt-0">
             {settings?.fpl_entry_id && (
               <button
-                onClick={() => void run()}
-                disabled={loading}
+                onClick={() => void run(undefined, { forceImport: true, cacheMode: "no-store" })}
+                disabled={loading || isRefreshing}
                 className="h-10 w-10 grid place-items-center rounded-full border border-white/30 text-white/90 hover:border-[#00ff87] hover:text-[#00ff87] transition disabled:opacity-60"
                 aria-label="Refresh team data"
-                title={loading ? "Refreshing..." : "Refresh team data"}
+                title={isRefreshing ? "Refreshing..." : "Refresh team data"}
               >
-                {loading ? (
+                {isRefreshing ? (
                   <svg className="animate-spin h-5 w-5 text-current" viewBox="0 0 24 24">
                     <circle
                       className="opacity-25"
