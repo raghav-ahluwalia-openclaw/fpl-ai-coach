@@ -72,19 +72,53 @@ def import_user_team(entry_id: int, gameweek: Optional[int] = Query(default=None
             )
             db.add(row)
 
-        _set_meta(db, f"entry:{entry_id}:last_import", datetime.now(timezone.utc).isoformat())
-        db.commit()
+        now_iso = datetime.now(timezone.utc).isoformat()
+        _set_meta(db, f"entry:{entry_id}:last_import", now_iso)
 
         # Persist optional team snapshot metadata for rival context.
-        # Fetch basic entry info for names (picks API doesn't include them)
-        try:
-            entry_info = fetch_json(f"https://fantasy.premierleague.com/api/entry/{entry_id}/", timeout=10)
-            _set_meta(db, f"entry:{entry_id}:player_name", str(entry_info.get("player_first_name", "") + " " + entry_info.get("player_last_name", "")).strip())
-            _set_meta(db, f"entry:{entry_id}:entry_name", str(entry_info.get("name") or ""))
-        except Exception:
-            # Fallback to picks payload if entry fetch fails, although unlikely to have names there
-            _set_meta(db, f"entry:{entry_id}:player_name", str(payload.get("player_name") or ""))
-            _set_meta(db, f"entry:{entry_id}:entry_name", str(payload.get("name") or ""))
+        # Use lightweight caching to avoid hitting FPL entry endpoint on every import.
+        player_name_key = f"entry:{entry_id}:player_name"
+        entry_name_key = f"entry:{entry_id}:entry_name"
+        last_profile_sync_key = f"entry:{entry_id}:last_profile_sync"
+
+        cached_player_name = (_get_meta(db, player_name_key) or "").strip()
+        cached_entry_name = (_get_meta(db, entry_name_key) or "").strip()
+        last_profile_sync_raw = _get_meta(db, last_profile_sync_key)
+
+        should_refresh_profile = (not cached_player_name) or (not cached_entry_name)
+        if not should_refresh_profile and last_profile_sync_raw:
+            try:
+                last_profile_sync = datetime.fromisoformat(last_profile_sync_raw.replace("Z", "+00:00"))
+                if last_profile_sync.tzinfo is None:
+                    last_profile_sync = last_profile_sync.replace(tzinfo=timezone.utc)
+                # Refresh at most every 6 hours.
+                should_refresh_profile = (datetime.now(timezone.utc) - last_profile_sync).total_seconds() >= 6 * 3600
+            except ValueError:
+                should_refresh_profile = True
+
+        player_name = cached_player_name
+        entry_name = cached_entry_name
+
+        if should_refresh_profile:
+            try:
+                entry_info = fetch_json(f"https://fantasy.premierleague.com/api/entry/{entry_id}/", timeout=10)
+                first = str(entry_info.get("player_first_name") or "").strip()
+                last = str(entry_info.get("player_last_name") or "").strip()
+                combined_name = " ".join([x for x in [first, last] if x]).strip()
+
+                player_name = combined_name or player_name or str(payload.get("player_name") or "").strip()
+                entry_name = str(entry_info.get("name") or "").strip() or entry_name or str(payload.get("name") or "").strip()
+                _set_meta(db, last_profile_sync_key, now_iso)
+            except Exception:
+                # Fallback to existing cache, then picks payload if available.
+                if not player_name:
+                    player_name = str(payload.get("player_name") or "").strip()
+                if not entry_name:
+                    entry_name = str(payload.get("name") or "").strip()
+
+        _set_meta(db, player_name_key, player_name)
+        _set_meta(db, entry_name_key, entry_name)
+        db.commit()
 
         return {
             "ok": True,
