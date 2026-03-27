@@ -541,16 +541,15 @@ def fpl_socials(limit: int = Query(default=5, ge=1, le=10), reddit_window: str =
 @router.get("/api/fpl/top")
 def top_players(
     limit: int = Query(default=20, ge=1, le=100),
-    position: Optional[str] = Query(default=None),
     compact: bool = Query(default=True),
     include_reason: bool = Query(default=False),
 ):
-    cache_key = ("top_players", limit, position, compact, include_reason)
+    cache_key = ("top_players", limit, compact, include_reason)
 
     def _build() -> dict:
         db = SessionLocal()
         try:
-            query = db.query(Player).options(
+            players = db.query(Player).options(
                 load_only(
                     Player.id,
                     Player.web_name,
@@ -567,19 +566,8 @@ def top_players(
                     Player.chance_of_playing_next_round,
                     Player.team_id,
                 )
-            )
-
-            if position and position != "All":
-                rev_map = {v: k for k, v in POSITION_MAP.items()}
-                pos_id = rev_map.get(position.upper())
-                if pos_id:
-                    query = query.filter(Player.element_type == pos_id)
-
-            players = query.all()
+            ).all()
             if not players:
-                # If filtered and no players, return empty instead of 400
-                if position and position != "All":
-                    return {"count": 0, "next_gw": 0, "players": []}
                 raise HTTPException(status_code=400, detail="No data found. Run POST /api/fpl/ingest/bootstrap first.")
 
             fixtures = db.query(Fixture).options(
@@ -679,15 +667,14 @@ def captaincy_lab(
 def explainability_top(
     gameweek: Optional[int] = Query(default=None, ge=1, le=38),
     limit: int = Query(default=20, ge=5, le=50),
-    position: Optional[str] = Query(default=None),
     include_next_5: bool = Query(default=False),
 ):
-    cache_key = ("explainability_top", gameweek, limit, position, include_next_5)
+    cache_key = ("explainability_top", gameweek, limit, include_next_5)
 
     def _build() -> dict:
         db = SessionLocal()
         try:
-            query = db.query(Player).options(
+            players = db.query(Player).options(
                 load_only(
                     Player.id,
                     Player.web_name,
@@ -704,19 +691,8 @@ def explainability_top(
                     Player.chance_of_playing_next_round,
                     Player.team_id,
                 )
-            )
-
-            if position and position != "All":
-                rev_map = {v: k for k, v in POSITION_MAP.items()}
-                pos_id = rev_map.get(position.upper())
-                if pos_id:
-                    query = query.filter(Player.element_type == pos_id)
-
-            players = query.all()
+            ).all()
             if not players:
-                # If filtered and no players, return empty instead of 400
-                if position and position != "All":
-                    return {"gameweek": 0, "count": 0, "players": [], "summary": "No players found for this position."}
                 raise HTTPException(status_code=400, detail="No data found. Run POST /api/fpl/ingest/bootstrap first.")
 
             fixtures = db.query(Fixture).options(
