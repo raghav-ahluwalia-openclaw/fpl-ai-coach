@@ -12,9 +12,9 @@ psycopg2-binary==2.9.11
 # asyncpg==0.30.0  # Deferred: requires build tools (gcc-12)
 alembic==1.14.0
 
-# HTTP Client (async)
+# HTTP clients
 httpx==0.28.1
-# requests==2.32.5  # Removed - using httpx instead
+requests==2.32.5
 
 # ML & Data
 xgboost==3.2.0
