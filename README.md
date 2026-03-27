@@ -78,16 +78,6 @@ What gets checked:
 
 If checks fail repeatedly (default: 3 times), the monitor automatically restarts backend/frontend.
 
-## Performance probe (before/after tracking)
-
-Use this to capture endpoint latency snapshots after each perf patch:
-
-```bash
-./scripts/perf_probe.py --base http://127.0.0.1:8000 --runs 3
-```
-
-Output is written to `outputs/perf-latest.json` for easy comparison over time.
-
 ### Optional: systemd user services with auto-restart
 
 ```bash
