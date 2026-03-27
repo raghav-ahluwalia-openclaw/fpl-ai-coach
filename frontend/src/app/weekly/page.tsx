@@ -380,7 +380,7 @@ export default function WeeklyPage() {
                 )}
                 {data?.generated_at && (
                   <span className="text-[10px] text-white/40 mt-1 uppercase font-medium">
-                    Updated: {new Date(data.generated_at).toLocaleString()}
+                    Updated: {new Date(data.generated_at).toLocaleString(undefined, { timeZoneName: "short" })}
                   </span>
                 )}
               </div>
