@@ -1,15 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 
 import { fetchJson } from "@/lib/api";
 
-type AppSettings = {
-  fpl_entry_id: number | null;
-  entry_name?: string | null;
-  player_name?: string | null;
-};
+type AppSettings = { fpl_entry_id: number | null };
 
 type LeagueRow = {
   league_id: number;
@@ -109,7 +104,6 @@ function formatDelta(delta: number | null): string {
 
 export default function LeaguesPage() {
   const [teamId, setTeamId] = useState("");
-  const [settings, setSettings] = useState<AppSettings | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<LeaguesResponse | null>(null);
@@ -121,10 +115,7 @@ export default function LeaguesPage() {
   useEffect(() => {
     fetchJson<AppSettings>("/api/fpl/settings")
       .then((s) => {
-        setSettings(s);
-        if (s.fpl_entry_id) {
-          setTeamId(String(s.fpl_entry_id));
-        }
+        if (s.fpl_entry_id) setTeamId(String(s.fpl_entry_id));
       })
       .catch(() => null);
   }, []);
@@ -197,79 +188,21 @@ export default function LeaguesPage() {
       </div>
 
       <section className={`${cardClass} mb-4`}>
-        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-          <div>
-            {settings?.fpl_entry_id ? (
-              <div className="flex flex-col">
-                <span className="text-xs text-white/50 uppercase tracking-wider font-bold">FPL Team</span>
-                <span className="text-lg font-bold text-[#00ff87]">
-                  {settings.entry_name || `Entry #${settings.fpl_entry_id}`}
-                </span>
-                {settings.player_name && (
-                  <span className="text-sm text-white/70 italic">{settings.player_name}</span>
-                )}
-                {data?.generated_at && (
-                  <span className="text-[10px] text-white/40 mt-1 uppercase font-medium">
-                    Updated: {new Date(data.generated_at).toLocaleString(undefined, { timeZoneName: "short" })}
-                  </span>
-                )}
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 text-amber-300">
-                <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current">
-                  <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
-                </svg>
-                <p className="text-sm font-medium">
-                  Team ID not set. Please configure it in the{" "}
-                  <Link href="/settings" className="underline hover:text-amber-200">
-                    Settings
-                  </Link>{" "}
-                  page.
-                </p>
-              </div>
-            )}
-          </div>
-          <div className="flex gap-2 w-full sm:w-auto mt-2 sm:mt-0">
-            {settings?.fpl_entry_id && (
-              <button
-                onClick={() => void run()}
-                disabled={loading}
-                className="h-10 w-10 grid place-items-center rounded-full border border-white/30 text-white/90 hover:border-[#00ff87] hover:text-[#00ff87] transition disabled:opacity-60"
-                aria-label="Refresh league standings"
-                title={loading ? "Refreshing..." : "Refresh league standings"}
-              >
-                {loading ? (
-                  <svg className="animate-spin h-5 w-5 text-current" viewBox="0 0 24 24">
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                      fill="none"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    />
-                  </svg>
-                ) : (
-                  <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5">
-                    <path
-                      d="M20 12a8 8 0 1 1-2.34-5.66M20 4v6h-6"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                )}
-              </button>
-            )}
-          </div>
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 sm:items-center">
+          <input
+            value={teamId}
+            onChange={(e) => setTeamId(e.target.value.replace(/\D/g, ""))}
+            placeholder="FPL Team ID"
+            inputMode="numeric"
+            className="rounded-md h-10 px-3 bg-black/30 border border-white/20 w-full sm:min-w-[240px] sm:w-auto"
+          />
+          <button
+            onClick={() => void run()}
+            disabled={loading || !/^\d+$/.test(teamId.trim())}
+            className="px-4 h-10 rounded-md bg-[#00ff87] text-[#37003c] font-bold disabled:opacity-60 w-full sm:w-auto"
+          >
+            {loading ? "Loading..." : "Load Leagues"}
+          </button>
         </div>
       </section>
 

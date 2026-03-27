@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 
 import { fetchJson } from "@/lib/api";
 
@@ -16,11 +15,7 @@ type TopPlayer = {
   ppg?: number;
 };
 
-type AppSettings = {
-  fpl_entry_id: number | null;
-  entry_name?: string | null;
-  player_name?: string | null;
-};
+type AppSettings = { fpl_entry_id: number | null };
 
 type TeamRecommendationLite = {
   starting_xi: Array<{ id: number }>;
@@ -82,7 +77,6 @@ export default function TopPage() {
   const [data, setData] = useState<TopPlayersResponse | null>(null);
   const [explain, setExplain] = useState<ExplainabilityResponse | null>(null);
   const [myTeamIds, setMyTeamIds] = useState<Set<number>>(new Set());
-  const [settings, setSettings] = useState<AppSettings | null>(null);
   const [hideInTeam, setHideInTeam] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -102,7 +96,6 @@ export default function TopPage() {
   useEffect(() => {
     fetchJson<AppSettings>(`${API_BASE}/api/fpl/settings`)
       .then(async (s) => {
-        setSettings(s);
         if (!s.fpl_entry_id) return;
         await fetchJson(`${API_BASE}/api/fpl/team/${s.fpl_entry_id}/import`, { method: "POST" });
         const rec = await fetchJson<TeamRecommendationLite>(
@@ -145,37 +138,6 @@ export default function TopPage() {
           </select>
         </div>
       </div>
-
-      <section className={`${cardClass} mb-4`}>
-        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-          <div>
-            {settings?.fpl_entry_id ? (
-              <div className="flex flex-col">
-                <span className="text-xs text-white/50 uppercase tracking-wider font-bold">FPL Team</span>
-                <span className="text-lg font-bold text-[#00ff87]">
-                  {settings.entry_name || `Entry #${settings.fpl_entry_id}`}
-                </span>
-                {settings.player_name && (
-                  <span className="text-sm text-white/70 italic">{settings.player_name}</span>
-                )}
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 text-amber-300">
-                <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current">
-                  <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
-                </svg>
-                <p className="text-sm font-medium">
-                  Team ID not set. Please configure it in the{" "}
-                  <Link href="/settings" className="underline hover:text-amber-200">
-                    Settings
-                  </Link>{" "}
-                  page.
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      </section>
 
       {error ? <p className="text-red-300 mb-3">{error}</p> : null}
       {!data && !error ? <p className="text-white/75">Loading...</p> : null}
