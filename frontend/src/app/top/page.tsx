@@ -87,12 +87,21 @@ export default function TopPage() {
 
     (async () => {
       try {
+        const topParams = new URLSearchParams({ limit: String(limit), compact: "true" });
+        if (posFilter !== "All") topParams.set("position", posFilter);
+
+        const explainParams = new URLSearchParams({
+          limit: String(Math.min(limit, 20)),
+          include_next_5: "false",
+        });
+        if (posFilter !== "All") explainParams.set("position", posFilter);
+
         const [topPayload, explainPayload] = await Promise.all([
-          fetchJson<TopPlayersResponse>(`${API_BASE}/api/fpl/top?limit=${limit}&compact=true`, {
+          fetchJson<TopPlayersResponse>(`${API_BASE}/api/fpl/top?${topParams.toString()}`, {
             cacheMode: "force-cache",
           }),
           fetchJson<ExplainabilityResponse>(
-            `${API_BASE}/api/fpl/explainability/top?limit=${Math.min(limit, 20)}&include_next_5=false`,
+            `${API_BASE}/api/fpl/explainability/top?${explainParams.toString()}`,
             { cacheMode: "force-cache" },
           ),
         ]);
@@ -110,7 +119,7 @@ export default function TopPage() {
     return () => {
       canceled = true;
     };
-  }, [limit]);
+  }, [limit, posFilter]);
 
   useEffect(() => {
     fetchJson<AppSettings>(`${API_BASE}/api/fpl/settings`, { cacheMode: "force-cache" })
