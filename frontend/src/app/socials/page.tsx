@@ -213,7 +213,12 @@ export default function SocialsPage() {
       await fetchSocials();
     } catch (e: unknown) {
       if (!silent) {
-        setError(e instanceof Error ? e.message : "Failed to refresh socials");
+        const msg = e instanceof Error ? e.message : "Failed to refresh socials";
+        if (/missing api token|invalid api token|admin token required|401|403/i.test(msg)) {
+          setError("Refresh requires admin API access. You can still view the latest cached socials feed.");
+        } else {
+          setError(msg);
+        }
       }
     } finally {
       setRefreshing(false);
