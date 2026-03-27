@@ -1,8 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
+import { useEffect, useMemo, useState } from "react";
 
 import { fetchJson } from "@/lib/api";
+
+const ExplainabilityCards = dynamic(() => import("@/components/explainability-cards"), {
+  loading: () => <p className="text-white/70 mt-4">Loading explainability cards…</p>,
+});
 
 type TopPlayer = {
   id: number;
@@ -17,14 +22,11 @@ type TopPlayer = {
 
 type AppSettings = {
   fpl_entry_id: number | null;
-  entry_name?: string | null;
-  player_name?: string | null;
 };
 
 type TeamRecommendationLite = {
   starting_xi: Array<{ id: number }>;
   bench: Array<{ id: number }>;
-  generated_at?: string;
 };
 
 type TopPlayersResponse = {
@@ -71,12 +73,6 @@ function safeNum(value: unknown, fallback = 0): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
-function difficultyClass(difficulty: number): string {
-  if (difficulty <= 2) return "border-emerald-300/60 text-emerald-200 bg-emerald-500/10";
-  if (difficulty === 3) return "border-amber-300/60 text-amber-200 bg-amber-500/10";
-  return "border-rose-300/60 text-rose-200 bg-rose-500/10";
-}
-
 export default function TopPage() {
   const [limit, setLimit] = useState(20);
   const [posFilter, setPosFilter] = useState("All");
@@ -87,43 +83,72 @@ export default function TopPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchJson<TopPlayersResponse>(`${API_BASE}/api/fpl/top?limit=${limit}`)
-      .then((payload) => {
-        setData(payload);
-        setError(null);
-      })
-      .catch((e) => setError(e.message || "Failed to load top players"));
+    let canceled = false;
 
-    fetchJson<ExplainabilityResponse>(`${API_BASE}/api/fpl/explainability/top?limit=${Math.min(limit, 20)}`)
-      .then(setExplain)
-      .catch(() => null);
+    (async () => {
+      try {
+        const [topPayload, explainPayload] = await Promise.all([
+          fetchJson<TopPlayersResponse>(`${API_BASE}/api/fpl/top?limit=${limit}&compact=true`, {
+            cacheMode: "force-cache",
+          }),
+          fetchJson<ExplainabilityResponse>(
+            `${API_BASE}/api/fpl/explainability/top?limit=${Math.min(limit, 20)}&include_next_5=false`,
+            { cacheMode: "force-cache" },
+          ),
+        ]);
+
+        if (canceled) return;
+        setData(topPayload);
+        setExplain(explainPayload);
+        setError(null);
+      } catch (e) {
+        if (canceled) return;
+        setError(e instanceof Error ? e.message : "Failed to load top players");
+      }
+    })();
+
+    return () => {
+      canceled = true;
+    };
   }, [limit]);
 
   useEffect(() => {
-    fetchJson<AppSettings>(`${API_BASE}/api/fpl/settings`)
+    fetchJson<AppSettings>(`${API_BASE}/api/fpl/settings`, { cacheMode: "force-cache" })
       .then(async (s) => {
         if (!s.fpl_entry_id) return;
         try {
+          // Avoid expensive import on page load; only read latest recommendation snapshot.
           const rec = await fetchJson<TeamRecommendationLite>(
             `${API_BASE}/api/fpl/team/${s.fpl_entry_id}/recommendation?mode=balanced`,
+            { cacheMode: "force-cache" },
           );
           const ids = new Set<number>([
             ...rec.starting_xi.map((p) => p.id),
             ...rec.bench.map((p) => p.id),
           ]);
           setMyTeamIds(ids);
-        } catch { /* ignore */ }
+        } catch {
+          // ignore
+        }
       })
       .catch(() => null);
   }, []);
 
-  const filteredPlayers = (data?.players ?? [])
-    .filter((p) => !(hideInTeam && myTeamIds.has(p.id)))
-    .filter((p) => posFilter === "All" || p.position === posFilter);
+  const filteredPlayers = useMemo(
+    () =>
+      (data?.players ?? [])
+        .filter((p) => !(hideInTeam && myTeamIds.has(p.id)))
+        .filter((p) => posFilter === "All" || p.position === posFilter),
+    [data?.players, hideInTeam, myTeamIds, posFilter],
+  );
 
-  const filteredExplain = (explain?.players ?? [])
-    .filter((p) => !(hideInTeam && myTeamIds.has(p.id)))
-    .filter((p) => posFilter === "All" || p.position === posFilter);
+  const filteredExplain = useMemo(
+    () =>
+      (explain?.players ?? [])
+        .filter((p) => !(hideInTeam && myTeamIds.has(p.id)))
+        .filter((p) => posFilter === "All" || p.position === posFilter),
+    [explain?.players, hideInTeam, myTeamIds, posFilter],
+  );
 
   return (
     <main className="min-h-screen p-3 sm:p-4 md:p-8 max-w-6xl mx-auto text-white">
@@ -147,10 +172,10 @@ export default function TopPage() {
             className="rounded-md h-10 px-3 bg-black/30 border border-white/20 w-full sm:w-auto"
           >
             <option value="All">All Positions</option>
-            <option value="Goalkeeper">Goalkeepers</option>
-            <option value="Defender">Defenders</option>
-            <option value="Midfielder">Midfielders</option>
-            <option value="Forward">Forwards</option>
+            <option value="GK">Goalkeepers</option>
+            <option value="DEF">Defenders</option>
+            <option value="MID">Midfielders</option>
+            <option value="FWD">Forwards</option>
           </select>
           <select
             value={limit}
@@ -213,66 +238,18 @@ export default function TopPage() {
         </section>
       ) : null}
 
-      {explain ? (
-        <section className={`${cardClass} mt-4`}>
-          <h2 className="font-semibold mb-3 text-[#00ff87]">Explainability Cards</h2>
-          <div className="grid md:grid-cols-2 gap-3">
-            {filteredExplain.slice(0, 8).map((p) => (
-              <div key={p.id} className={`border border-white/10 rounded-lg p-3 bg-black/20 text-sm ${myTeamIds.has(p.id) ? "opacity-45" : ""}`}>
-                <p className="font-semibold">
-                  {p.name} <span className="text-white/60">({p.position}{p.club ? ` • ${p.club}` : ""})</span>
-                  <span
-                    className={`ml-2 text-[11px] rounded-full px-2 py-0.5 border ${
-                      p.fixture_badge === "DGW"
-                        ? "border-emerald-300 text-emerald-200"
-                        : p.fixture_badge === "BLANK"
-                          ? "border-rose-300 text-rose-200"
-                          : "border-white/30 text-white/80"
-                    }`}
-                  >
-                    {p.fixture_badge}
-                  </span>
-                </p>
-                <p className="text-[#00ff87] font-bold">xP {p.xP.toFixed(2)}</p>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-white/80 mt-1">
-                  <span>Form: {p.breakdown.form_score.toFixed(1)}</span>
-                  <span>Fixture: {p.breakdown.fixture_score.toFixed(1)}</span>
-                  <span>Minutes: {p.breakdown.minutes_security.toFixed(1)}</span>
-                  <span>Availability: {p.breakdown.availability_score.toFixed(1)}</span>
-                </div>
-
-                {p.next_5_opposition?.length ? (
-                  <div className="mt-2">
-                    <p className="text-xs text-white/65 mb-1">Next 5 GW opposition</p>
-                    <div className="space-y-1">
-                      {p.next_5_opposition.map((w) => (
-                        <div key={`${p.id}-${w.gw}`} className="flex items-center gap-2 flex-wrap">
-                          <span className="text-[11px] text-white/60 min-w-[42px]">GW{w.gw}</span>
-                          {w.is_blank ? (
-                            <span className="text-[11px] rounded-full px-2 py-0.5 border border-white/25 text-white/70">BLANK</span>
-                          ) : (
-                            w.fixtures.map((f, idx) => (
-                              <span
-                                key={`${p.id}-${w.gw}-${f.opponent}-${idx}`}
-                                className={`text-[11px] rounded-full px-2 py-0.5 border ${difficultyClass(f.difficulty)}`}
-                                title={`Difficulty ${f.difficulty}`}
-                              >
-                                {f.opponent} ({f.ha})
-                              </span>
-                            ))
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-
-                <p className="text-white/65 mt-2">{p.reason}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-      ) : null}
+      <ExplainabilityCards
+        explain={
+          explain
+            ? {
+                ...explain,
+                players: filteredExplain,
+              }
+            : null
+        }
+        hideInTeam={hideInTeam}
+        myTeamIds={myTeamIds}
+      />
     </main>
   );
 }
