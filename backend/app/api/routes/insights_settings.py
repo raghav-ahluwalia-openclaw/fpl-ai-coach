@@ -35,9 +35,19 @@ def app_settings_get(request: Request):
         fpl_entry_id = _int(_get_meta(db, _settings_key(scope, "fpl_entry_id")), 0) or None
         league_id = _int(_get_meta(db, _settings_key(scope, "league_id")), 0) or None
         rival_entry_id = _int(_get_meta(db, _settings_key(scope, "rival_entry_id")), 0) or None
+
+        # Fetch cached names if available for the main team
+        entry_name = None
+        player_name = None
+        if fpl_entry_id:
+            entry_name = _get_meta(db, f"entry:{fpl_entry_id}:entry_name")
+            player_name = _get_meta(db, f"entry:{fpl_entry_id}:player_name")
+
         return {
             "scope": scope,
             "fpl_entry_id": fpl_entry_id,
+            "entry_name": entry_name,
+            "player_name": player_name,
             "league_id": league_id,
             "rival_entry_id": rival_entry_id,
         }

@@ -82,6 +82,15 @@ export default function SettingsPage() {
           </label>
         </div>
 
+        {!entryId && (
+          <div className="flex items-center gap-2 text-amber-300 mt-4 p-3 border border-amber-300/30 rounded-lg bg-amber-300/5">
+            <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current">
+              <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
+            </svg>
+            <p className="text-sm font-medium">Please set your FPL Team ID to enable automated insights and team import.</p>
+          </div>
+        )}
+
         {error ? <p className="text-red-300 mt-3">{error}</p> : null}
 
         <div className="mt-4">
