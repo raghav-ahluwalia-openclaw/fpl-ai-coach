@@ -38,6 +38,7 @@ from .base import (
     _set_meta,
     _strategy_config,
     fetch_json,
+    logger,
     router,
 )
 
@@ -109,7 +110,11 @@ def import_user_team(entry_id: int, gameweek: Optional[int] = Query(default=None
                 player_name = combined_name or player_name or str(payload.get("player_name") or "").strip()
                 entry_name = str(entry_info.get("name") or "").strip() or entry_name or str(payload.get("name") or "").strip()
                 _set_meta(db, last_profile_sync_key, now_iso)
-            except Exception:
+            except Exception as e:  # noqa: BLE001
+                logger.debug(
+                    "entry profile refresh failed; using cached/fallback names",
+                    extra={"entry_id": entry_id, "error": str(e)},
+                )
                 # Fallback to existing cache, then picks payload if available.
                 if not player_name:
                     player_name = str(payload.get("player_name") or "").strip()
