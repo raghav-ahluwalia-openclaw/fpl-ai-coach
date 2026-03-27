@@ -1,0 +1,19 @@
+[Unit]
+Description=FPL AI Coach Backend (FastAPI)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/fpl-ai-coach/backend
+Environment=PYTHONUNBUFFERED=1
+ExecStart=%h/fpl-ai-coach/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --timeout-keep-alive 30
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=300
+StartLimitBurst=10
+StandardOutput=append:%h/fpl-ai-coach/.run/backend.systemd.log
+StandardError=append:%h/fpl-ai-coach/.run/backend.systemd.log
+
+[Install]
+WantedBy=default.target

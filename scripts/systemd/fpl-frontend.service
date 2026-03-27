@@ -1,0 +1,19 @@
+[Unit]
+Description=FPL AI Coach Frontend (Next.js)
+After=network-online.target fpl-backend.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/fpl-ai-coach/frontend
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/env npm run start -- --hostname 127.0.0.1 --port 3000
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=300
+StartLimitBurst=10
+StandardOutput=append:%h/fpl-ai-coach/.run/frontend.systemd.log
+StandardError=append:%h/fpl-ai-coach/.run/frontend.systemd.log
+
+[Install]
+WantedBy=default.target
