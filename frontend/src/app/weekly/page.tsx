@@ -399,35 +399,43 @@ export default function WeeklyPage() {
               </div>
             )}
           </div>
-          <div className="flex gap-2 w-full sm:w-auto">
+          <div className="flex gap-2 w-full sm:w-auto mt-2 sm:mt-0">
             {settings?.fpl_entry_id && (
               <button
                 onClick={() => void run()}
                 disabled={loading}
-                className="px-6 h-10 rounded-md bg-[#00ff87] text-[#37003c] font-bold disabled:opacity-60 flex-1 sm:flex-none transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-[#00ff87]/20"
+                className="h-10 w-10 grid place-items-center rounded-full border border-white/30 text-white/90 hover:border-[#00ff87] hover:text-[#00ff87] transition disabled:opacity-60"
+                aria-label="Refresh team data"
+                title={loading ? "Refreshing..." : "Refresh team data"}
               >
                 {loading ? (
-                  <span className="flex items-center gap-2 justify-center">
-                    <svg className="animate-spin h-4 w-4 text-current" viewBox="0 0 24 24">
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                        fill="none"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      />
-                    </svg>
-                    Refreshing...
-                  </span>
+                  <svg className="animate-spin h-5 w-5 text-current" viewBox="0 0 24 24">
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                      fill="none"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    />
+                  </svg>
                 ) : (
-                  "Refresh Data"
+                  <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5">
+                    <path
+                      d="M20 12a8 8 0 1 1-2.34-5.66M20 4v6h-6"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
                 )}
               </button>
             )}

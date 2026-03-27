@@ -76,8 +76,15 @@ def import_user_team(entry_id: int, gameweek: Optional[int] = Query(default=None
         db.commit()
 
         # Persist optional team snapshot metadata for rival context.
-        _set_meta(db, f"entry:{entry_id}:player_name", str(payload.get("player_name") or ""))
-        _set_meta(db, f"entry:{entry_id}:entry_name", str(payload.get("name") or ""))
+        # Fetch basic entry info for names (picks API doesn't include them)
+        try:
+            entry_info = fetch_json(f"https://fantasy.premierleague.com/api/entry/{entry_id}/", timeout=10)
+            _set_meta(db, f"entry:{entry_id}:player_name", str(entry_info.get("player_first_name", "") + " " + entry_info.get("player_last_name", "")).strip())
+            _set_meta(db, f"entry:{entry_id}:entry_name", str(entry_info.get("name") or ""))
+        except Exception:
+            # Fallback to picks payload if entry fetch fails, although unlikely to have names there
+            _set_meta(db, f"entry:{entry_id}:player_name", str(payload.get("player_name") or ""))
+            _set_meta(db, f"entry:{entry_id}:entry_name", str(payload.get("name") or ""))
 
         return {
             "ok": True,
