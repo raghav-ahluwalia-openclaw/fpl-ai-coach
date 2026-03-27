@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import HTTPException, Query, Request
+from fastapi import Depends, HTTPException, Query, Request
 from sqlalchemy.exc import SQLAlchemyError
+
+from app.core.security import rate_limit_write_ops, request_scope_identity, require_authenticated
 
 from .base import SessionLocal, _get_meta, _int, _set_meta, router
 from app.services.ml_recommender import DEFAULT_MODEL_VERSION
@@ -16,13 +18,8 @@ def _meta_bool(value: Optional[str], default: bool = False) -> bool:
 
 
 def _user_scope(request: Request) -> str:
-    raw = (
-        request.headers.get("cf-access-authenticated-user-email")
-        or request.headers.get("x-user-email")
-        or request.headers.get("x-forwarded-user")
-        or "default"
-    )
-    scope = "".join(ch for ch in raw.lower() if ch.isalnum() or ch in {"@", ".", "_", "-"})
+    raw = request_scope_identity(request)
+    scope = "".join(ch for ch in raw.lower() if ch.isalnum() or ch in {"@", ".", "_", "-", ":"})
     return scope[:120] or "default"
 
 
@@ -48,7 +45,10 @@ def app_settings_get(request: Request):
         db.close()
 
 
-@router.post("/api/fpl/settings")
+@router.post(
+    "/api/fpl/settings",
+    dependencies=[Depends(require_authenticated), Depends(rate_limit_write_ops)],
+)
 def app_settings_set(
     request: Request,
     fpl_entry_id: Optional[int] = Query(default=None, ge=1),
@@ -97,7 +97,10 @@ def notification_settings_get():
         db.close()
 
 
-@router.post("/api/fpl/notification-settings")
+@router.post(
+    "/api/fpl/notification-settings",
+    dependencies=[Depends(require_authenticated), Depends(rate_limit_write_ops)],
+)
 def notification_settings_set(
     enabled: bool = Query(default=True),
     lead_hours: int = Query(default=6, ge=1, le=72),

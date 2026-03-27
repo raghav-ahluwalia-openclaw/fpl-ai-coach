@@ -28,7 +28,7 @@ else
   (
     cd "$BACKEND_DIR"
     source .venv/bin/activate
-    nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 >"$BACKEND_LOG" 2>&1 &
+    nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 --timeout-keep-alive 30 >"$BACKEND_LOG" 2>&1 &
     echo $! > "$BACKEND_PID"
   )
 fi
@@ -48,6 +48,6 @@ echo "Done."
 echo "Backend log:  $BACKEND_LOG"
 echo "Frontend log: $FRONTEND_LOG"
 echo "Health check:"
-curl -sS http://127.0.0.1:8000/health || true
-echo
-curl -sS -o /dev/null -w "Frontend HTTP %{http_code}\n" http://127.0.0.1:3000/ || true
+curl -sS -o /dev/null -w "Backend livez %{http_code}\n" http://127.0.0.1:8000/livez || true
+curl -sS -o /dev/null -w "Backend readyz %{http_code}\n" http://127.0.0.1:8000/readyz || true
+curl -sS -o /dev/null -w "Frontend readyz %{http_code}\n" http://127.0.0.1:3000/readyz || true

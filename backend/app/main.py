@@ -6,10 +6,12 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 
+import httpx
 import structlog
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import JSONResponse
 from fastapi_limiter import FastAPILimiter
 from redis import Redis
 from sqlalchemy.exc import SQLAlchemyError
@@ -17,6 +19,7 @@ from sqlalchemy.exc import SQLAlchemyError
 import app.db.models  # noqa: F401  # ensure models are imported before create_all
 from app.api.routes import router as fpl_router
 from app.core.errors import register_error_handlers
+from app.core.security import ENVIRONMENT
 from app.db import Base, engine
 
 # =============================================================================
@@ -78,41 +81,48 @@ async def lifespan(app: FastAPI):
         logger.error("Database initialization failed", extra={"error": str(e)})
         raise
     
-    # Initialize rate limiter (Redis or in-memory fallback)
-    redis_url = os.getenv("REDIS_URL")
+    # Initialize optional Redis-backed limiter (route-level in-memory limiter still applies)
+    app.state.fastapi_limiter_ready = False
+    redis_url = os.getenv("REDIS_URL", "").strip()
     if redis_url:
         try:
             redis_client = Redis.from_url(redis_url, decode_responses=True)
             await FastAPILimiter.init(redis_client)
+            app.state.fastapi_limiter_ready = True
             logger.info("Rate limiter initialized with Redis")
         except Exception as e:
-            logger.warning("Redis connection failed, using in-memory rate limiter", extra={"error": str(e)})
-            await FastAPILimiter.init(Redis(decode_responses=True))
+            logger.warning("Redis connection failed; continuing with in-process limiter", extra={"error": str(e)})
     else:
-        # In-memory Redis for development
-        try:
-            await FastAPILimiter.init(Redis(decode_responses=True))
-            logger.info("Rate limiter initialized (in-memory)")
-        except Exception as e:
-            logger.warning("Rate limiter initialization failed", extra={"error": str(e)})
-    
+        logger.info("REDIS_URL not set; using in-process limiter only")
+
     yield
-    
+
     # Shutdown
     logger.info("Shutting down FPL AI Coach API")
-    await FastAPILimiter.close()
+    if getattr(app.state, "fastapi_limiter_ready", False):
+        try:
+            await FastAPILimiter.close()
+        except Exception as e:
+            logger.warning("Rate limiter shutdown skipped after error", extra={"error": str(e)})
 
 
 # =============================================================================
 # Application Factory
 # =============================================================================
+enable_api_docs = os.getenv("ENABLE_API_DOCS", "1" if ENVIRONMENT != "production" else "0").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+
 app = FastAPI(
     title="FPL AI Coach API",
     version="0.8.0",
     description="AI-powered Fantasy Premier League assistant with transfer planning, captaincy decisions, and team optimization.",
-    docs_url="/docs",
-    redoc_url="/redoc",
-    openapi_url="/openapi.json",
+    docs_url="/docs" if enable_api_docs else None,
+    redoc_url="/redoc" if enable_api_docs else None,
+    openapi_url="/openapi.json" if enable_api_docs else None,
     lifespan=lifespan,
 )
 
@@ -123,14 +133,18 @@ app = FastAPI(
 # GZip compression for responses >1KB
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
-# CORS - Configure based on environment
-cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+# CORS - strict by default in production
+cors_default = "http://localhost:3000,http://127.0.0.1:3000" if ENVIRONMENT != "production" else ""
+cors_origins_raw = os.getenv("CORS_ORIGINS", cors_default)
+allow_origins = [origin.strip() for origin in cors_origins_raw.split(",") if origin.strip()]
+allow_credentials = bool(allow_origins) and "*" not in allow_origins
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[origin.strip() for origin in cors_origins.split(",")],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=allow_origins,
+    allow_credentials=allow_credentials,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-Admin-Token"],
 )
 
 # Register error handlers
@@ -202,51 +216,100 @@ async def request_logging_middleware(request: Request, call_next):
 
 
 # =============================================================================
-# Health Check Endpoint (Enhanced)
+# Health and Readiness Endpoints
 # =============================================================================
-@app.get("/health")
-async def health_check():
-    """
-    Enhanced health check with detailed service status.
-    
-    Returns status of:
-    - Database connection
-    - Rate limiter
-    - Memory usage
-    """
-    import psutil
-    
-    health_status = {
-        "status": "healthy",
-        "ok": True,
-        "version": "0.8.0",
-        "checks": {},
-    }
-    
-    # Database check
+def _check_database() -> dict:
+    started = time.perf_counter()
     try:
         with engine.connect() as conn:
             conn.exec_driver_sql("SELECT 1")
-        health_status["checks"]["database"] = {"status": "up", "latency_ms": "ok"}
-    except Exception as e:
-        health_status["checks"]["database"] = {"status": "down", "error": str(e)}
-        health_status["status"] = "unhealthy"
-    
-    # Memory check
+        return {
+            "status": "up",
+            "latency_ms": round((time.perf_counter() - started) * 1000, 2),
+        }
+    except Exception as exc:
+        return {
+            "status": "down",
+            "error": str(exc),
+            "latency_ms": round((time.perf_counter() - started) * 1000, 2),
+        }
+
+
+async def _check_fpl_upstream() -> dict:
+    if os.getenv("HEALTHCHECK_FPL_UPSTREAM", "1") != "1":
+        return {"status": "skipped", "reason": "disabled"}
+
+    url = os.getenv("FPL_HEALTHCHECK_URL", "https://fantasy.premierleague.com/api/bootstrap-static/")
+    timeout = float(os.getenv("FPL_HEALTHCHECK_TIMEOUT_SECONDS", "2.5"))
+    started = time.perf_counter()
+
     try:
-        process = psutil.Process()
-        memory_info = process.memory_info()
-        health_status["checks"]["memory"] = {
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+            response = await client.get(url)
+        return {
+            "status": "up" if response.status_code < 500 else "degraded",
+            "http_status": response.status_code,
+            "latency_ms": round((time.perf_counter() - started) * 1000, 2),
+        }
+    except Exception as exc:
+        return {
+            "status": "down",
+            "error": str(exc),
+            "latency_ms": round((time.perf_counter() - started) * 1000, 2),
+        }
+
+
+@app.get("/health")
+async def health_check() -> JSONResponse:
+    """Deep health check for backend + dependencies."""
+    import psutil
+
+    db = _check_database()
+    fpl_upstream = await _check_fpl_upstream()
+
+    process = psutil.Process()
+    memory_info = process.memory_info()
+
+    checks = {
+        "database": db,
+        "fpl_upstream": fpl_upstream,
+        "memory": {
             "status": "ok",
             "rss_mb": round(memory_info.rss / 1024 / 1024, 2),
             "vms_mb": round(memory_info.vms / 1024 / 1024, 2),
-        }
-    except Exception as e:
-        health_status["checks"]["memory"] = {"status": "unknown", "error": str(e)}
-    
-    # Determine overall status
-    status_code = 200 if health_status["status"] == "healthy" else 503
-    return health_status, status_code
+        },
+    }
+
+    unhealthy = db["status"] != "up"
+    payload = {
+        "ok": not unhealthy,
+        "status": "healthy" if not unhealthy else "unhealthy",
+        "version": "0.8.0",
+        "checks": checks,
+    }
+
+    return JSONResponse(payload, status_code=200 if payload["ok"] else 503)
+
+
+@app.get("/readyz")
+async def readiness_check() -> JSONResponse:
+    """Readiness probe (strict): traffic should flow only when DB is healthy."""
+    db = _check_database()
+    ok = db["status"] == "up"
+    return JSONResponse(
+        {
+            "ok": ok,
+            "status": "ready" if ok else "not_ready",
+            "checks": {"database": db},
+        },
+        status_code=200 if ok else 503,
+    )
+
+
+@app.get("/livez")
+async def liveness_check() -> dict:
+    """Liveness probe for process supervision."""
+    return {"ok": True, "status": "alive"}
 
 
 # =============================================================================
@@ -260,5 +323,7 @@ async def root():
         "version": "0.8.0",
         "docs": "/docs",
         "health": "/health",
+        "readyz": "/readyz",
+        "livez": "/livez",
         "diagnostics": "/api/fpl/diagnostics",
     }

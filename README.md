@@ -59,6 +59,38 @@ From repo root:
 ./scripts/stop_app.sh
 ```
 
+## Reliability hardening (no-LLM/token-free)
+
+These checks run with plain shell + HTTP probes (no agent tokens):
+
+```bash
+# Install watchdog (runs every minute via cron)
+./scripts/install_monitor_cron.sh
+
+# Run one check manually
+./scripts/monitor_stack.sh
+```
+
+What gets checked:
+- `backend /livez` (process alive)
+- `backend /readyz` (DB readiness)
+- `frontend /readyz` (frontend readiness)
+
+If checks fail repeatedly (default: 3 times), the monitor automatically restarts backend/frontend.
+
+### Optional: systemd user services with auto-restart
+
+```bash
+# Install units to ~/.config/systemd/user
+./scripts/systemd/install_user_services.sh
+
+# Start services
+systemctl --user start fpl-backend.service fpl-frontend.service
+
+# Enable on login
+systemctl --user enable fpl-backend.service fpl-frontend.service
+```
+
 ---
 
 ## Manual run (dev mode)

@@ -23,5 +23,6 @@ show_status() {
 show_status "$BACKEND_PID" "backend"
 show_status "$FRONTEND_PID" "frontend"
 
-curl -sS -o /dev/null -w "backend /health: %{http_code}\n" http://127.0.0.1:8000/health || true
-curl -sS -o /dev/null -w "frontend /: %{http_code}\n" http://127.0.0.1:3000/ || true
+curl -sS -o /dev/null -w "backend /livez: %{http_code}\n" http://127.0.0.1:8000/livez || true
+curl -sS -o /dev/null -w "backend /readyz: %{http_code}\n" http://127.0.0.1:8000/readyz || true
+curl -sS -o /dev/null -w "frontend /readyz: %{http_code}\n" http://127.0.0.1:3000/readyz || true

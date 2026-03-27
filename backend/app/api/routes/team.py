@@ -6,8 +6,10 @@ from itertools import combinations
 from statistics import median
 from typing import List, Optional, Tuple
 
-from fastapi import HTTPException, Query
+from fastapi import Depends, HTTPException, Query
 from sqlalchemy.exc import SQLAlchemyError
+
+from app.core.security import rate_limit_write_ops, require_authenticated
 
 from .base import (
     POSITION_MAP,
@@ -39,7 +41,10 @@ from .base import (
     router,
 )
 
-@router.post("/api/fpl/team/{entry_id}/import")
+@router.post(
+    "/api/fpl/team/{entry_id}/import",
+    dependencies=[Depends(require_authenticated), Depends(rate_limit_write_ops)],
+)
 def import_user_team(entry_id: int, gameweek: Optional[int] = Query(default=None, ge=1, le=38)):
     db = SessionLocal()
     try:

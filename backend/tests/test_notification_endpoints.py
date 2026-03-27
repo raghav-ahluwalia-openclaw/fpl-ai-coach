@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import os
 import unittest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
+
+os.environ.setdefault("API_KEY", "test_api_key")
+os.environ.setdefault("ADMIN_API_KEY", "test_admin_key")
 
 from app.db import SessionLocal
 from app.db.models import Meta
@@ -12,6 +16,8 @@ from app.main import app
 
 
 class NotificationEndpointsTest(unittest.TestCase):
+    auth_headers = {"X-Admin-Token": os.environ.get("ADMIN_API_KEY", "test_admin_key")}
+
     @classmethod
     def setUpClass(cls) -> None:
         cls.client = TestClient(app)
@@ -48,6 +54,7 @@ class NotificationEndpointsTest(unittest.TestCase):
                 "mode": "safe",
                 "model_version": "xgb_v1",
             },
+            headers=self.auth_headers,
         )
         self.assertEqual(r.status_code, 200)
 
