@@ -21,9 +21,16 @@ function coerceErrorMessage(raw: string): string {
 }
 
 export async function fetchJson<T>(input: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers);
+  const apiKey = process.env.NEXT_PUBLIC_FPL_API_KEY;
+  if (apiKey && !headers.has("X-API-Key")) {
+    headers.set("X-API-Key", apiKey);
+  }
+
   const res = await fetch(input, {
     cache: "no-store",
     ...init,
+    headers,
   });
 
   if (!res.ok) {
