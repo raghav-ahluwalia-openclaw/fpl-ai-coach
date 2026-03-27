@@ -43,6 +43,21 @@ def app_settings_get(request: Request):
             entry_name = _get_meta(db, f"entry:{fpl_entry_id}:entry_name")
             player_name = _get_meta(db, f"entry:{fpl_entry_id}:player_name")
 
+            # Proactive fetch if names are missing from DB
+            if not entry_name or not player_name:
+                try:
+                    from app.services.http_client import fetch_json as f_json
+                    info = f_json(f"https://fantasy.premierleague.com/api/entry/{fpl_entry_id}/", timeout=5)
+                    if not entry_name:
+                        entry_name = str(info.get("name") or "")
+                        _set_meta(db, f"entry:{fpl_entry_id}:entry_name", entry_name)
+                    if not player_name:
+                        player_name = str(info.get("player_first_name", "") + " " + info.get("player_last_name", "")).strip()
+                        _set_meta(db, f"entry:{fpl_entry_id}:player_name", player_name)
+                    db.commit()
+                except Exception:
+                    pass
+
         return {
             "scope": scope,
             "fpl_entry_id": fpl_entry_id,
