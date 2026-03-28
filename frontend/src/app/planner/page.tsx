@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
 import { fetchJson } from "@/lib/api";
+import { LoadingState, ErrorState, EmptyState } from "@/components/ui-state";
 
 type ChipPlannerResponse = {
   gameweek: number;
@@ -239,7 +240,11 @@ export default function PlannerPage() {
         </div>
       </section>
 
-      {error ? <p className="text-red-300 mb-3">{error}</p> : null}
+      {error ? (
+        <div className="mb-4">
+          <ErrorState message={error} onRetry={() => void loadChip()} />
+        </div>
+      ) : null}
 
       {gwStatus ? (
         <section className={`${cardClass} mb-4`}>
@@ -253,7 +258,11 @@ export default function PlannerPage() {
         </section>
       ) : null}
 
-      {chip ? (
+      {loadingChip && !chip ? (
+        <div className="mb-4">
+          <LoadingState label="Analyzing chip strategy..." />
+        </div>
+      ) : chip ? (
         <section className={cardClass}>
           <h2 className="font-semibold text-[#00ff87] mb-2">Chip Planner • GW {chip.gameweek}</h2>
           <p className="text-sm text-white/75 mb-3">
@@ -297,11 +306,16 @@ export default function PlannerPage() {
               ))}
             </div>
           </div>
-
         </section>
-      ) : (
-        <p className="text-white/75">Loading chip planner...</p>
-      )}
+      ) : !loadingChip && !error && settings?.fpl_entry_id ? (
+        <div className="mb-4">
+          <EmptyState 
+            title="No chip strategy data" 
+            description="We couldn't generate a chip strategy at this moment."
+            onRetry={() => void loadChip()}
+          />
+        </div>
+      ) : null}
 
       <section className={`${cardClass} mt-4`}>
         <h2 className="font-semibold text-[#00ff87] mb-2">Rival Intelligence</h2>
@@ -339,7 +353,9 @@ export default function PlannerPage() {
           </button>
         </div>
 
-        {rival ? (
+        {loadingRival ? (
+          <LoadingState label="Comparing team differentials..." />
+        ) : rival ? (
           <div className="text-sm text-white/85 space-y-3">
             <p>GW {rival.gameweek} • Overlap: <strong>{rival.overlap_count}</strong> • My differentials: <strong>{rival.my_only_count}</strong> • Rival differentials: <strong>{rival.rival_only_count}</strong></p>
             <p>Overall Rank — Me: <strong>{rival.entry_overall_rank ? rival.entry_overall_rank.toLocaleString() : "—"}</strong> • Rival: <strong>{rival.rival_overall_rank ? rival.rival_overall_rank.toLocaleString() : "—"}</strong></p>

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { fetchJson } from "@/lib/api";
+import { LoadingState, ErrorState, EmptyState } from "@/components/ui-state";
 
 type Mention = { name: string; sentiment: "positive" | "neutral" | "negative"; score: number };
 
@@ -305,10 +306,15 @@ export default function SocialsPage() {
           Refresh is disabled because admin API key is not available in frontend runtime.
         </p>
       ) : null}
-      {error ? <p className="text-red-300 mb-3">{error}</p> : null}
-      {!data && !error ? <p className="text-white/75">Loading...</p> : null}
+      {error ? (
+        <div className="mb-4">
+          <ErrorState message={error} onRetry={() => void refreshSocials()} />
+        </div>
+      ) : null}
 
-      {data ? (
+      {!data && !error ? (
+        <LoadingState label="Aggregating YouTube and Reddit FPL intel..." />
+      ) : data ? (
         <>
           <section className="grid md:grid-cols-2 gap-4">
             <div className={cardClass}>
@@ -378,6 +384,12 @@ export default function SocialsPage() {
             </div>
           </section>
         </>
+      ) : !refreshing && !error ? (
+        <EmptyState 
+          title="No social intel available" 
+          description="We couldn't aggregate any social media insights at this time."
+          onRetry={() => void refreshSocials()}
+        />
       ) : null}
     </main>
   );

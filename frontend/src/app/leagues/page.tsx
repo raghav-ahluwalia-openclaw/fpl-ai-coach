@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 
 import { fetchJson } from "@/lib/api";
+import { LoadingState, ErrorState, EmptyState } from "@/components/ui-state";
 
 type AppSettings = {
   fpl_entry_id: number | null;
@@ -273,9 +274,15 @@ export default function LeaguesPage() {
         </div>
       </section>
 
-      {error ? <p className="text-red-300 mb-4">{error}</p> : null}
+      {error ? (
+        <div className="mb-4">
+          <ErrorState message={error} onRetry={() => void run()} />
+        </div>
+      ) : null}
 
-      {data ? (
+      {loading && !data ? (
+        <LoadingState label="Calculating league standings and ranks..." />
+      ) : data ? (
         <div className="grid gap-4">
           <section className={cardClass}>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
@@ -463,6 +470,12 @@ export default function LeaguesPage() {
             )}
           </section>
         </div>
+      ) : !loading && !error && settings?.fpl_entry_id ? (
+        <EmptyState 
+          title="No league data found" 
+          description="We couldn't find any leagues for this team ID."
+          onRetry={() => void run()}
+        />
       ) : null}
     </main>
   );
