@@ -89,15 +89,15 @@ export default function LivePage() {
           <div>
             {settings?.fpl_entry_id ? (
               <div className="flex flex-col">
-                <span className="text-xs text-white/50 uppercase tracking-wider font-bold">FPL Team</span>
+                <span className="text-xs text-white/75 uppercase tracking-wider font-bold">FPL Team</span>
                 <span className="text-lg font-bold text-[#00ff87]">
                   {settings.entry_name || `Entry #${settings.fpl_entry_id}`}
                 </span>
                 {settings.player_name && (
-                  <span className="text-sm text-white/70 italic">{settings.player_name}</span>
+                  <span className="text-sm text-white/80 italic">{settings.player_name}</span>
                 )}
                 {data?.generated_at && (
-                  <span className="text-[10px] text-white/40 mt-1 uppercase font-medium">
+                  <span className="text-[10px] text-white/65 mt-1 uppercase font-medium">
                     Updated: {new Date(data.generated_at).toLocaleString(undefined, { timeZoneName: "short" })}
                   </span>
                 )}
@@ -200,10 +200,10 @@ export default function LivePage() {
 
           <section className={cardClass}>
             <h2 className="font-semibold text-[#00ff87] mb-2">Live player breakdown</h2>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto focus-visible:outline-none" tabIndex={0} role="region" aria-label="Live player breakdown table">
               <table className="w-full text-xs md:text-sm">
                 <thead>
-                  <tr className="text-left text-white/70 border-b border-white/10">
+                  <tr className="text-left text-white/85 border-b border-white/10">
                     <th className="py-2">Player</th>
                     <th className="py-2">Role</th>
                     <th className="py-2">Base</th>
@@ -214,11 +214,11 @@ export default function LivePage() {
                 <tbody>
                   {data.players.map((p) => (
                     <tr key={`${p.id}-${p.position}`} className="border-b border-white/5">
-                      <td className="py-2 font-medium">{p.name} {p.is_captain ? "(C)" : p.is_vice_captain ? "(VC)" : ""}</td>
-                      <td className="py-2">{p.role}</td>
-                      <td className="py-2">{p.base_points}</td>
-                      <td className="py-2">{p.multiplier}</td>
-                      <td className="py-2 font-semibold">{p.live_points}</td>
+                      <td className="py-2 font-medium text-white">{p.name} {p.is_captain ? "(C)" : p.is_vice_captain ? "(VC)" : ""}</td>
+                      <td className="py-2 text-white/90">{p.role}</td>
+                      <td className="py-2 text-white/90">{p.base_points}</td>
+                      <td className="py-2 text-white/90">{p.multiplier}</td>
+                      <td className="py-2 font-bold text-white">{p.live_points}</td>
                     </tr>
                   ))}
                 </tbody>

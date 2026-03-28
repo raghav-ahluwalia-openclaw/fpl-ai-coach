@@ -422,15 +422,15 @@ export default function WeeklyPage() {
           <div>
             {settings?.fpl_entry_id ? (
               <div className="flex flex-col">
-                <span className="text-xs text-white/50 uppercase tracking-wider font-bold">FPL Team</span>
+                <span className="text-xs text-white/70 uppercase tracking-wider font-bold">FPL Team</span>
                 <span className="text-lg font-bold text-[#00ff87]">
                   {settings.entry_name || `Entry #${settings.fpl_entry_id}`}
                 </span>
                 {settings.player_name && (
-                  <span className="text-sm text-white/70 italic">{settings.player_name}</span>
+                  <span className="text-sm text-white/80 italic">{settings.player_name}</span>
                 )}
                 {data?.generated_at && (
-                  <span className="text-[10px] text-white/40 mt-1 uppercase font-medium">
+                  <span className="text-[10px] text-white/65 mt-1 uppercase font-medium">
                     Updated: {new Date(data.generated_at).toLocaleString(undefined, { timeZoneName: "short" })}
                   </span>
                 )}
@@ -522,7 +522,7 @@ export default function WeeklyPage() {
             <p>Transfer deadline: <strong>{formatUtc(gwStatus.transfer_deadline_utc)}</strong></p>
             <p>Time to deadline: <strong>{formatCountdown(gwStatus.seconds_until_deadline)}</strong></p>
           </div>
-          <p className="text-xs text-white/60 mt-2">Season phase: {gwStatus.season_phase.replace("_", " ")} • Source: {gwStatus.source}</p>
+          <p className="text-xs text-white/80 mt-2">Season phase: {gwStatus.season_phase.replace("_", " ")} • Source: {gwStatus.source}</p>
         </section>
       ) : null}
 
@@ -554,19 +554,19 @@ export default function WeeklyPage() {
           <section id="summary" className={`${cardClass} bg-gradient-to-br from-[#00ff87]/15 to-transparent border-[#00ff87]/30 shadow-lg shadow-[#00ff87]/5`}>
             <div className="flex items-center justify-between gap-3 mb-4">
               <h2 className="text-xl font-black text-[#00ff87] tracking-tight">Weekly Action Summary</h2>
-              <div className="text-xs text-[#00ff87]/60 font-medium px-2 py-0.5 rounded-full border border-[#00ff87]/30 bg-[#00ff87]/5 uppercase tracking-wider">
+              <div className="text-xs text-[#00ff87]/70 font-medium px-2 py-0.5 rounded-full border border-[#00ff87]/30 bg-[#00ff87]/5 uppercase tracking-wider">
                 What to do now
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               {/* Captaincy Summary */}
               <div className="space-y-1.5 p-3 rounded-xl border border-white/10 bg-black/20">
-                <p className="text-[10px] text-white/50 uppercase font-bold tracking-widest">Captaincy</p>
+                <p className="text-[10px] text-white/70 uppercase font-bold tracking-widest">Captaincy</p>
                 <div className="flex flex-col">
                   <span className="text-lg font-bold text-white leading-tight">
                     {(data.captain_matrix.safe[0]?.name) || "—"}
                   </span>
-                  <span className="text-xs text-white/60">
+                  <span className="text-xs text-white/80">
                     Vice: {(data.captain_matrix.safe[1]?.name) || "—"}
                   </span>
                 </div>
@@ -574,12 +574,12 @@ export default function WeeklyPage() {
 
               {/* Transfers Summary */}
               <div className="space-y-1.5 p-3 rounded-xl border border-white/10 bg-black/20">
-                <p className="text-[10px] text-white/50 uppercase font-bold tracking-widest">Plan A (Transfer)</p>
+                <p className="text-[10px] text-white/70 uppercase font-bold tracking-widest">Plan A (Transfer)</p>
                 <div className="flex flex-col">
                   <span className="text-lg font-bold text-white leading-tight truncate">
                     {(data.top_transfer_plans.one_ft[0]?.plan) || (data.top_transfer_plans.two_ft[0]?.plan) || "No Transfers Recommended"}
                   </span>
-                  <span className="text-xs text-white/60">
+                  <span className="text-xs text-white/80">
                     Net Gain: {((data.top_transfer_plans.one_ft[0]?.net_gain_1) || (data.top_transfer_plans.two_ft[0]?.net_gain_1) || 0).toFixed(2)} xP
                   </span>
                 </div>
@@ -587,12 +587,12 @@ export default function WeeklyPage() {
 
               {/* Lineup Summary */}
               <div className="space-y-1.5 p-3 rounded-xl border border-white/10 bg-black/20">
-                <p className="text-[10px] text-white/50 uppercase font-bold tracking-widest">Lineup Optimization</p>
+                <p className="text-[10px] text-white/70 uppercase font-bold tracking-widest">Lineup Optimization</p>
                 <div className="flex flex-col">
                   <span className="text-lg font-bold text-[#00ff87] leading-tight">
                     +{(data.lineup_optimizer.expected_gain_vs_current_xi_1 || 0).toFixed(2)} xP
                   </span>
-                  <span className="text-xs text-white/60">
+                  <span className="text-xs text-white/80">
                     Formation: {data.lineup_optimizer.formation}
                   </span>
                 </div>
@@ -600,20 +600,20 @@ export default function WeeklyPage() {
 
               {/* Confidence Summary */}
               <div className="space-y-1.5 p-3 rounded-xl border border-white/10 bg-black/20">
-                <p className="text-[10px] text-white/50 uppercase font-bold tracking-widest">Strategy Pulse</p>
+                <p className="text-[10px] text-white/70 uppercase font-bold tracking-widest">Strategy Pulse</p>
                 <div className="flex items-center gap-3">
                   <div className="flex flex-col">
                     <span className={`text-lg font-bold leading-tight ${planConfidenceClass(data.team_overview.confidence)}`}>
                       {Math.round(data.team_overview.confidence * 100)}%
                     </span>
-                    <span className="text-xs text-white/60">Confidence</span>
+                    <span className="text-xs text-white/80">Confidence</span>
                   </div>
                   <div className="h-8 w-px bg-white/10" />
                   <div className="flex flex-col">
                     <span className="text-lg font-bold text-white leading-tight">
                       {(data.top_transfer_plans.one_ft[0]?.risk_score || data.top_transfer_plans.two_ft[0]?.risk_score || 0).toFixed(1)}
                     </span>
-                    <span className="text-xs text-white/60">Risk Score</span>
+                    <span className="text-xs text-white/80">Risk Score</span>
                   </div>
                 </div>
               </div>
@@ -650,7 +650,7 @@ export default function WeeklyPage() {
                     i
                   </button>
                 </div>
-                <p className="text-sm text-white/80 mb-3">Weeks evaluated: {perfCard.weeks_evaluated} (last {perfCard.lookback} GWs)</p>
+                <p className="text-sm text-white/90 mb-3">Weeks evaluated: {perfCard.weeks_evaluated} (last {perfCard.lookback} GWs)</p>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs md:text-sm">
                   {([
                     {
@@ -705,7 +705,7 @@ export default function WeeklyPage() {
                     const tone = evaluateKpi(kpi.key, kpi.value, perfCard.weeks_evaluated);
                     return (
                       <div key={kpi.label} className="rounded-md border border-white/10 bg-black/20 p-2.5">
-                        <p className="text-white/60">{kpi.label}</p>
+                        <p className="text-white/75">{kpi.label}</p>
                         <p className="font-semibold">{kpi.display}</p>
                         <p className={`text-[11px] mt-0.5 ${kpiToneClass(tone)}`}>{kpiToneLabel(tone)}</p>
                       </div>
@@ -715,6 +715,7 @@ export default function WeeklyPage() {
               </section>
             );
           })() : null}
+
 
           <section id="lineup" className={cardClass}>
             <div className="flex items-center gap-2 mb-2">
@@ -743,7 +744,7 @@ export default function WeeklyPage() {
                 i
               </button>
             </div>
-            <p className="text-xs text-white/70 mb-2">
+            <p className="text-xs text-white/85 mb-2">
               Gain vs current XI: {xpView === "1gw"
                 ? (data.lineup_optimizer.expected_gain_vs_current_xi_1 ?? 0).toFixed(2)
                 : (data.lineup_optimizer.expected_gain_vs_current_xi_3 ?? 0).toFixed(2)} xP
@@ -752,10 +753,10 @@ export default function WeeklyPage() {
                 ? (data.lineup_optimizer.bench_order_gain_1 ?? 0).toFixed(2)
                 : (data.lineup_optimizer.bench_order_gain_3 ?? 0).toFixed(2)} weighted xP
             </p>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto focus-visible:outline-none" tabIndex={0} role="region" aria-label="Lineup table">
               <table className="w-full text-xs md:text-sm">
                 <thead>
-                  <tr className="text-left text-white/70 border-b border-white/10">
+                  <tr className="text-left text-white/85 border-b border-white/10">
                     <th className="py-2 whitespace-nowrap">Player</th>
                     <th className="py-2 whitespace-nowrap">Pos</th>
                     <th className="py-2 whitespace-nowrap">{xpView === "1gw" ? "xP (1GW)" : "xP (3GW)"}</th>
@@ -790,13 +791,13 @@ export default function WeeklyPage() {
           <section id="health" className={cardClass}>
             <div className="flex items-baseline justify-between gap-3 mb-1">
               <h2 className="font-semibold text-[#00ff87]">Team Health</h2>
-              <span className="text-xs text-white/65">Bank £{data.team_overview.bank.toFixed(1)} • Value £{data.team_overview.squad_value.toFixed(1)}</span>
+              <span className="text-xs text-white/80">Bank £{data.team_overview.bank.toFixed(1)} • Value £{data.team_overview.squad_value.toFixed(1)}</span>
             </div>
-            <p className="text-xs text-white/65 mb-2">Showing {(data.team_health.all ?? [...data.team_health.sell, ...data.team_health.watch, ...data.team_health.hold]).length} players from your squad.</p>
-            <div className="overflow-x-auto">
+            <p className="text-xs text-white/80 mb-2">Showing {(data.team_health.all ?? [...data.team_health.sell, ...data.team_health.watch, ...data.team_health.hold]).length} players from your squad.</p>
+            <div className="overflow-x-auto focus-visible:outline-none" tabIndex={0} role="region" aria-label="Team health table">
               <table className="w-full text-xs md:text-sm">
                 <thead>
-                  <tr className="text-left text-white/70 border-b border-white/10">
+                  <tr className="text-left text-white/85 border-b border-white/10">
                     <th className="py-2 whitespace-nowrap">Player</th>
                     <th className="py-2 whitespace-nowrap">Pos</th>
                     <th className="py-2 whitespace-nowrap">GW</th>
@@ -805,7 +806,7 @@ export default function WeeklyPage() {
                       <span className="inline-flex items-center gap-1">
                         Price Delta
                         <span
-                          className="text-[11px] text-white/65 border border-white/30 rounded-full h-4 w-4 inline-flex items-center justify-center"
+                          className="text-[11px] text-white/80 border border-white/30 rounded-full h-4 w-4 inline-flex items-center justify-center"
                           title="Price Delta shows estimated direction and time to next price move: ▲ up, ▼ down, ▷ flat. ETA is a heuristic from ownership/form, points profile, and availability risk."
                         >
                           i
@@ -844,14 +845,14 @@ export default function WeeklyPage() {
             <h2 className="font-semibold text-[#00ff87] mb-2">Top Transfer Plans (A/B/C)</h2>
             <div className="grid md:grid-cols-2 gap-4 text-sm">
               <div>
-                <h3 className="font-semibold mb-2">1FT</h3>
+                <h3 className="font-semibold mb-2 text-white">1FT</h3>
                 {data.top_transfer_plans.one_ft.map((p) => (
                   <div key={`1ft-${p.plan}`} className="rounded-lg border border-white/10 p-3 bg-black/20 mb-2">
-                    <p className="font-medium">{p.plan} • Expected Net Gain {xpView === "1gw" ? (p.net_gain_1 ?? p.net_gain) : (p.net_gain_3 ?? p.net_gain)} • Hit {p.hit}</p>
-                    <p className="text-xs text-white/70">Risk {(p.risk_score ?? 0).toFixed(2)} • <span className={planConfidenceClass(p.confidence)}>Confidence {Math.round((p.confidence ?? 0) * 100)}%</span></p>
-                    {p.note ? <p className="text-xs text-white/65 mt-1">{p.note}</p> : null}
+                    <p className="font-medium text-white">{p.plan} • Expected Net Gain {xpView === "1gw" ? (p.net_gain_1 ?? p.net_gain) : (p.net_gain_3 ?? p.net_gain)} • Hit {p.hit}</p>
+                    <p className="text-xs text-white/80">Risk {(p.risk_score ?? 0).toFixed(2)} • <span className={planConfidenceClass(p.confidence)}>Confidence {Math.round((p.confidence ?? 0) * 100)}%</span></p>
+                    {p.note ? <p className="text-xs text-white/75 mt-1">{p.note}</p> : null}
                     {p.transfers.map((t, i) => (
-                      <p key={`${p.plan}-1-${i}`} className="text-white/80">
+                      <p key={`${p.plan}-1-${i}`} className="text-white/90">
                         [{t.position || "POS"}] {t.out} ({xpView === "1gw" ? "xP1" : "xP3"} {xpView === "1gw" ? (t.projected_points_1_out ?? t.projected_points_3_out) : t.projected_points_3_out}) → {t.in} ({xpView === "1gw" ? "xP1" : "xP3"} {xpView === "1gw" ? (t.projected_points_1_in ?? t.projected_points_3_in) : t.projected_points_3_in})
                       </p>
                     ))}
@@ -859,14 +860,14 @@ export default function WeeklyPage() {
                 ))}
               </div>
               <div>
-                <h3 className="font-semibold mb-2">2FT</h3>
+                <h3 className="font-semibold mb-2 text-white">2FT</h3>
                 {data.top_transfer_plans.two_ft.map((p) => (
                   <div key={`2ft-${p.plan}`} className="rounded-lg border border-white/10 p-3 bg-black/20 mb-2">
-                    <p className="font-medium">{p.plan} • Expected Net Gain {xpView === "1gw" ? (p.net_gain_1 ?? p.net_gain) : (p.net_gain_3 ?? p.net_gain)} • Hit {p.hit}</p>
-                    <p className="text-xs text-white/70">Risk {(p.risk_score ?? 0).toFixed(2)} • <span className={planConfidenceClass(p.confidence)}>Confidence {Math.round((p.confidence ?? 0) * 100)}%</span></p>
-                    {p.note ? <p className="text-xs text-white/65 mt-1">{p.note}</p> : null}
+                    <p className="font-medium text-white">{p.plan} • Expected Net Gain {xpView === "1gw" ? (p.net_gain_1 ?? p.net_gain) : (p.net_gain_3 ?? p.net_gain)} • Hit {p.hit}</p>
+                    <p className="text-xs text-white/80">Risk {(p.risk_score ?? 0).toFixed(2)} • <span className={planConfidenceClass(p.confidence)}>Confidence {Math.round((p.confidence ?? 0) * 100)}%</span></p>
+                    {p.note ? <p className="text-xs text-white/75 mt-1">{p.note}</p> : null}
                     {p.transfers.map((t, i) => (
-                      <p key={`${p.plan}-2-${i}`} className="text-white/80">
+                      <p key={`${p.plan}-2-${i}`} className="text-white/90">
                         [{t.position || "POS"}] {t.out} ({xpView === "1gw" ? "xP1" : "xP3"} {xpView === "1gw" ? (t.projected_points_1_out ?? t.projected_points_3_out) : t.projected_points_3_out}) → {t.in} ({xpView === "1gw" ? "xP1" : "xP3"} {xpView === "1gw" ? (t.projected_points_1_in ?? t.projected_points_3_in) : t.projected_points_3_in})
                       </p>
                     ))}
@@ -875,6 +876,7 @@ export default function WeeklyPage() {
               </div>
             </div>
           </section>
+
 
           <section id="captaincy" className={cardClass}>
             <div className="flex items-center gap-2 mb-2">

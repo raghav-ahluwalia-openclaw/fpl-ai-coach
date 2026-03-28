@@ -202,15 +202,15 @@ export default function LeaguesPage() {
           <div>
             {settings?.fpl_entry_id ? (
               <div className="flex flex-col">
-                <span className="text-xs text-white/50 uppercase tracking-wider font-bold">FPL Team</span>
+                <span className="text-xs text-white/70 uppercase tracking-wider font-bold">FPL Team</span>
                 <span className="text-lg font-bold text-[#00ff87]">
                   {settings.entry_name || `Entry #${settings.fpl_entry_id}`}
                 </span>
                 {settings.player_name && (
-                  <span className="text-sm text-white/70 italic">{settings.player_name}</span>
+                  <span className="text-sm text-white/80 italic">{settings.player_name}</span>
                 )}
                 {data?.generated_at && (
-                  <span className="text-[10px] text-white/40 mt-1 uppercase font-medium">
+                  <span className="text-[10px] text-white/65 mt-1 uppercase font-medium">
                     Updated: {new Date(data.generated_at).toLocaleString(undefined, { timeZoneName: "short" })}
                   </span>
                 )}
@@ -287,15 +287,15 @@ export default function LeaguesPage() {
           <section className={cardClass}>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
               <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2">
-                <p className="text-white/65 text-[11px]">Total leagues</p>
+                <p className="text-white/80 text-[11px]">Total leagues</p>
                 <p className="font-semibold text-base">{formatNum(data.summary.league_count)}</p>
               </div>
               <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2">
-                <p className="text-white/65 text-[11px]">Classic</p>
+                <p className="text-white/80 text-[11px]">Classic</p>
                 <p className="font-semibold text-base">{formatNum(data.summary.classic_count)}</p>
               </div>
               <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2">
-                <p className="text-white/65 text-[11px]">H2H</p>
+                <p className="text-white/80 text-[11px]">H2H</p>
                 <p className="font-semibold text-base">{formatNum(data.summary.h2h_count)}</p>
               </div>
             </div>
@@ -304,11 +304,11 @@ export default function LeaguesPage() {
           <section className={cardClass}>
             <h2 className="font-semibold text-[#00ff87] mb-2">Insights</h2>
             {data.insights.length === 0 ? (
-              <p className="text-white/75 text-sm">No league insights available yet.</p>
+              <p className="text-white/85 text-sm">No league insights available yet.</p>
             ) : (
               <ul className="grid gap-2 text-sm">
                 {data.insights.map((ins, idx) => (
-                  <li key={`${ins.type}-${idx}`} className="rounded-md border border-white/10 bg-black/20 p-2.5 leading-relaxed">
+                  <li key={`${ins.type}-${idx}`} className="rounded-md border border-white/10 bg-black/20 p-2.5 leading-relaxed text-white/90">
                     {formatInsightText(ins.text)}
                   </li>
                 ))}
@@ -320,13 +320,13 @@ export default function LeaguesPage() {
             <div className="flex items-end justify-between gap-3 mb-2">
               <div>
                 <h2 className="font-semibold text-[#00ff87]">League Positions</h2>
-                <p className="text-xs text-white/65">Classic Pts: {formatNum(classicPts)}</p>
+                <p className="text-xs text-white/80">Classic Pts: {formatNum(classicPts)}</p>
               </div>
-              <p className="text-[11px] text-white/60">Showing {formatNum(visibleLeagues.length)}</p>
+              <p className="text-[11px] text-white/75">Showing {formatNum(visibleLeagues.length)}</p>
             </div>
 
             <div className="sticky top-[56px] z-10 -mx-2 px-2 py-2 mb-3">
-              <div className="flex gap-2 overflow-x-auto snap-x snap-mandatory">
+              <div className="flex gap-2 overflow-x-auto snap-x snap-mandatory focus-visible:outline-none" tabIndex={0} aria-label="League filter">
                 {([
                   ["all", "All"],
                   ["classic", "Classic"],
@@ -348,35 +348,35 @@ export default function LeaguesPage() {
               </div>
             </div>
 
-            <div className="md:hidden space-y-2">
+            <div className="md:hidden space-y-3">
               {visibleLeagues.map((l) => (
-                <div key={`m-${l.type}-${l.league_id}`} className="rounded-xl border border-white/10 bg-black/20 p-3">
+                <div key={`m-${l.type}-${l.league_id}`} className="rounded-xl border border-white/10 bg-black/20 p-3.5 shadow-sm">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <p className="font-medium leading-tight">{l.name}</p>
-                      <p className="text-[11px] text-white/60 uppercase mt-0.5">{l.type}</p>
+                      <p className="font-medium leading-tight text-white">{l.name}</p>
+                      <p className="text-[11px] text-white/70 uppercase mt-0.5">{l.type}</p>
                     </div>
-                    <p className="text-sm font-semibold text-right">
+                    <p className="text-sm font-semibold text-right text-white">
                       #{formatNum(l.your_rank)}
-                      <span className="block text-[10px] text-white/60 font-normal">/{formatNum(l.entry_count)} members</span>
+                      <span className="block text-[10px] text-white/70 font-normal">/{formatNum(l.entry_count)} members</span>
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 text-xs mt-2">
-                    <p className="text-white/75">Δ: <span className={rankDeltaClass(l.rank_delta)}>{rankDeltaLabel(l.rank_delta)}</span></p>
-                    <p className="text-white/75">Gap Leader: <span className="text-white">{formatNum(l.gap_to_leader)}</span></p>
-                    <p className="text-white/75">Gap ↑: <span className="text-white">{formatNum(l.gap_to_next_above)}</span></p>
-                    <p className="text-white/75">Gap ↓: <span className="text-white">{formatNum(l.gap_to_next_below)}</span></p>
-                    <p className="text-white/75 col-span-2">{percentileLabelForRow(l)}: <span className="text-white font-medium">{percentileOrH2h(l)}</span></p>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs mt-3 pt-3 border-t border-white/5">
+                    <p className="text-white/80">Δ: <span className={rankDeltaClass(l.rank_delta)}>{rankDeltaLabel(l.rank_delta)}</span></p>
+                    <p className="text-white/80">Gap Leader: <span className="text-white font-medium">{formatNum(l.gap_to_leader)}</span></p>
+                    <p className="text-white/80">Gap ↑: <span className="text-white font-medium">{formatNum(l.gap_to_next_above)}</span></p>
+                    <p className="text-white/80">Gap ↓: <span className="text-white font-medium">{formatNum(l.gap_to_next_below)}</span></p>
+                    <p className="text-white/80 col-span-2 border-t border-white/5 pt-2 mt-1">{percentileLabelForRow(l)}: <span className="text-white font-bold">{percentileOrH2h(l)}</span></p>
                   </div>
                 </div>
               ))}
             </div>
 
-            <div className="hidden md:block overflow-x-auto">
+            <div className="hidden md:block overflow-x-auto focus-visible:outline-none" tabIndex={0} role="region" aria-label="League standings table">
               <table className="w-full text-xs md:text-sm">
                 <thead>
-                  <tr className="text-left text-white/70 border-b border-white/10">
+                  <tr className="text-left text-white/85 border-b border-white/10">
                     <th className="py-2">League</th>
                     <th className="py-2">Rank</th>
                     <th className="py-2">Δ</th>
@@ -390,24 +390,25 @@ export default function LeaguesPage() {
                   {visibleLeagues.map((l) => (
                     <tr key={`${l.type}-${l.league_id}`} className="border-b border-white/5 align-top">
                       <td className="py-2">
-                        <p className="font-medium">{l.name}</p>
-                        <p className="text-[11px] text-white/60 uppercase">{l.type}</p>
+                        <p className="font-medium text-white">{l.name}</p>
+                        <p className="text-[11px] text-white/70 uppercase">{l.type}</p>
                       </td>
-                      <td className="py-2">
+                      <td className="py-2 text-white">
                         #{formatNum(l.your_rank)}
-                        <span className="text-white/60 text-[11px]"> / {formatNum(l.entry_count)} members</span>
+                        <span className="text-white/70 text-[11px]"> / {formatNum(l.entry_count)} members</span>
                       </td>
                       <td className={`py-2 ${rankDeltaClass(l.rank_delta)}`}>{rankDeltaLabel(l.rank_delta)}</td>
-                      <td className="py-2">{formatNum(l.gap_to_leader)}</td>
-                      <td className="py-2">{formatNum(l.gap_to_next_above)}</td>
-                      <td className="py-2">{formatNum(l.gap_to_next_below)}</td>
-                      <td className="py-2">{percentileOrH2h(l)}</td>
+                      <td className="py-2 text-white">{formatNum(l.gap_to_leader)}</td>
+                      <td className="py-2 text-white">{formatNum(l.gap_to_next_above)}</td>
+                      <td className="py-2 text-white">{formatNum(l.gap_to_next_below)}</td>
+                      <td className="py-2 text-white">{percentileOrH2h(l)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           </section>
+
 
           <section className={cardClass}>
             <h2 className="font-semibold text-[#00ff87] mb-2">Overall Rank Trend</h2>
@@ -427,10 +428,10 @@ export default function LeaguesPage() {
                   </div>
                 </div>
 
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto focus-visible:outline-none" tabIndex={0} role="region" aria-label="Overall rank trend table">
                   <table className="w-full text-xs md:text-sm">
                     <thead>
-                      <tr className="text-left text-white/70 border-b border-white/10">
+                      <tr className="text-left text-white/85 border-b border-white/10">
                         <th className="py-2">GW</th>
                         <th className="py-2">Overall Rank</th>
                         <th className="py-2">Δ vs Prev GW</th>
@@ -444,20 +445,20 @@ export default function LeaguesPage() {
                         const delta = prev !== null ? prev - p.overall_rank : null;
                         const deltaClass =
                           delta === null
-                            ? "text-white/65"
+                            ? "text-white/80"
                             : delta > 0
                             ? "text-[#00ff87]"
                             : delta < 0
                             ? "text-red-300"
-                            : "text-white/65";
+                            : "text-white/80";
 
                         return (
                           <tr key={p.event} className="border-b border-white/5">
-                            <td className="py-2">{p.event}</td>
-                            <td className="py-2">{formatRank(p.overall_rank)}</td>
+                            <td className="py-2 text-white">{p.event}</td>
+                            <td className="py-2 text-white font-medium">{formatRank(p.overall_rank)}</td>
                             <td className={`py-2 ${deltaClass}`}>{formatDelta(delta)}</td>
-                            <td className="py-2">{formatNum(p.event_points)}</td>
-                            <td className="py-2">{formatNum(p.total_points)}</td>
+                            <td className="py-2 text-white">{formatNum(p.event_points)}</td>
+                            <td className="py-2 text-white">{formatNum(p.total_points)}</td>
                           </tr>
                         );
                       })}
