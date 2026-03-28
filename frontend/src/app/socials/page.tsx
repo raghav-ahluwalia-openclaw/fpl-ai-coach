@@ -193,6 +193,9 @@ export default function SocialsPage() {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
+  const adminApiKey = process.env.NEXT_PUBLIC_FPL_ADMIN_API_KEY;
+  const hasAdminApiKey = Boolean(adminApiKey && adminApiKey.trim().length > 0);
+
   const fetchSocials = useCallback(async () => {
     const payload = await fetchJson<SocialsResponse>("/api/fpl/socials?limit=5&reddit_window=week");
     setData(payload);
@@ -205,7 +208,10 @@ export default function SocialsPage() {
     setRefreshing(true);
     setError(null);
     try {
-      const res = await fetchJson<{ ok?: boolean; message?: string; error?: string }>("/api/fpl/socials/refresh?videos_per_creator=4", { method: "POST" });
+      const res = await fetchJson<{ ok?: boolean; message?: string; error?: string }>("/api/fpl/socials/refresh?videos_per_creator=4", {
+        method: "POST",
+        ...(hasAdminApiKey ? { headers: { "X-API-Key": adminApiKey as string } } : {}),
+      });
       if (res.ok === false) {
         setError(`${res.message || "Refresh failed"}${res.error ? `: ${res.error}` : ""}`);
         return;
@@ -215,7 +221,11 @@ export default function SocialsPage() {
       if (!silent) {
         const msg = e instanceof Error ? e.message : "Failed to refresh socials";
         if (/missing api token|invalid api token|admin token required|401|403/i.test(msg)) {
-          setError("Refresh requires admin API access. You can still view the latest cached socials feed.");
+          setError(
+            hasAdminApiKey
+              ? "Refresh requires admin API access. You can still view the latest cached socials feed."
+              : "Refresh requires admin API access. Configure NEXT_PUBLIC_FPL_ADMIN_API_KEY in frontend env, then rebuild/restart."
+          );
         } else {
           setError(msg);
         }
@@ -223,7 +233,7 @@ export default function SocialsPage() {
     } finally {
       setRefreshing(false);
     }
-  }, [fetchSocials]);
+  }, [fetchSocials, hasAdminApiKey, adminApiKey]);
 
   const loadSocials = useCallback(async (opts?: { autoRefreshIfStale?: boolean }) => {
     const payload = await fetchSocials();
@@ -264,10 +274,10 @@ export default function SocialsPage() {
         </div>
         <button
           onClick={() => void refreshSocials()}
-          disabled={refreshing}
+          disabled={refreshing || !hasAdminApiKey}
           className="px-6 h-10 rounded-md bg-[#00ff87] text-[#37003c] font-bold disabled:opacity-60 transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-[#00ff87]/20 flex items-center gap-2"
           aria-label="Refresh socials"
-          title={refreshing ? "Refreshing..." : "Refresh"}
+          title={!hasAdminApiKey ? "Admin API key missing" : refreshing ? "Refreshing..." : "Refresh"}
         >
           {refreshing ? (
             <svg className="animate-spin h-4 w-4 text-current" viewBox="0 0 24 24">
@@ -290,6 +300,11 @@ export default function SocialsPage() {
         </button>
       </div>
 
+      {!hasAdminApiKey ? (
+        <p className="text-amber-300 mb-3 text-sm">
+          Refresh is disabled because admin API key is not available in frontend runtime.
+        </p>
+      ) : null}
       {error ? <p className="text-red-300 mb-3">{error}</p> : null}
       {!data && !error ? <p className="text-white/75">Loading...</p> : null}
 
