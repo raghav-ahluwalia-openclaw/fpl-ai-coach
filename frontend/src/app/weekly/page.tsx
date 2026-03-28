@@ -602,16 +602,6 @@ export default function WeeklyPage() {
             </div>
           </section>
 
-          <section className={cardClass}>
-            <p className="text-sm text-white/75 mb-2">
-              Entry #{data.team_overview.entry_id} • GW {data.team_overview.gameweek} • {data.team_overview.formation} • {data.team_overview.strategy_mode.toUpperCase()} • Confidence {(data.team_overview.confidence * 100).toFixed(0)}%
-            </p>
-            <p className="text-sm text-white/75">Bank: £{data.team_overview.bank.toFixed(1)} • Squad value: £{data.team_overview.squad_value.toFixed(1)}</p>
-            {typeof data.picks_source_gw === "number" && data.picks_source_gw !== data.team_overview.gameweek ? (
-              <p className="text-xs text-white/60 mt-2">Planning GW {data.team_overview.gameweek} using your latest published squad (GW {data.picks_source_gw}).</p>
-            ) : null}
-          </section>
-
           {performance?.dashboard_card ? (() => {
             const perfCard = performance.dashboard_card;
             return (
@@ -780,7 +770,10 @@ export default function WeeklyPage() {
           </section>
 
           <section id="health" className={cardClass}>
-            <h2 className="font-semibold text-[#00ff87] mb-1">Team Health</h2>
+            <div className="flex items-baseline justify-between gap-3 mb-1">
+              <h2 className="font-semibold text-[#00ff87]">Team Health</h2>
+              <span className="text-xs text-white/65">Bank £{data.team_overview.bank.toFixed(1)} • Value £{data.team_overview.squad_value.toFixed(1)}</span>
+            </div>
             <p className="text-xs text-white/65 mb-2">Showing {(data.team_health.all ?? [...data.team_health.sell, ...data.team_health.watch, ...data.team_health.hold]).length} players from your squad.</p>
             <div className="overflow-x-auto">
               <table className="w-full text-xs md:text-sm">
