@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 
 import { fetchJson } from "@/lib/api";
+import { EmptyState, ErrorState, LoadingState } from "@/components/ui-state";
 
 const ExplainabilityCards = dynamic(() => import("@/components/explainability-cards"), {
   loading: () => <p className="text-white/70 mt-4">Loading explainability cards…</p>,
@@ -81,9 +82,12 @@ export default function TopPage() {
   const [myTeamIds, setMyTeamIds] = useState<Set<number>>(new Set());
   const [hideInTeam, setHideInTeam] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [reloadNonce, setReloadNonce] = useState(0);
 
   useEffect(() => {
     let canceled = false;
+    setIsLoading(true);
 
     (async () => {
       try {
@@ -113,13 +117,15 @@ export default function TopPage() {
       } catch (e) {
         if (canceled) return;
         setError(e instanceof Error ? e.message : "Failed to load top players");
+      } finally {
+        if (!canceled) setIsLoading(false);
       }
     })();
 
     return () => {
       canceled = true;
     };
-  }, [limit, posFilter]);
+  }, [limit, posFilter, reloadNonce]);
 
   useEffect(() => {
     fetchJson<AppSettings>(`${API_BASE}/api/fpl/settings`, { cacheMode: "force-cache" })
@@ -158,6 +164,8 @@ export default function TopPage() {
         .filter((p) => posFilter === "All" || p.position === posFilter),
     [explain?.players, hideInTeam, myTeamIds, posFilter],
   );
+
+  const retryLoad = () => setReloadNonce((n) => n + 1);
 
   return (
     <main className="min-h-screen p-3 sm:p-4 md:p-8 max-w-6xl mx-auto text-white">
@@ -199,8 +207,14 @@ export default function TopPage() {
         </div>
       </div>
 
-      {error ? <p className="text-red-300 mb-3">{error}</p> : null}
-      {!data && !error ? <p className="text-white/75">Loading...</p> : null}
+      {error ? <ErrorState message={error} onRetry={retryLoad} /> : null}
+      {isLoading && !error ? <LoadingState label="Loading top picks and explainability..." /> : null}
+      {!isLoading && !error && data && filteredPlayers.length === 0 ? (
+        <EmptyState
+          title="No players match current filters"
+          description="Try changing position filter or include players already in your squad."
+        />
+      ) : null}
 
       {data ? (
         <section className={cardClass}>

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 import { fetchJson } from "@/lib/api";
+import { EmptyState, ErrorState, LoadingState } from "@/components/ui-state";
 
 type Mode = "safe" | "balanced" | "aggressive";
 type XpView = "1gw" | "3gw";
@@ -159,6 +160,15 @@ type GameweekHub = {
 };
 
 const cardClass = "rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md p-4 md:p-5";
+
+const sectionTabs = [
+  { id: "overview", label: "Overview" },
+  { id: "performance", label: "Performance" },
+  { id: "lineup", label: "Lineup" },
+  { id: "transfers", label: "Transfers" },
+  { id: "captaincy", label: "Captaincy" },
+  { id: "health", label: "Health" },
+] as const;
 
 function badgeClass(badge?: "DGW" | "SGW" | "BLANK") {
   if (badge === "DGW") return "border-emerald-300 text-emerald-200";
@@ -351,6 +361,8 @@ export default function WeeklyPage() {
     };
   }, [run]);
 
+  const retryLoad = () => void run(undefined, { forceImport: false, cacheMode: "no-store" });
+
   return (
     <main className="min-h-screen p-3 sm:p-4 md:p-8 max-w-6xl mx-auto text-white">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
@@ -386,7 +398,21 @@ export default function WeeklyPage() {
         </div>
       </div>
 
-      <section className={`${cardClass} mb-4`}>
+      <nav className="mb-4 overflow-x-auto" aria-label="Gameweek sections">
+        <div className="inline-flex gap-2 min-w-max rounded-xl border border-white/15 bg-black/20 p-1">
+          {sectionTabs.map((tab) => (
+            <a
+              key={tab.id}
+              href={`#${tab.id}`}
+              className="px-3 py-1.5 text-xs md:text-sm rounded-md text-white/85 hover:text-[#00ff87] hover:bg-white/10"
+            >
+              {tab.label}
+            </a>
+          ))}
+        </div>
+      </nav>
+
+      <section id="overview" className={`${cardClass} mb-4`}>
         <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
           <div>
             {settings?.fpl_entry_id ? (
@@ -481,7 +507,17 @@ export default function WeeklyPage() {
         </section>
       ) : null}
 
-      {error ? <p className="text-red-300 mb-4">{error}</p> : null}
+      {error ? <ErrorState message={error} onRetry={retryLoad} /> : null}
+
+      {loading && !data && !error ? <LoadingState label="Loading Gameweek Hub..." /> : null}
+
+      {!loading && !error && settings?.fpl_entry_id && !data ? (
+        <EmptyState
+          title="No gameweek data yet"
+          description="Tap retry or use refresh to pull latest squad + projections."
+          onRetry={retryLoad}
+        />
+      ) : null}
 
       {data ? (
         <div className="grid gap-4">
@@ -498,7 +534,7 @@ export default function WeeklyPage() {
           {performance?.dashboard_card ? (() => {
             const perfCard = performance.dashboard_card;
             return (
-              <section className={cardClass}>
+              <section id="performance" className={cardClass}>
                 <div className="flex items-center gap-2 mb-2">
                   <h2 className="font-semibold text-[#00ff87]">Performance Snapshot</h2>
                   <button
@@ -591,7 +627,7 @@ export default function WeeklyPage() {
             );
           })() : null}
 
-          <section className={cardClass}>
+          <section id="lineup" className={cardClass}>
             <div className="flex items-center gap-2 mb-2">
               <h2 className="font-semibold text-[#00ff87]">Lineup Optimizer • {data.lineup_optimizer.formation}</h2>
               <button
@@ -662,7 +698,7 @@ export default function WeeklyPage() {
             </div>
           </section>
 
-          <section className={cardClass}>
+          <section id="health" className={cardClass}>
             <h2 className="font-semibold text-[#00ff87] mb-1">Team Health</h2>
             <p className="text-xs text-white/65 mb-2">Showing {(data.team_health.all ?? [...data.team_health.sell, ...data.team_health.watch, ...data.team_health.hold]).length} players from your squad.</p>
             <div className="overflow-x-auto">
@@ -712,7 +748,7 @@ export default function WeeklyPage() {
             </div>
           </section>
 
-          <section className={cardClass}>
+          <section id="transfers" className={cardClass}>
             <h2 className="font-semibold text-[#00ff87] mb-2">Top Transfer Plans (A/B/C)</h2>
             <div className="grid md:grid-cols-2 gap-4 text-sm">
               <div>
@@ -748,7 +784,7 @@ export default function WeeklyPage() {
             </div>
           </section>
 
-          <section className={cardClass}>
+          <section id="captaincy" className={cardClass}>
             <div className="flex items-center gap-2 mb-2">
               <h2 className="font-semibold text-[#00ff87]">Captain Matrix</h2>
               <button
