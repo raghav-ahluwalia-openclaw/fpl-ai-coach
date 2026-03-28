@@ -9,6 +9,10 @@ jobs:
   backend:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      API_KEY: ci_api_key
+      ADMIN_API_KEY: ci_admin_key
+      VALIDATION_ADMIN_API_KEY: ci_admin_key
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -54,6 +58,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [backend, frontend]
+    env:
+      API_KEY: ci_api_key
+      ADMIN_API_KEY: ci_admin_key
+      VALIDATION_ADMIN_API_KEY: ci_admin_key
     steps:
       - name: Checkout
         uses: actions/checkout@v4
