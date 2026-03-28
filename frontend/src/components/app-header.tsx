@@ -4,18 +4,33 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 
-const navItems = [
-  { href: "/weekly", label: "Gameweek Hub" },
-  { href: "/live", label: "Live" },
-  { href: "/planner", label: "Planner" },
-  { href: "/leagues", label: "Leagues" },
-  { href: "/top", label: "Research" },
-  { href: "/socials", label: "Social Intel" },
+type NavItem = { href: string; label: string };
+type NavPrimary = { href: string; label: string; isPrimary: true };
+type NavGroup = { group: string; items: NavItem[] };
+
+const navGroups: (NavPrimary | NavGroup)[] = [
+  { href: "/weekly", label: "Weekly", isPrimary: true },
+  {
+    group: "Play",
+    items: [{ href: "/live", label: "Live" }],
+  },
+  {
+    group: "Plan",
+    items: [{ href: "/planner", label: "Planner" }],
+  },
+  {
+    group: "Research",
+    items: [
+      { href: "/top", label: "Analysis" },
+      { href: "/socials", label: "Social" },
+      { href: "/leagues", label: "Leagues" },
+    ],
+  },
 ];
 
 function linkClass(active: boolean) {
   return active
-    ? "text-[#37003c] bg-[#00ff87] rounded-md px-2 py-1"
+    ? "text-[#37003c] bg-[#00ff87] rounded-md px-2 py-0.5"
     : "text-[#00ff87] hover:text-[#7effb8]";
 }
 
@@ -44,19 +59,46 @@ export default function AppHeader() {
           <span className="hidden sm:inline text-white/70 text-sm">FPL AI Coach</span>
         </div>
 
-        <nav className="hidden md:flex items-center gap-3 text-sm">
-          {navItems.map((item) => {
-            const active = pathname === item.href;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                aria-current={active ? "page" : undefined}
-                className={`${linkClass(active)} transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00ff87]`}
-              >
-                {item.label}
-              </Link>
-            );
+        <nav className="hidden md:flex items-center gap-6 text-sm">
+          {navGroups.map((group) => {
+            if ("isPrimary" in group && group.isPrimary) {
+              const active = pathname === group.href;
+              return (
+                <Link
+                  key={group.href}
+                  href={group.href}
+                  aria-current={active ? "page" : undefined}
+                  className={`${linkClass(active)} text-base font-black transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00ff87]`}
+                >
+                  {group.label}
+                </Link>
+              );
+            }
+
+            if ("group" in group) {
+              return (
+                <div key={group.group} className="flex items-center gap-2 border-l border-white/10 pl-4">
+                  <span className="text-white/40 text-[10px] uppercase tracking-widest font-bold">{group.group}</span>
+                  <div className="flex items-center gap-3">
+                    {group.items.map((item) => {
+                      const active = pathname === item.href;
+                      return (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          aria-current={active ? "page" : undefined}
+                          className={`${linkClass(active)} transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00ff87]`}
+                        >
+                          {item.label}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            }
+
+            return null;
           })}
         </nav>
 
@@ -89,20 +131,48 @@ export default function AppHeader() {
 
       {open ? (
         <div id="mobile-nav" className="md:hidden border-t border-white/10 px-4 py-3 bg-[#220030]">
-          <nav className="grid gap-2 text-sm">
-            {navItems.map((item) => {
-              const active = pathname === item.href;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  aria-current={active ? "page" : undefined}
-                  onClick={() => setOpen(false)}
-                  className={`${active ? "text-[#37003c] bg-[#00ff87]" : "text-[#00ff87] bg-black/20"} rounded-md px-3 py-2`}
-                >
-                  {item.label}
-                </Link>
-              );
+          <nav className="grid gap-4 text-sm">
+            {navGroups.map((group) => {
+              if ("isPrimary" in group && group.isPrimary) {
+                const active = pathname === group.href;
+                return (
+                  <Link
+                    key={group.href}
+                    href={group.href}
+                    aria-current={active ? "page" : undefined}
+                    onClick={() => setOpen(false)}
+                    className={`${active ? "text-[#37003c] bg-[#00ff87]" : "text-[#00ff87] bg-black/20"} rounded-md px-3 py-2 text-lg font-black`}
+                  >
+                    {group.label}
+                  </Link>
+                );
+              }
+
+              if ("group" in group) {
+                return (
+                  <div key={group.group} className="grid gap-2">
+                    <span className="text-white/40 text-[10px] uppercase tracking-widest font-bold px-3">{group.group}</span>
+                    <div className="grid gap-2">
+                      {group.items.map((item) => {
+                        const active = pathname === item.href;
+                        return (
+                          <Link
+                            key={item.href}
+                            href={item.href}
+                            aria-current={active ? "page" : undefined}
+                            onClick={() => setOpen(false)}
+                            className={`${active ? "text-[#37003c] bg-[#00ff87]" : "text-[#00ff87] bg-black/20"} rounded-md px-3 py-2`}
+                          >
+                            {item.label}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              }
+
+              return null;
             })}
           </nav>
           <div className="mt-3 flex gap-2">
