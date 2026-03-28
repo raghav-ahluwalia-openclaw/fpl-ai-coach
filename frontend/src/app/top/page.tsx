@@ -207,13 +207,23 @@ export default function TopPage() {
         </div>
       </div>
 
-      {error ? <ErrorState message={error} onRetry={retryLoad} /> : null}
-      {isLoading && !error ? <LoadingState label="Loading top picks and explainability..." /> : null}
+      {error ? (
+        <div className="mb-4">
+          <ErrorState message={error} onRetry={retryLoad} />
+        </div>
+      ) : null}
+      {isLoading && !error ? (
+        <div className="mb-4">
+          <LoadingState label="Loading top picks and explainability..." />
+        </div>
+      ) : null}
       {!isLoading && !error && data && filteredPlayers.length === 0 ? (
-        <EmptyState
-          title="No players match current filters"
-          description="Try changing position filter or include players already in your squad."
-        />
+        <div className="mb-4">
+          <EmptyState
+            title="No players match current filters"
+            description="Try changing position filter or include players already in your squad."
+          />
+        </div>
       ) : null}
 
       {data ? (

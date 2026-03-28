@@ -162,6 +162,7 @@ type GameweekHub = {
 const cardClass = "rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md p-4 md:p-5";
 
 const sectionTabs = [
+  { id: "summary", label: "Summary" },
   { id: "overview", label: "Overview" },
   { id: "performance", label: "Performance" },
   { id: "lineup", label: "Lineup" },
@@ -507,20 +508,100 @@ export default function WeeklyPage() {
         </section>
       ) : null}
 
-      {error ? <ErrorState message={error} onRetry={retryLoad} /> : null}
+      {error ? (
+        <div className="mb-4">
+          <ErrorState message={error} onRetry={retryLoad} />
+        </div>
+      ) : null}
 
-      {loading && !data && !error ? <LoadingState label="Loading Gameweek Hub..." /> : null}
+      {loading && !data && !error ? (
+        <div className="mb-4">
+          <LoadingState label="Loading Gameweek Hub..." />
+        </div>
+      ) : null}
 
       {!loading && !error && settings?.fpl_entry_id && !data ? (
-        <EmptyState
-          title="No gameweek data yet"
-          description="Tap retry or use refresh to pull latest squad + projections."
-          onRetry={retryLoad}
-        />
+        <div className="mb-4">
+          <EmptyState
+            title="No gameweek data yet"
+            description="Tap retry or use refresh to pull latest squad + projections."
+            onRetry={retryLoad}
+          />
+        </div>
       ) : null}
 
       {data ? (
         <div className="grid gap-4">
+          {/* Weekly Action Summary Section */}
+          <section id="summary" className={`${cardClass} bg-gradient-to-br from-[#00ff87]/15 to-transparent border-[#00ff87]/30 shadow-lg shadow-[#00ff87]/5`}>
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <h2 className="text-xl font-black text-[#00ff87] tracking-tight">Weekly Action Summary</h2>
+              <div className="text-xs text-[#00ff87]/60 font-medium px-2 py-0.5 rounded-full border border-[#00ff87]/30 bg-[#00ff87]/5 uppercase tracking-wider">
+                What to do now
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {/* Captaincy Summary */}
+              <div className="space-y-1.5 p-3 rounded-xl border border-white/10 bg-black/20">
+                <p className="text-[10px] text-white/50 uppercase font-bold tracking-widest">Captaincy</p>
+                <div className="flex flex-col">
+                  <span className="text-lg font-bold text-white leading-tight">
+                    {(data.captain_matrix.safe[0]?.name) || "—"}
+                  </span>
+                  <span className="text-xs text-white/60">
+                    Vice: {(data.captain_matrix.safe[1]?.name) || "—"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Transfers Summary */}
+              <div className="space-y-1.5 p-3 rounded-xl border border-white/10 bg-black/20">
+                <p className="text-[10px] text-white/50 uppercase font-bold tracking-widest">Plan A (Transfer)</p>
+                <div className="flex flex-col">
+                  <span className="text-lg font-bold text-white leading-tight truncate">
+                    {(data.top_transfer_plans.one_ft[0]?.plan) || (data.top_transfer_plans.two_ft[0]?.plan) || "No Transfers Recommended"}
+                  </span>
+                  <span className="text-xs text-white/60">
+                    Net Gain: {((data.top_transfer_plans.one_ft[0]?.net_gain_1) || (data.top_transfer_plans.two_ft[0]?.net_gain_1) || 0).toFixed(2)} xP
+                  </span>
+                </div>
+              </div>
+
+              {/* Lineup Summary */}
+              <div className="space-y-1.5 p-3 rounded-xl border border-white/10 bg-black/20">
+                <p className="text-[10px] text-white/50 uppercase font-bold tracking-widest">Lineup Optimization</p>
+                <div className="flex flex-col">
+                  <span className="text-lg font-bold text-[#00ff87] leading-tight">
+                    +{(data.lineup_optimizer.expected_gain_vs_current_xi_1 || 0).toFixed(2)} xP
+                  </span>
+                  <span className="text-xs text-white/60">
+                    Formation: {data.lineup_optimizer.formation}
+                  </span>
+                </div>
+              </div>
+
+              {/* Confidence Summary */}
+              <div className="space-y-1.5 p-3 rounded-xl border border-white/10 bg-black/20">
+                <p className="text-[10px] text-white/50 uppercase font-bold tracking-widest">Strategy Pulse</p>
+                <div className="flex items-center gap-3">
+                  <div className="flex flex-col">
+                    <span className={`text-lg font-bold leading-tight ${planConfidenceClass(data.team_overview.confidence)}`}>
+                      {Math.round(data.team_overview.confidence * 100)}%
+                    </span>
+                    <span className="text-xs text-white/60">Confidence</span>
+                  </div>
+                  <div className="h-8 w-px bg-white/10" />
+                  <div className="flex flex-col">
+                    <span className="text-lg font-bold text-white leading-tight">
+                      {(data.top_transfer_plans.one_ft[0]?.risk_score || data.top_transfer_plans.two_ft[0]?.risk_score || 0).toFixed(1)}
+                    </span>
+                    <span className="text-xs text-white/60">Risk Score</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
           <section className={cardClass}>
             <p className="text-sm text-white/75 mb-2">
               Entry #{data.team_overview.entry_id} • GW {data.team_overview.gameweek} • {data.team_overview.formation} • {data.team_overview.strategy_mode.toUpperCase()} • Confidence {(data.team_overview.confidence * 100).toFixed(0)}%

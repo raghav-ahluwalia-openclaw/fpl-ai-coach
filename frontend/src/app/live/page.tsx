@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
 import { fetchJson } from "@/lib/api";
+import { LoadingState, ErrorState, EmptyState } from "@/components/ui-state";
 
 type AppSettings = {
   fpl_entry_id: number | null;
@@ -160,9 +161,15 @@ export default function LivePage() {
         </div>
       </section>
 
-      {error ? <p className="text-red-300 mb-4">{error}</p> : null}
+      {error ? (
+        <div className="mb-4">
+          <ErrorState message={error} onRetry={() => void load()} />
+        </div>
+      ) : null}
 
-      {data ? (
+      {loading && !data ? (
+        <LoadingState label="Loading live team data..." />
+      ) : data ? (
         <div className="grid gap-4">
           <section className={cardClass}>
             <p className="text-sm text-white/75 mb-2">Entry #{data.entry_id} • GW {data.gameweek}</p>
@@ -219,6 +226,12 @@ export default function LivePage() {
             </div>
           </section>
         </div>
+      ) : !loading && !error && settings?.fpl_entry_id ? (
+        <EmptyState 
+          title="No live data available yet" 
+          description="Live data might not be available before the gameweek deadline passes."
+          onRetry={() => void load()}
+        />
       ) : null}
     </main>
   );
