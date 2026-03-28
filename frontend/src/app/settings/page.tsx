@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 
 import { fetchJson } from "@/lib/api";
+import { SetupChecklist } from "@/components/setup-checklist";
 
 type AppSettings = {
   scope: string;
@@ -19,8 +21,13 @@ export default function SettingsPage() {
   const [rivalEntryId, setRivalEntryId] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [weeklyLoaded, setWeeklyLoaded] = useState(false);
 
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      setWeeklyLoaded(localStorage.getItem("fpl_weekly_loaded") === "true");
+    }
+
     fetchJson<AppSettings>(`${API_BASE}/api/fpl/settings`)
       .then((payload) => {
         setSettings(payload);
@@ -49,60 +56,89 @@ export default function SettingsPage() {
 
   return (
     <main className="min-h-screen p-3 sm:p-4 md:p-8 max-w-4xl mx-auto text-white">
-      <h1 className="text-2xl sm:text-2xl sm:text-3xl font-black mb-4">Settings</h1>
+      <div className="flex flex-col gap-6">
+        <header>
+          <h1 className="text-2xl sm:text-2xl sm:text-3xl font-black mb-2">Settings</h1>
+          <p className="text-sm text-white/60">Manage your IDs and app preferences.</p>
+        </header>
 
-      <section className={cardClass}>
-        <p className="text-sm text-white/75 mb-4">
-          Store your IDs once and the app will reuse them across Team, Leagues, and Planner workflows.
-        </p>
+        <SetupChecklist 
+          teamId={settings?.fpl_entry_id || entryId} 
+          rivalId={settings?.rival_entry_id || rivalEntryId} 
+          weeklyLoaded={weeklyLoaded} 
+        />
 
-        {settings ? <p className="text-xs text-white/50 mb-3">Profile scope: {settings.scope}</p> : null}
+        <section className={cardClass}>
+          <p className="text-sm text-white/75 mb-4">
+            Store your IDs once and the app will reuse them across Team, Leagues, and Planner workflows.
+          </p>
 
-        <div className="grid md:grid-cols-2 gap-3">
-          <label className="text-sm text-white/85">
-            FPL Team ID
-            <input
-              value={entryId}
-              onChange={(e) => setEntryId(e.target.value.replace(/\D/g, ""))}
-              className="w-full mt-1 rounded-md h-10 px-3 bg-black/30 border border-white/20"
-              inputMode="numeric"
-              placeholder="e.g. 538572"
-            />
-          </label>
+          {settings ? <p className="text-xs text-white/50 mb-3">Profile scope: {settings.scope}</p> : null}
 
-          <label className="text-sm text-white/85 md:col-span-2">
-            Rival Team ID (optional)
-            <input
-              value={rivalEntryId}
-              onChange={(e) => setRivalEntryId(e.target.value.replace(/\D/g, ""))}
-              className="w-full mt-1 rounded-md h-10 px-3 bg-black/30 border border-white/20"
-              inputMode="numeric"
-              placeholder="Used by Planner > Rival Intelligence"
-            />
-          </label>
-        </div>
+          <div className="grid md:grid-cols-2 gap-3">
+            <label className="text-sm text-white/85">
+              FPL Team ID
+              <input
+                value={entryId}
+                onChange={(e) => setEntryId(e.target.value.replace(/\D/g, ""))}
+                className="w-full mt-1 rounded-md h-10 px-3 bg-black/30 border border-white/20"
+                inputMode="numeric"
+                placeholder="e.g. 538572"
+              />
+            </label>
 
-        {!entryId && (
-          <div className="flex items-center gap-2 text-amber-300 mt-4 p-3 border border-amber-300/30 rounded-lg bg-amber-300/5">
-            <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current">
-              <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
-            </svg>
-            <p className="text-sm font-medium">Please set your FPL Team ID to enable automated insights and team import.</p>
+            <label className="text-sm text-white/85 md:col-span-2">
+              Rival Team ID (optional)
+              <input
+                value={rivalEntryId}
+                onChange={(e) => setRivalEntryId(e.target.value.replace(/\D/g, ""))}
+                className="w-full mt-1 rounded-md h-10 px-3 bg-black/30 border border-white/20"
+                inputMode="numeric"
+                placeholder="Used by Planner > Rival Intelligence"
+              />
+            </label>
           </div>
-        )}
 
-        {error ? <p className="text-red-300 mt-3">{error}</p> : null}
+          {!entryId && (
+            <div className="flex items-center gap-2 text-amber-300 mt-4 p-3 border border-amber-300/30 rounded-lg bg-amber-300/5">
+              <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current">
+                <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
+              </svg>
+              <p className="text-sm font-medium">Please set your FPL Team ID to enable automated insights and team import.</p>
+            </div>
+          )}
 
-        <div className="mt-4">
-          <button
-            onClick={save}
-            disabled={saving}
-            className="px-4 h-10 rounded-md bg-[#00ff87] text-[#37003c] font-bold disabled:opacity-60 w-full sm:w-auto"
-          >
-            {saving ? "Saving..." : "Save Settings"}
-          </button>
-        </div>
-      </section>
+          {error ? <p className="text-red-300 mt-3">{error}</p> : null}
+
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button
+              onClick={save}
+              disabled={saving}
+              className="px-4 h-10 rounded-md bg-[#00ff87] text-[#37003c] font-bold disabled:opacity-60 w-full sm:w-auto"
+            >
+              {saving ? "Saving..." : "Save Settings"}
+            </button>
+
+            {settings?.fpl_entry_id && (
+              <Link
+                href="/weekly"
+                className="px-4 h-10 rounded-md border border-white/20 text-white font-bold flex items-center justify-center hover:bg-white/5 w-full sm:w-auto"
+              >
+                Go to Weekly Hub
+              </Link>
+            )}
+            
+            {settings?.fpl_entry_id && settings?.rival_entry_id && (
+              <Link
+                href="/planner"
+                className="px-4 h-10 rounded-md border border-white/20 text-white font-bold flex items-center justify-center hover:bg-white/5 w-full sm:w-auto"
+              >
+                Open Planner
+              </Link>
+            )}
+          </div>
+        </section>
+      </div>
     </main>
   );
 }

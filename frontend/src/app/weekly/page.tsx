@@ -13,6 +13,7 @@ type AppSettings = {
   fpl_entry_id: number | null;
   entry_name?: string | null;
   player_name?: string | null;
+  rival_entry_id: number | null;
 };
 
 type GameweekStatus = {
@@ -322,6 +323,9 @@ export default function WeeklyPage() {
       setData(hub);
       setPerformance(perf);
       setGwStatus(status);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("fpl_weekly_loaded", "true");
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load Gameweek Hub");
     } finally {
@@ -429,6 +433,20 @@ export default function WeeklyPage() {
                   <span className="text-[10px] text-white/40 mt-1 uppercase font-medium">
                     Updated: {new Date(data.generated_at).toLocaleString(undefined, { timeZoneName: "short" })}
                   </span>
+                )}
+                {!settings.rival_entry_id && (
+                  <Link 
+                    href="/settings" 
+                    className="mt-2 text-xs font-semibold text-amber-300/80 hover:text-amber-200 flex items-center gap-1.5 p-2 rounded-lg border border-amber-300/20 bg-amber-300/5 max-w-fit"
+                  >
+                    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current">
+                      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z" />
+                    </svg>
+                    Setup Rival ID for competitive intelligence
+                    <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M5 12h14M12 5l7 7-7 7" />
+                    </svg>
+                  </Link>
                 )}
               </div>
             ) : (

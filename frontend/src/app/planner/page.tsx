@@ -180,6 +180,20 @@ export default function PlannerPage() {
                     Updated: {new Date(chip.generated_at).toLocaleString(undefined, { timeZoneName: "short" })}
                   </span>
                 )}
+                {!settings.rival_entry_id && (
+                  <Link 
+                    href="/settings" 
+                    className="mt-2 text-xs font-semibold text-amber-300/80 hover:text-amber-200 flex items-center gap-1.5 p-2 rounded-lg border border-amber-300/20 bg-amber-300/5 max-w-fit"
+                  >
+                    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current">
+                      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z" />
+                    </svg>
+                    Setup Rival ID for competitive intelligence
+                    <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M5 12h14M12 5l7 7-7 7" />
+                    </svg>
+                  </Link>
+                )}
               </div>
             ) : (
               <div className="flex items-center gap-2 text-amber-300">
