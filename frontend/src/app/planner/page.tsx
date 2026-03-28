@@ -168,15 +168,15 @@ export default function PlannerPage() {
           <div>
             {settings?.fpl_entry_id ? (
               <div className="flex flex-col">
-                <span className="text-xs text-white/50 uppercase tracking-wider font-bold">FPL Team</span>
+                <span className="text-xs text-white/70 uppercase tracking-wider font-bold">FPL Team</span>
                 <span className="text-lg font-bold text-[#00ff87]">
                   {settings.entry_name || `Entry #${settings.fpl_entry_id}`}
                 </span>
                 {settings.player_name && (
-                  <span className="text-sm text-white/70 italic">{settings.player_name}</span>
+                  <span className="text-sm text-white/80 italic">{settings.player_name}</span>
                 )}
                 {chip?.generated_at && (
-                  <span className="text-[10px] text-white/40 mt-1 uppercase font-medium">
+                  <span className="text-[10px] text-white/65 mt-1 uppercase font-medium">
                     Updated: {new Date(chip.generated_at).toLocaleString(undefined, { timeZoneName: "short" })}
                   </span>
                 )}
@@ -333,35 +333,35 @@ export default function PlannerPage() {
 
       <section className={`${cardClass} mt-4`}>
         <h2 className="font-semibold text-[#00ff87] mb-2">Rival Intelligence</h2>
-        <div className="grid sm:flex gap-2 mb-3 items-end">
+        <div className="grid sm:flex gap-3 mb-4 items-end">
           <div className="flex-1">
-            <label className="block text-xs text-white/50 mb-1 uppercase font-bold tracking-wider">Your Team</label>
+            <label className="block text-xs text-white/75 mb-1.5 uppercase font-bold tracking-wider">Your Team</label>
             {settings?.fpl_entry_id ? (
               <div className="rounded-md h-10 px-3 bg-white/5 border border-white/10 flex items-center">
-                <span className="text-sm font-medium truncate">{settings.entry_name || settings.fpl_entry_id}</span>
+                <span className="text-sm font-medium truncate text-white">{settings.entry_name || settings.fpl_entry_id}</span>
               </div>
             ) : (
               <input
                 value={entryId}
                 onChange={(e) => setEntryId(e.target.value.replace(/\D/g, ""))}
                 placeholder="Your Team ID"
-                className="rounded-md h-10 px-3 bg-black/30 border border-white/20 w-full"
+                className="rounded-md h-10 px-3 bg-black/30 border border-white/20 w-full text-white"
               />
             )}
           </div>
           <div className="flex-1">
-            <label className="block text-xs text-white/50 mb-1 uppercase font-bold tracking-wider">Rival Team ID</label>
+            <label className="block text-xs text-white/75 mb-1.5 uppercase font-bold tracking-wider">Rival Team ID</label>
             <input
               value={rivalEntryId}
               onChange={(e) => setRivalEntryId(e.target.value.replace(/\D/g, ""))}
               placeholder="e.g. 123456"
-              className="rounded-md h-10 px-3 bg-black/30 border border-white/20 w-full"
+              className="rounded-md h-10 px-3 bg-black/30 border border-white/20 w-full text-white placeholder:text-white/30"
             />
           </div>
           <button
             onClick={() => void loadRival()}
             disabled={loadingRival || !rivalEntryId}
-            className="px-6 h-10 rounded-md bg-[#00ff87] text-[#37003c] font-bold disabled:opacity-60 transition-all hover:scale-[1.02] active:scale-[0.98]"
+            className="px-6 h-10 rounded-md bg-[#00ff87] text-[#37003c] font-black disabled:opacity-60 transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-[#00ff87]/10"
           >
             {loadingRival ? "Comparing..." : "Compare"}
           </button>
