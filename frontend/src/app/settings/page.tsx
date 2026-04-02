@@ -45,7 +45,7 @@ export default function SettingsPage() {
       if (entryId) qs.set("fpl_entry_id", entryId);
       if (rivalEntryId) qs.set("rival_entry_id", rivalEntryId);
 
-      const payload = await fetchJson<AppSettings>(`${API_BASE}/api/fpl/settings?${qs.toString()}`, { method: "POST" });
+      const payload = await fetchJson<AppSettings>(`${API_BASE}/internal/settings?${qs.toString()}`, { method: "POST" });
       setSettings(payload);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to save settings");
