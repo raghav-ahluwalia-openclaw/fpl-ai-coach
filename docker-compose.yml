@@ -6,9 +6,12 @@ services:
     environment:
       POSTGRES_DB: fpl
       POSTGRES_USER: fpl
-      POSTGRES_PASSWORD: fpl
-    ports:
-      - "5432:5432"
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+    # Security: Database port is not exposed by default to host to prevent external access.
+    # For local development, use 'docker-compose up' and connect within the network,
+    # or uncomment the ports section below if you explicitly need host access.
+    # ports:
+    #   - "5432:5432"
     volumes:
       - fpl_pg_data:/var/lib/postgresql/data
 

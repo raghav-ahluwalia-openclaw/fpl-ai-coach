@@ -109,6 +109,8 @@ async def lifespan(app: FastAPI):
 # =============================================================================
 # Application Factory
 # =============================================================================
+# Security: API docs are disabled by default in production.
+# Explicitly set ENABLE_API_DOCS=true in .env to override.
 enable_api_docs = os.getenv("ENABLE_API_DOCS", "1" if ENVIRONMENT != "production" else "0").strip().lower() in {
     "1",
     "true",
