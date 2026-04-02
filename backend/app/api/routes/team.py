@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+import json
 from datetime import datetime, timezone
 from itertools import combinations
 from statistics import median
@@ -10,6 +11,7 @@ from fastapi import Depends, HTTPException, Query
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.security import rate_limit_write_ops, require_authenticated
+from app.db.models import RecommendationSnapshot
 
 from .base import (
     POSITION_MAP,
@@ -987,6 +989,172 @@ def weekly_cockpit(
             "double_flags_next_3": sum(1 for p in squad_players if _fixture_window_next_3(p)["doubles"] > 0),
         }
 
+        # Explainability v2: persist current recommendation snapshot and diff with previous run.
+        now_iso = datetime.now(timezone.utc).isoformat()
+        primary_transfer_plan = (one_ft_plans[:1] + two_ft_plans[:1])
+        primary_transfer = (primary_transfer_plan[0].get("transfers") or [{}])[0] if primary_transfer_plan else {}
+
+        def _as_float(v, default: float = 0.0) -> float:
+            try:
+                return float(v)
+            except Exception:  # noqa: BLE001
+                return default
+
+        current_snapshot = {
+            "captain": (safe_caps[0].get("name") if safe_caps else None),
+            "vice_captain": (safe_caps[1].get("name") if len(safe_caps) > 1 else None),
+            "transfer_out": primary_transfer.get("out"),
+            "transfer_in": primary_transfer.get("in"),
+            "confidence": round(confidence, 3),
+            "factors": {
+                "captain_projected_points_3": _as_float((safe_caps[0] if safe_caps else {}).get("projected_points_3"), 0.0),
+                "captain_ownership_pct": _as_float((safe_caps[0] if safe_caps else {}).get("ownership_pct"), 0.0),
+                "transfer_net_gain_3": _as_float((primary_transfer_plan[0] if primary_transfer_plan else {}).get("net_gain_3"), 0.0),
+                "transfer_risk_score": _as_float((primary_transfer_plan[0] if primary_transfer_plan else {}).get("risk_score"), 0.0),
+                "lineup_gain_3": _as_float(lineup_optimizer.get("expected_gain_vs_current_xi_3"), 0.0),
+                "squad_blank_flags_next_3": _as_float(squad_window.get("blank_flags_next_3"), 0.0),
+                "squad_double_flags_next_3": _as_float(squad_window.get("double_flags_next_3"), 0.0),
+            },
+        }
+
+        previous_snapshot_row = (
+            db.query(RecommendationSnapshot)
+            .filter(
+                RecommendationSnapshot.entry_id == entry_id,
+                RecommendationSnapshot.gameweek == gw,
+                RecommendationSnapshot.mode == mode,
+            )
+            .order_by(RecommendationSnapshot.created_at.desc())
+            .first()
+        )
+
+        previous_snapshot = None
+        if previous_snapshot_row is not None:
+            try:
+                previous_snapshot = {
+                    "captain": previous_snapshot_row.captain,
+                    "vice_captain": previous_snapshot_row.vice_captain,
+                    "transfer_out": previous_snapshot_row.transfer_out,
+                    "transfer_in": previous_snapshot_row.transfer_in,
+                    "confidence": _as_float(previous_snapshot_row.confidence, 0.0),
+                    "factors": json.loads(previous_snapshot_row.factors_json or "{}"),
+                    "generated_at": previous_snapshot_row.created_at.isoformat() if previous_snapshot_row.created_at else None,
+                }
+            except Exception:  # noqa: BLE001
+                previous_snapshot = None
+
+        factor_labels = {
+            "captain_projected_points_3": "Captain projection",
+            "captain_ownership_pct": "Captain ownership",
+            "transfer_net_gain_3": "Transfer gain",
+            "transfer_risk_score": "Transfer risk",
+            "lineup_gain_3": "Lineup gain",
+            "squad_blank_flags_next_3": "Blank flags",
+            "squad_double_flags_next_3": "Double flags",
+        }
+
+        factor_deltas = []
+        captain_changed = False
+        transfer_changed = False
+        confidence_drift = {
+            "previous": None,
+            "current": round(current_snapshot["confidence"], 3),
+            "delta": None,
+            "direction": "unknown",
+        }
+
+        if previous_snapshot is not None:
+            captain_changed = (previous_snapshot.get("captain") or "") != (current_snapshot.get("captain") or "")
+            transfer_changed = (
+                (previous_snapshot.get("transfer_out") or "", previous_snapshot.get("transfer_in") or "")
+                != (current_snapshot.get("transfer_out") or "", current_snapshot.get("transfer_in") or "")
+            )
+
+            prev_conf = _as_float(previous_snapshot.get("confidence"), 0.0)
+            curr_conf = _as_float(current_snapshot.get("confidence"), 0.0)
+            conf_delta = round(curr_conf - prev_conf, 3)
+            confidence_drift = {
+                "previous": round(prev_conf, 3),
+                "current": round(curr_conf, 3),
+                "delta": conf_delta,
+                "direction": "up" if conf_delta > 0 else "down" if conf_delta < 0 else "flat",
+            }
+
+            prev_factors = previous_snapshot.get("factors") or {}
+            curr_factors = current_snapshot.get("factors") or {}
+            for k, curr_val in curr_factors.items():
+                prev_val = _as_float(prev_factors.get(k), 0.0)
+                delta = round(_as_float(curr_val, 0.0) - prev_val, 3)
+                if delta == 0:
+                    continue
+                factor_deltas.append(
+                    {
+                        "key": k,
+                        "label": factor_labels.get(k, k),
+                        "previous": round(prev_val, 3),
+                        "current": round(_as_float(curr_val, 0.0), 3),
+                        "delta": delta,
+                        "direction": "up" if delta > 0 else "down",
+                    }
+                )
+            factor_deltas.sort(key=lambda x: abs(_as_float(x.get("delta"), 0.0)), reverse=True)
+
+        if previous_snapshot is None:
+            summary_reason = "First tracked run for this gameweek and mode; baseline snapshot captured."
+        elif captain_changed or transfer_changed:
+            changed_bits = []
+            if captain_changed:
+                changed_bits.append(f"captain {previous_snapshot.get('captain') or '—'} → {current_snapshot.get('captain') or '—'}")
+            if transfer_changed:
+                changed_bits.append(
+                    f"transfer {(previous_snapshot.get('transfer_out') or '—')}→{(previous_snapshot.get('transfer_in') or '—')} "
+                    f"to {(current_snapshot.get('transfer_out') or '—')}→{(current_snapshot.get('transfer_in') or '—')}"
+                )
+            top_factor = factor_deltas[0]["label"] if factor_deltas else "model factors"
+            summary_reason = f"Recommendation changed: {', '.join(changed_bits)}. Largest driver: {top_factor}."
+        else:
+            summary_reason = "Recommendation stable versus previous run; no captain/transfer change detected."
+
+        explainability_v2 = {
+            "has_previous_snapshot": previous_snapshot is not None,
+            "generated_at": now_iso,
+            "decision_diff": {
+                "captain_changed": captain_changed,
+                "transfer_changed": transfer_changed,
+                "previous": {
+                    "captain": previous_snapshot.get("captain") if previous_snapshot else None,
+                    "vice_captain": previous_snapshot.get("vice_captain") if previous_snapshot else None,
+                    "transfer_out": previous_snapshot.get("transfer_out") if previous_snapshot else None,
+                    "transfer_in": previous_snapshot.get("transfer_in") if previous_snapshot else None,
+                },
+                "current": {
+                    "captain": current_snapshot.get("captain"),
+                    "vice_captain": current_snapshot.get("vice_captain"),
+                    "transfer_out": current_snapshot.get("transfer_out"),
+                    "transfer_in": current_snapshot.get("transfer_in"),
+                },
+            },
+            "confidence_drift": confidence_drift,
+            "factor_deltas": factor_deltas[:4],
+            "summary_reason": summary_reason,
+        }
+
+        # Persist snapshot for future diff calculations.
+        db.add(
+            RecommendationSnapshot(
+                entry_id=entry_id,
+                gameweek=gw,
+                mode=mode,
+                captain=current_snapshot.get("captain"),
+                vice_captain=current_snapshot.get("vice_captain"),
+                transfer_out=current_snapshot.get("transfer_out"),
+                transfer_in=current_snapshot.get("transfer_in"),
+                confidence=current_snapshot.get("confidence"),
+                factors_json=json.dumps(current_snapshot.get("factors") or {}, separators=(",", ":")),
+            )
+        )
+        db.commit()
+
         return {
             "entry_id": entry_id,
             "gameweek": gw,
@@ -1023,6 +1191,7 @@ def weekly_cockpit(
                 "safe": safe_caps,
                 "differential": diff_caps,
             },
+            "explainability_v2": explainability_v2,
             "what_changed": changes,
             "summary": "Gameweek Hub with team health, top transfer plans (1FT/2FT), captain matrix, and latest changes.",
         }

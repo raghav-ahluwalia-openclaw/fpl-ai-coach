@@ -157,6 +157,19 @@ type GameweekHub = {
     safe: CaptainCandidate[];
     differential: CaptainCandidate[];
   };
+  explainability_v2?: {
+    has_previous_snapshot: boolean;
+    generated_at: string;
+    decision_diff: {
+      captain_changed: boolean;
+      transfer_changed: boolean;
+      previous: { captain: string | null; vice_captain: string | null; transfer_out: string | null; transfer_in: string | null };
+      current: { captain: string | null; vice_captain: string | null; transfer_out: string | null; transfer_in: string | null };
+    };
+    confidence_drift: { previous: number | null; current: number; delta: number | null; direction: "up" | "down" | "flat" | "unknown" };
+    factor_deltas: Array<{ key: string; label: string; previous: number; current: number; delta: number; direction: "up" | "down" }>;
+    summary_reason: string;
+  };
   what_changed: Array<Record<string, unknown>>;
 };
 
@@ -164,6 +177,7 @@ const cardClass = "rounded-2xl border border-white/15 bg-white/5 backdrop-blur-m
 
 const sectionTabs = [
   { id: "summary", label: "Summary" },
+  { id: "changes", label: "Changes" },
   { id: "overview", label: "Overview" },
   { id: "performance", label: "Performance" },
   { id: "lineup", label: "Lineup" },
@@ -618,6 +632,55 @@ export default function WeeklyPage() {
                 </div>
               </div>
             </div>
+          </section>
+
+          <section id="changes" className={cardClass}>
+            <h2 className="font-semibold text-[#00ff87] mb-2">What changed since last run</h2>
+            {data.explainability_v2?.has_previous_snapshot ? (
+              <div className="space-y-3 text-sm">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                  <div className="rounded-md border border-white/10 bg-black/20 p-2.5">
+                    <p className="text-white/75">Captain</p>
+                    <p className="text-white/90">
+                      {data.explainability_v2.decision_diff.previous.captain || "—"} → {data.explainability_v2.decision_diff.current.captain || "—"}
+                    </p>
+                  </div>
+                  <div className="rounded-md border border-white/10 bg-black/20 p-2.5">
+                    <p className="text-white/75">Transfer</p>
+                    <p className="text-white/90">
+                      {(data.explainability_v2.decision_diff.previous.transfer_out || "—")}→{(data.explainability_v2.decision_diff.previous.transfer_in || "—")}
+                      {"  "}to{"  "}
+                      {(data.explainability_v2.decision_diff.current.transfer_out || "—")}→{(data.explainability_v2.decision_diff.current.transfer_in || "—")}
+                    </p>
+                  </div>
+                  <div className="rounded-md border border-white/10 bg-black/20 p-2.5">
+                    <p className="text-white/75">Confidence drift</p>
+                    <p className={`font-semibold ${data.explainability_v2.confidence_drift.direction === "up" ? "text-emerald-300" : data.explainability_v2.confidence_drift.direction === "down" ? "text-rose-300" : "text-amber-300"}`}>
+                      {data.explainability_v2.confidence_drift.previous !== null
+                        ? `${Math.round((data.explainability_v2.confidence_drift.previous || 0) * 100)}% → ${Math.round((data.explainability_v2.confidence_drift.current || 0) * 100)}%`
+                        : `${Math.round((data.explainability_v2.confidence_drift.current || 0) * 100)}%`}
+                    </p>
+                  </div>
+                </div>
+
+                {data.explainability_v2.factor_deltas?.length ? (
+                  <div className="flex flex-wrap gap-2">
+                    {data.explainability_v2.factor_deltas.map((f) => (
+                      <span
+                        key={f.key}
+                        className={`text-xs rounded-full px-2 py-1 border ${f.delta >= 0 ? "border-emerald-300/40 text-emerald-200" : "border-rose-300/40 text-rose-200"}`}
+                      >
+                        {f.label} {f.delta >= 0 ? "+" : ""}{f.delta.toFixed(2)}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+
+                <p className="text-white/85">{data.explainability_v2.summary_reason}</p>
+              </div>
+            ) : (
+              <p className="text-sm text-white/80">First tracked run for this gameweek/mode. We’ll show decision diffs after your next refresh.</p>
+            )}
           </section>
 
           {performance?.dashboard_card ? (() => {

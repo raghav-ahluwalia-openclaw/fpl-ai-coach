@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, Column, DateTime, Float, Index, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, Float, Index, Integer, String, Text, UniqueConstraint
 
 from app.db import Base
 
@@ -113,4 +113,29 @@ class PlayerPrediction(Base):
     actual_points = Column(Integer, nullable=True)
     prediction_error = Column(Float, nullable=True)
     
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+
+
+class RecommendationSnapshot(Base):
+    """Persist recommendation snapshots to support explainability diffs between runs."""
+
+    __tablename__ = "recommendation_snapshots"
+    __table_args__ = (
+        Index("ix_reco_snapshots_entry_gw_mode_created", "entry_id", "gameweek", "mode", "created_at"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    entry_id = Column(Integer, nullable=False)
+    gameweek = Column(Integer, nullable=False)
+    mode = Column(String, nullable=False, default="balanced")
+
+    captain = Column(String, nullable=True)
+    vice_captain = Column(String, nullable=True)
+    transfer_out = Column(String, nullable=True)
+    transfer_in = Column(String, nullable=True)
+    confidence = Column(Float, nullable=True)
+
+    # JSON-encoded lightweight factor payload used for delta calculations.
+    factors_json = Column(Text, nullable=False, default="{}")
+
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
