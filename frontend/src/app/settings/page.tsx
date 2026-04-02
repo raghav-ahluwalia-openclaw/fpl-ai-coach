@@ -28,7 +28,7 @@ export default function SettingsPage() {
       setWeeklyLoaded(localStorage.getItem("fpl_weekly_loaded") === "true");
     }
 
-    fetchJson<AppSettings>(`${API_BASE}/api/fpl/settings`)
+    fetchJson<AppSettings>(`${API_BASE}/internal/settings`)
       .then((payload) => {
         setSettings(payload);
         setEntryId(payload.fpl_entry_id ? String(payload.fpl_entry_id) : "");

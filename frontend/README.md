@@ -40,4 +40,4 @@ For full-stack setup and backend instructions, see the repo root `README.md`.
 
 - `BACKEND_ORIGIN`: URL of the backend API (default: `http://127.0.0.1:8000`).
 - `FPL_ADMIN_API_KEY`: (Server-side only) Required for the socials refresh proxy.
-- `FPL_API_KEY` (or `API_KEY`): (Server-side only) Used by `/internal/settings` proxy for authorizing settings write operations to the backend.
+- `FPL_API_KEY` (or `API_KEY`): (Server-side only) Used by `/internal/settings` (read/write) and `/internal/team/:entry_id/import` proxies for backend authorization.
