@@ -1693,6 +1693,104 @@ def team_live_view(
                 }
             )
 
+        # Live rank context (best-effort; fail soft when upstream data is unavailable)
+        rank_context = {
+            "current_overall_rank": None,
+            "reference_overall_rank": None,
+            "rank_delta": None,
+            "direction": "unknown",
+            "source": "unavailable",
+        }
+        try:
+            entry_summary = fetch_json(
+                f"https://fantasy.premierleague.com/api/entry/{entry_id}/",
+                timeout=20,
+                upstream_error_prefix="Could not fetch entry summary",
+            )
+            current_rank = _int(entry_summary.get("summary_overall_rank"), 0)
+
+            history_payload = fetch_json(
+                f"https://fantasy.premierleague.com/api/entry/{entry_id}/history/",
+                timeout=20,
+                upstream_error_prefix="Could not fetch entry rank history",
+            )
+            current_rows = history_payload.get("current", []) or []
+            current_rows = [r for r in current_rows if _int(r.get("event"), 0) > 0 and _int(r.get("overall_rank"), 0) > 0]
+            current_rows.sort(key=lambda r: _int(r.get("event"), 0))
+
+            reference_rank = None
+            for r in reversed(current_rows):
+                ev = _int(r.get("event"), 0)
+                if ev < resolved_gw:
+                    reference_rank = _int(r.get("overall_rank"), 0)
+                    break
+            if not reference_rank and current_rows:
+                reference_rank = _int(current_rows[-1].get("overall_rank"), 0)
+
+            rank_delta = None
+            direction = "unknown"
+            if current_rank > 0 and reference_rank and reference_rank > 0:
+                # Positive delta means rank improved (numerically lower rank)
+                rank_delta = reference_rank - current_rank
+                if rank_delta > 0:
+                    direction = "up"
+                elif rank_delta < 0:
+                    direction = "down"
+                else:
+                    direction = "flat"
+
+            rank_context = {
+                "current_overall_rank": current_rank if current_rank > 0 else None,
+                "reference_overall_rank": reference_rank if reference_rank and reference_rank > 0 else None,
+                "rank_delta": rank_delta,
+                "direction": direction,
+                "source": "fpl_entry_summary+history",
+            }
+        except Exception:  # noqa: BLE001
+            pass
+
+        # Mini-league movement context (best-effort)
+        mini_league_context = {
+            "league_id": None,
+            "league_name": None,
+            "league_type": None,
+            "current_rank": None,
+            "reference_rank": None,
+            "rank_delta": None,
+            "direction": "unknown",
+            "source": "unavailable",
+        }
+        try:
+            leagues_payload = team_leagues(entry_id)
+            leagues = leagues_payload.get("leagues", []) if isinstance(leagues_payload, dict) else []
+            # Prefer classic mini-league context first, then fallback to any available league.
+            chosen = next((l for l in leagues if str(l.get("type")) == "classic"), None) or (leagues[0] if leagues else None)
+            if chosen:
+                current_rank = _int(chosen.get("your_rank"), 0)
+                reference_rank = _int(chosen.get("last_rank"), 0)
+                rank_delta = chosen.get("rank_delta")
+                direction = "unknown"
+                if isinstance(rank_delta, int):
+                    if rank_delta > 0:
+                        direction = "up"
+                    elif rank_delta < 0:
+                        direction = "down"
+                    else:
+                        direction = "flat"
+
+                mini_league_context = {
+                    "league_id": _int(chosen.get("league_id"), 0) or None,
+                    "league_name": chosen.get("name"),
+                    "league_type": chosen.get("type"),
+                    "current_rank": current_rank if current_rank > 0 else None,
+                    "reference_rank": reference_rank if reference_rank > 0 else None,
+                    "rank_delta": rank_delta if isinstance(rank_delta, int) else None,
+                    "direction": direction,
+                    "source": "league_standings",
+                }
+        except Exception:  # noqa: BLE001
+            pass
+
         return {
             "entry_id": entry_id,
             "gameweek": resolved_gw,
@@ -1704,6 +1802,8 @@ def team_live_view(
             },
             "captain": captain,
             "vice_captain": vice_captain,
+            "rank_context": rank_context,
+            "mini_league_context": mini_league_context,
             "players": rows,
         }
     finally:

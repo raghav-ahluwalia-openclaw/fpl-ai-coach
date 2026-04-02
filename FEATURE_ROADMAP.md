@@ -153,10 +153,13 @@
    - Request middleware adds timing + request id (`x-request-id`) and structured log line per request.
    - New diagnostics endpoint: `GET /api/fpl/diagnostics` with data freshness + quick fix hints.
 
-### Next high-ROI items
-
 3. Live rank + mini-league delta tracker
-   - Estimate live rank swing and mini-league position movement during GW.
+   - Extended `GET /api/fpl/team/{entry_id}/live` with:
+     - `rank_context` (current rank, reference rank, delta, direction)
+     - `mini_league_context` (league rank movement + direction)
+   - Frontend `/live` now shows rank movement cards with clear up/down/flat indicators.
+
+### Next high-ROI items
 
 4. Smart alerting engine v2
    - Goal alerts (captain haul, rival swing, bench haul risk, injury/sub confirmations).
@@ -174,7 +177,7 @@
 
 - **P4.1 (done):** Live Team View MVP (`/api/fpl/team/{entry_id}/live`, `/live` page).
 - **P4.2 (done):** Logging + diagnostics baseline (`x-request-id`, request timing logs, `/api/fpl/diagnostics`).
-- **P4.3 (next):** Live rank + mini-league delta tracker.
+- **P4.3 (done):** Live rank + mini-league delta tracker (`rank_context`, `mini_league_context`, `/live` movement cards).
 - **P4.4:** Smart alerting engine v2 (captain haul, rival swing, bench haul risk, injury/sub confirmations).
 - **P4.5:** Explainability v2 (why recommendation changed + confidence drift).
 - **P4.6:** Simulation lab (Monte Carlo outcome bands for captain + transfer decisions).
@@ -182,11 +185,10 @@
 
 ### Suggested implementation order (highest ROI first)
 
-1. P4.3 Live rank + mini-league delta tracker
-2. P4.4 Smart alerting engine v2
-3. P4.5 Explainability v2
-4. P4.6 Simulation lab
-5. P4.7 Retention loop
+1. P4.4 Smart alerting engine v2
+2. P4.5 Explainability v2
+3. P4.6 Simulation lab
+4. P4.7 Retention loop
 
 ---
 
