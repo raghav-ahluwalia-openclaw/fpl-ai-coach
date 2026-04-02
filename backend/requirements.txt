@@ -14,7 +14,7 @@ alembic==1.14.0
 
 # HTTP clients
 httpx==0.28.1
-requests==2.32.5
+requests==2.33.1
 
 # ML & Data
 xgboost==3.2.0
