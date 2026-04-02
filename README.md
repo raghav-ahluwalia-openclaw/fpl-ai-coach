@@ -168,6 +168,25 @@ Key API routes:
 
 ---
 
+## Security Runbook (Production)
+
+Before deploying to production, follow these hardening steps:
+
+### 1. Rotate Credentials
+- **DB Password**: Set a strong `POSTGRES_PASSWORD` in your `.env`.
+- **Secret Key**: Generate a new `SECRET_KEY` (e.g., `openssl rand -hex 32`).
+- **API Tokens**: Set `API_KEY` and `ADMIN_API_KEY` to long, random strings.
+
+### 2. Configure Environment
+- **ENVIRONMENT**: Set `ENVIRONMENT=production` in your `.env`.
+- **CORS**: Set `CORS_ORIGINS` to your frontend domain (e.g., `https://fpl.yourdomain.com`).
+- **API Docs**: API docs (`/docs`) are disabled by default in production. Set `ENABLE_API_DOCS=true` only if debugging.
+
+### 3. Frontend Safety
+- **Secrets**: NEVER use `NEXT_PUBLIC_` prefix for backend secrets (API keys, etc.) in the frontend. Frontend should only call backend via the `/api/` rewrite.
+
+---
+
 ## Validation and quality
 
 Run full local validation:
