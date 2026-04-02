@@ -35,10 +35,41 @@ type LivePayload = {
   };
   captain: { name: string; base_points: number; multiplier: number; live_points: number } | null;
   vice_captain: { name: string; base_points: number; multiplier: number; live_points: number } | null;
+  rank_context?: {
+    current_overall_rank: number | null;
+    reference_overall_rank: number | null;
+    rank_delta: number | null;
+    direction: "up" | "down" | "flat" | "unknown";
+    source: string;
+  };
+  mini_league_context?: {
+    league_id: number | null;
+    league_name: string | null;
+    league_type: string | null;
+    current_rank: number | null;
+    reference_rank: number | null;
+    rank_delta: number | null;
+    direction: "up" | "down" | "flat" | "unknown";
+    source: string;
+  };
   players: LivePlayer[];
 };
 
 const cardClass = "rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md p-4 md:p-5";
+
+function directionTone(direction?: string): string {
+  if (direction === "up") return "text-emerald-300";
+  if (direction === "down") return "text-rose-300";
+  if (direction === "flat") return "text-amber-300";
+  return "text-white/75";
+}
+
+function directionLabel(direction?: string): string {
+  if (direction === "up") return "▲ Up";
+  if (direction === "down") return "▼ Down";
+  if (direction === "flat") return "▷ Flat";
+  return "—";
+}
 
 export default function LivePage() {
   const [teamId, setTeamId] = useState("");
@@ -173,7 +204,7 @@ export default function LivePage() {
         <div className="grid gap-4">
           <section className={cardClass}>
             <p className="text-sm text-white/75 mb-2">Entry #{data.entry_id} • GW {data.gameweek}</p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm mb-3">
               <div className="rounded-md border border-white/10 bg-black/20 p-3">
                 <p className="text-white/70">Live total</p>
                 <p className="text-2xl font-bold text-[#00ff87]">{data.live_summary.total_live_points}</p>
@@ -185,6 +216,41 @@ export default function LivePage() {
               <div className="rounded-md border border-white/10 bg-black/20 p-3">
                 <p className="text-white/70">Bench</p>
                 <p className="text-xl font-semibold">{data.live_summary.bench_live_points}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+              <div className="rounded-md border border-white/10 bg-black/20 p-3">
+                <p className="text-white/75">Overall rank movement</p>
+                <p className="text-white/90 mt-1">
+                  Current: <strong>{data.rank_context?.current_overall_rank?.toLocaleString() ?? "—"}</strong>
+                </p>
+                <p className="text-white/80 text-xs mt-1">
+                  Reference: {data.rank_context?.reference_overall_rank?.toLocaleString() ?? "—"}
+                </p>
+                <p className={`font-semibold mt-1 ${directionTone(data.rank_context?.direction)}`}>
+                  {directionLabel(data.rank_context?.direction)}
+                  {typeof data.rank_context?.rank_delta === "number"
+                    ? ` (${Math.abs(data.rank_context.rank_delta).toLocaleString()})`
+                    : ""}
+                </p>
+              </div>
+
+              <div className="rounded-md border border-white/10 bg-black/20 p-3">
+                <p className="text-white/75">Mini-league movement</p>
+                <p className="text-white/90 mt-1 truncate">
+                  {data.mini_league_context?.league_name || "League data unavailable"}
+                </p>
+                <p className="text-white/80 text-xs mt-1">
+                  Rank: {data.mini_league_context?.current_rank ?? "—"}
+                  {data.mini_league_context?.reference_rank ? ` (was ${data.mini_league_context.reference_rank})` : ""}
+                </p>
+                <p className={`font-semibold mt-1 ${directionTone(data.mini_league_context?.direction)}`}>
+                  {directionLabel(data.mini_league_context?.direction)}
+                  {typeof data.mini_league_context?.rank_delta === "number"
+                    ? ` (${Math.abs(data.mini_league_context.rank_delta)})`
+                    : ""}
+                </p>
               </div>
             </div>
           </section>
