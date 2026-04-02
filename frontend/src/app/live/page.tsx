@@ -48,7 +48,7 @@ export default function LivePage() {
   const [data, setData] = useState<LivePayload | null>(null);
 
   useEffect(() => {
-    fetchJson<AppSettings>("/api/fpl/settings")
+    fetchJson<AppSettings>("/internal/settings", { cacheMode: "no-store" })
       .then((s) => {
         setSettings(s);
         if (s.fpl_entry_id) setTeamId(String(s.fpl_entry_id));

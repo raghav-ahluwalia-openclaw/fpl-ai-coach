@@ -312,7 +312,7 @@ export default function WeeklyPage() {
     try {
       if (forceImport) {
         // Heavy operation; run only on explicit refresh.
-        await fetchJson(`/api/fpl/team/${id}/import`, { method: "POST", cacheMode: "no-store" });
+        await fetchJson(`/internal/team/${id}/import`, { method: "POST", cacheMode: "no-store" });
       }
 
       const [hub, perf, status] = await Promise.all([
@@ -340,7 +340,7 @@ export default function WeeklyPage() {
     (async () => {
       try {
         const [s, status] = await Promise.all([
-          fetchJson<AppSettings>("/api/fpl/settings", { cacheMode: "force-cache" }),
+          fetchJson<AppSettings>("/internal/settings", { cacheMode: "no-store" }),
           fetchJson<GameweekStatus>("/api/fpl/gameweek-status", { cacheMode: "force-cache" }),
         ]);
         if (canceled) return;

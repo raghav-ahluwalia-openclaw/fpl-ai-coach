@@ -120,7 +120,7 @@ export default function LeaguesPage() {
   const hasAutoRun = useRef(false);
 
   useEffect(() => {
-    fetchJson<AppSettings>("/api/fpl/settings")
+    fetchJson<AppSettings>("/internal/settings", { cacheMode: "no-store" })
       .then((s) => {
         setSettings(s);
         if (s.fpl_entry_id) {

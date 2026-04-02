@@ -128,7 +128,7 @@ export default function TopPage() {
   }, [limit, posFilter, reloadNonce]);
 
   useEffect(() => {
-    fetchJson<AppSettings>(`${API_BASE}/api/fpl/settings`, { cacheMode: "force-cache" })
+    fetchJson<AppSettings>(`${API_BASE}/internal/settings`, { cacheMode: "no-store" })
       .then(async (s) => {
         if (!s.fpl_entry_id) return;
         try {

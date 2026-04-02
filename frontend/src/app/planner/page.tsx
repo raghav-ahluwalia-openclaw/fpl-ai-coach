@@ -94,7 +94,7 @@ export default function PlannerPage() {
   const [loadingRival, setLoadingRival] = useState(false);
 
   useEffect(() => {
-    fetchJson<AppSettings>(`${API_BASE}/api/fpl/settings`)
+    fetchJson<AppSettings>(`${API_BASE}/internal/settings`, { cacheMode: "no-store" })
       .then((s) => {
         setSettings(s);
         if (s.fpl_entry_id) setEntryId(String(s.fpl_entry_id));

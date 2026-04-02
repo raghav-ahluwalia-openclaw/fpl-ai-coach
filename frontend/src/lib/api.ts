@@ -26,10 +26,6 @@ export type FetchJsonOptions = RequestInit & {
 
 export async function fetchJson<T>(input: string, init?: FetchJsonOptions): Promise<T> {
   const headers = new Headers(init?.headers);
-  const apiKey = process.env.NEXT_PUBLIC_FPL_API_KEY;
-  if (apiKey && !headers.has("X-API-Key")) {
-    headers.set("X-API-Key", apiKey);
-  }
 
   const { cacheMode, ...rest } = init ?? {};
 
