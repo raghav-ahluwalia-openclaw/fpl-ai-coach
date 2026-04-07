@@ -5,6 +5,7 @@ import Link from "next/link";
 
 import { fetchJson } from "@/lib/api";
 import { SetupChecklist } from "@/components/setup-checklist";
+import { LoadingState, ErrorState, EmptyState } from "@/components/ui-state";
 
 type AppSettings = {
   scope: string;
@@ -20,6 +21,7 @@ export default function SettingsPage() {
   const [entryId, setEntryId] = useState("");
   const [rivalEntryId, setRivalEntryId] = useState("");
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [weeklyLoaded, setWeeklyLoaded] = useState(false);
 
@@ -33,8 +35,10 @@ export default function SettingsPage() {
         setSettings(payload);
         setEntryId(payload.fpl_entry_id ? String(payload.fpl_entry_id) : "");
         setRivalEntryId(payload.rival_entry_id ? String(payload.rival_entry_id) : "");
+        setError(null);
       })
-      .catch((e) => setError(e.message || "Failed to load settings"));
+      .catch((e) => setError(e.message || "Failed to load settings"))
+      .finally(() => setLoading(false));
   }, []);
 
   async function save() {
@@ -62,13 +66,32 @@ export default function SettingsPage() {
           <p className="text-sm text-white/60">Manage your IDs and app preferences.</p>
         </header>
 
-        <SetupChecklist 
-          teamId={settings?.fpl_entry_id || entryId} 
-          rivalId={settings?.rival_entry_id || rivalEntryId} 
-          weeklyLoaded={weeklyLoaded} 
-        />
+        {loading ? (
+          <LoadingState label="Loading settings..." className="animate-slide-up" />
+        ) : null}
 
-        <section className={cardClass}>
+        {!loading && error ? (
+          <ErrorState message={error} onRetry={() => window.location.reload()} className="animate-slide-up" />
+        ) : null}
+
+        {!loading && !error && !settings ? (
+          <EmptyState
+            title="No settings found"
+            description="Could not load your profile settings right now."
+            onRetry={() => window.location.reload()}
+            className="animate-slide-up"
+          />
+        ) : null}
+
+        {!loading && !error ? (
+          <SetupChecklist
+            teamId={settings?.fpl_entry_id || entryId}
+            rivalId={settings?.rival_entry_id || rivalEntryId}
+            weeklyLoaded={weeklyLoaded}
+          />
+        ) : null}
+
+        <section className={`${cardClass} animate-fade-in`}>
           <p className="text-sm text-white/75 mb-4">
             Store your IDs once and the app will reuse them across Team, Leagues, and Planner workflows.
           </p>
@@ -107,8 +130,6 @@ export default function SettingsPage() {
               <p className="text-sm font-medium">Please set your FPL Team ID to enable automated insights and team import.</p>
             </div>
           )}
-
-          {error ? <p className="text-red-300 mt-3">{error}</p> : null}
 
           <div className="mt-4 flex flex-wrap gap-3">
             <button

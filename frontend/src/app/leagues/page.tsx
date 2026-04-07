@@ -275,15 +275,15 @@ export default function LeaguesPage() {
       </section>
 
       {error ? (
-        <div className="mb-4">
-          <ErrorState message={error} onRetry={() => void run()} />
+        <div className="mb-4 transition-opacity duration-200 ease-out">
+          <ErrorState message={error} onRetry={() => void run()} className="animate-slide-up" />
         </div>
       ) : null}
 
       {loading && !data ? (
-        <LoadingState label="Calculating league standings and ranks..." />
+        <LoadingState label="Calculating league standings and ranks..." className="animate-slide-up" />
       ) : data ? (
-        <div className="grid gap-4">
+        <div className="grid gap-4 animate-fade-in">
           <section className={cardClass}>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
               <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2">
@@ -472,10 +472,11 @@ export default function LeaguesPage() {
           </section>
         </div>
       ) : !loading && !error && settings?.fpl_entry_id ? (
-        <EmptyState 
-          title="No league data found" 
+        <EmptyState
+          title="No league data found"
           description="We couldn't find any leagues for this team ID."
           onRetry={() => void run()}
+          className="animate-slide-up"
         />
       ) : null}
     </main>

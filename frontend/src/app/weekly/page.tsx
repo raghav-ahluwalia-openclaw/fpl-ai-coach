@@ -4,7 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 import { fetchJson } from "@/lib/api";
-import { EmptyState, ErrorState, LoadingState } from "@/components/ui-state";
+import { ErrorState, LoadingState } from "@/components/ui-state";
+import { MetricCard } from "@/components/ui/MetricCard";
+import { ConfidenceMeter } from "@/components/ui/ConfidenceMeter";
+import { DeltaChip } from "@/components/ui/DeltaChip";
+import { RiskPill } from "@/components/ui/RiskPill";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 type Mode = "safe" | "balanced" | "aggressive";
 type XpView = "1gw" | "3gw";
@@ -557,7 +562,14 @@ export default function WeeklyPage() {
           <EmptyState
             title="No gameweek data yet"
             description="Tap retry or use refresh to pull latest squad + projections."
-            onRetry={retryLoad}
+            action={
+              <button 
+                onClick={retryLoad}
+                className="px-4 py-2 bg-primary text-background font-bold rounded-lg hover:bg-primary-dark transition-colors"
+              >
+                Retry Load
+              </button>
+            }
           />
         </div>
       ) : null}
@@ -572,63 +584,34 @@ export default function WeeklyPage() {
                 What to do now
               </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              {/* Captaincy Summary */}
-              <div className="space-y-1.5 p-3 rounded-xl border border-white/10 bg-black/20">
-                <p className="text-[10px] text-white/70 uppercase font-bold tracking-widest">Captaincy</p>
-                <div className="flex flex-col">
-                  <span className="text-lg font-bold text-white leading-tight">
-                    {(data.captain_matrix.safe[0]?.name) || "—"}
-                  </span>
-                  <span className="text-xs text-white/80">
-                    Vice: {(data.captain_matrix.safe[1]?.name) || "—"}
-                  </span>
-                </div>
-              </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <MetricCard 
+                label="Captaincy"
+                value={data.captain_matrix.safe[0]?.name || "—"}
+                subValue={`Vice: ${data.captain_matrix.safe[1]?.name || "—"}`}
+              />
 
-              {/* Transfers Summary */}
-              <div className="space-y-1.5 p-3 rounded-xl border border-white/10 bg-black/20">
-                <p className="text-[10px] text-white/70 uppercase font-bold tracking-widest">Plan A (Transfer)</p>
-                <div className="flex flex-col">
-                  <span className="text-lg font-bold text-white leading-tight truncate">
-                    {(data.top_transfer_plans.one_ft[0]?.plan) || (data.top_transfer_plans.two_ft[0]?.plan) || "No Transfers Recommended"}
-                  </span>
-                  <span className="text-xs text-white/80">
-                    Net Gain: {((data.top_transfer_plans.one_ft[0]?.net_gain_1) || (data.top_transfer_plans.two_ft[0]?.net_gain_1) || 0).toFixed(2)} xP
-                  </span>
-                </div>
-              </div>
+              <MetricCard 
+                label="Plan A (Transfer)"
+                value={data.top_transfer_plans.one_ft[0]?.plan || data.top_transfer_plans.two_ft[0]?.plan || "None"}
+                subValue={`${((data.top_transfer_plans.one_ft[0]?.net_gain_1) || (data.top_transfer_plans.two_ft[0]?.net_gain_1) || 0).toFixed(2)} xP Gain`}
+                trend="up"
+              />
 
-              {/* Lineup Summary */}
-              <div className="space-y-1.5 p-3 rounded-xl border border-white/10 bg-black/20">
-                <p className="text-[10px] text-white/70 uppercase font-bold tracking-widest">Lineup Optimization</p>
-                <div className="flex flex-col">
-                  <span className="text-lg font-bold text-[#00ff87] leading-tight">
-                    +{(data.lineup_optimizer.expected_gain_vs_current_xi_1 || 0).toFixed(2)} xP
-                  </span>
-                  <span className="text-xs text-white/80">
-                    Formation: {data.lineup_optimizer.formation}
-                  </span>
-                </div>
-              </div>
+              <MetricCard 
+                label="Lineup Opt."
+                value={`+${(data.lineup_optimizer.expected_gain_vs_current_xi_1 || 0).toFixed(2)} xP`}
+                subValue={data.lineup_optimizer.formation}
+              />
 
-              {/* Confidence Summary */}
-              <div className="space-y-1.5 p-3 rounded-xl border border-white/10 bg-black/20">
-                <p className="text-[10px] text-white/70 uppercase font-bold tracking-widest">Strategy Pulse</p>
-                <div className="flex items-center gap-3">
-                  <div className="flex flex-col">
-                    <span className={`text-lg font-bold leading-tight ${planConfidenceClass(data.team_overview.confidence)}`}>
-                      {Math.round(data.team_overview.confidence * 100)}%
-                    </span>
-                    <span className="text-xs text-white/80">Confidence</span>
-                  </div>
-                  <div className="h-8 w-px bg-white/10" />
-                  <div className="flex flex-col">
-                    <span className="text-lg font-bold text-white leading-tight">
-                      {(data.top_transfer_plans.one_ft[0]?.risk_score || data.top_transfer_plans.two_ft[0]?.risk_score || 0).toFixed(1)}
-                    </span>
-                    <span className="text-xs text-white/80">Risk Score</span>
-                  </div>
+              <div className="p-4 rounded-lg bg-card-bg border border-border shadow-md animate-slide-up flex flex-col justify-between">
+                <ConfidenceMeter 
+                  score={Math.round(data.team_overview.confidence * 100)} 
+                  label="Strategy Pulse"
+                />
+                <div className="mt-2 flex items-center justify-between">
+                  <span className="text-[10px] text-muted uppercase font-bold tracking-widest">Risk Score</span>
+                  <RiskPill level={(data.top_transfer_plans.one_ft[0]?.risk_score || 0) > 4 ? 'high' : 'low'} />
                 </div>
               </div>
             </div>
@@ -654,12 +637,20 @@ export default function WeeklyPage() {
                     </p>
                   </div>
                   <div className="rounded-md border border-white/10 bg-black/20 p-2.5">
-                    <p className="text-white/75">Confidence drift</p>
-                    <p className={`font-semibold ${data.explainability_v2.confidence_drift.direction === "up" ? "text-emerald-300" : data.explainability_v2.confidence_drift.direction === "down" ? "text-rose-300" : "text-amber-300"}`}>
-                      {data.explainability_v2.confidence_drift.previous !== null
-                        ? `${Math.round((data.explainability_v2.confidence_drift.previous || 0) * 100)}% → ${Math.round((data.explainability_v2.confidence_drift.current || 0) * 100)}%`
-                        : `${Math.round((data.explainability_v2.confidence_drift.current || 0) * 100)}%`}
-                    </p>
+                    <p className="text-white/75 mb-1">Confidence drift</p>
+                    <div className="flex items-center gap-2">
+                      <p className={`font-semibold ${data.explainability_v2.confidence_drift.direction === "up" ? "text-emerald-300" : data.explainability_v2.confidence_drift.direction === "down" ? "text-rose-300" : "text-amber-300"}`}>
+                        {data.explainability_v2.confidence_drift.previous !== null
+                          ? `${Math.round((data.explainability_v2.confidence_drift.previous || 0) * 100)}% → ${Math.round((data.explainability_v2.confidence_drift.current || 0) * 100)}%`
+                          : `${Math.round((data.explainability_v2.confidence_drift.current || 0) * 100)}%`}
+                      </p>
+                      {data.explainability_v2.confidence_drift.delta !== null && (
+                        <DeltaChip 
+                          value={`${Math.abs(Math.round(data.explainability_v2.confidence_drift.delta * 100))}%`} 
+                          trend={data.explainability_v2.confidence_drift.direction === "up" ? 'up' : data.explainability_v2.confidence_drift.direction === "down" ? 'down' : 'neutral'}
+                        />
+                      )}
+                    </div>
                   </div>
                 </div>
 

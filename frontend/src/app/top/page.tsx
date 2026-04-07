@@ -5,6 +5,8 @@ import { useEffect, useMemo, useState } from "react";
 
 import { fetchJson } from "@/lib/api";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui-state";
+import { MetricCard } from "@/components/ui/MetricCard";
+import { DeltaChip } from "@/components/ui/DeltaChip";
 
 const ExplainabilityCards = dynamic(() => import("@/components/explainability-cards"), {
   loading: () => <p className="text-white/70 mt-4">Loading explainability cards…</p>,
@@ -208,13 +210,13 @@ export default function TopPage() {
       </div>
 
       {error ? (
-        <div className="mb-4">
-          <ErrorState message={error} onRetry={retryLoad} />
+        <div className="mb-4 transition-opacity duration-200 ease-out">
+          <ErrorState message={error} onRetry={retryLoad} className="animate-slide-up" />
         </div>
       ) : null}
       {isLoading && !error ? (
         <div className="mb-4">
-          <LoadingState label="Loading top picks and explainability..." />
+          <LoadingState label="Loading top picks and explainability..." className="animate-slide-up" />
         </div>
       ) : null}
       {!isLoading && !error && data && filteredPlayers.length === 0 ? (
@@ -222,15 +224,29 @@ export default function TopPage() {
           <EmptyState
             title="No players match current filters"
             description="Try changing position filter or include players already in your squad."
+            className="animate-slide-up"
           />
         </div>
       ) : null}
 
       {data ? (
-        <section className={cardClass}>
+        <section className={`${cardClass} animate-fade-in`}>
           <p className="text-sm text-white/75 mb-3">
             GW {data.next_gw} • Showing {filteredPlayers.length} players
           </p>
+
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 mb-3">
+            <MetricCard label="Research pool" value={filteredPlayers.length} subValue="players" trend="neutral" />
+            <MetricCard label="Gameweek" value={data.next_gw} subValue="upcoming" trend="up" />
+            <div className="rounded-lg border border-white/10 bg-black/20 p-3 flex items-center justify-between">
+              <p className="text-xs uppercase tracking-wider text-white/70 font-semibold">Filter signal</p>
+              <DeltaChip
+                value={filteredPlayers.length}
+                label={posFilter === "All" ? "all" : posFilter}
+                trend={filteredPlayers.length >= 10 ? "up" : filteredPlayers.length > 0 ? "neutral" : "down"}
+              />
+            </div>
+          </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-xs md:text-sm">

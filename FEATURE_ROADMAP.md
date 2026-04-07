@@ -161,8 +161,9 @@
 
 ### Next high-ROI items
 
-4. Smart alerting engine v2
+4. Smart alerting engine v2 (**Backlog**)
    - Goal alerts (captain haul, rival swing, bench haul risk, injury/sub confirmations).
+   - Status: deferred to backlog by product decision (2026-04-01).
 
 5. Explainability v2 (decision confidence provenance)
    - Show why plan changed since previous run with factor deltas + confidence drift.
@@ -185,10 +186,10 @@
 
 ### Suggested implementation order (highest ROI first)
 
-1. P4.4 Smart alerting engine v2
-2. P4.5 Explainability v2
-3. P4.6 Simulation lab
-4. P4.7 Retention loop
+1. P4.5 Explainability v2
+2. P4.6 Simulation lab
+3. P4.7 Retention loop
+4. P4.4 Smart alerting engine v2 (Backlog)
 
 ---
 
