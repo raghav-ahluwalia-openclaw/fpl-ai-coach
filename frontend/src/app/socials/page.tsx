@@ -295,17 +295,17 @@ export default function SocialsPage() {
       </div>
 
       {error ? (
-        <div className="mb-4">
-          <ErrorState message={error} onRetry={() => void refreshSocials()} />
+        <div className="mb-4 transition-opacity duration-200 ease-out">
+          <ErrorState message={error} onRetry={() => void refreshSocials()} className="animate-slide-up" />
         </div>
       ) : null}
 
       {!data && !error ? (
-        <LoadingState label="Aggregating YouTube and Reddit FPL intel..." />
+        <LoadingState label="Aggregating YouTube and Reddit FPL intel..." className="animate-slide-up" />
       ) : data ? (
         <>
-          <section className="grid md:grid-cols-2 gap-4">
-            <div className={cardClass}>
+          <section className="grid md:grid-cols-2 gap-4 animate-fade-in">
+            <div className={`${cardClass} animate-slide-up`}>
               <h2 className="font-semibold text-[#00ff87] mb-3">YouTube Creators (Top 5 by latest upload date, then views)</h2>
               {data.youtube_creators.videos.length === 0 ? (
                 <p className="text-white/70">No creator digest found yet.</p>
@@ -329,7 +329,7 @@ export default function SocialsPage() {
               )}
             </div>
 
-            <div className={cardClass}>
+            <div className={`${cardClass} animate-slide-up`}>
               <h2 className="font-semibold text-[#00ff87] mb-3">Top 5 Reddit Threads (r/{data.subreddit})</h2>
               <ul className="space-y-3 text-sm">
                 {data.reddit_threads.map((t, idx) => (
@@ -353,8 +353,8 @@ export default function SocialsPage() {
             </div>
           </section>
 
-          <section className="mt-4">
-            <div className={cardClass}>
+          <section className="mt-4 animate-fade-in">
+            <div className={`${cardClass} animate-slide-up`}>
               <h2 className="font-semibold text-[#00ff87] mb-1">Official Premier League Updates</h2>
               <p className="text-xs text-white/60 mb-3">
                 Source: {data.official_news?.source || "Official FPL API"}
@@ -377,6 +377,7 @@ export default function SocialsPage() {
           title="No social intel available" 
           description="We couldn't aggregate any social media insights at this time."
           onRetry={() => void refreshSocials()}
+          className="animate-slide-up"
         />
       ) : null}
     </main>

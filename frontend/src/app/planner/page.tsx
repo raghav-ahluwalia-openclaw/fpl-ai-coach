@@ -5,6 +5,9 @@ import Link from "next/link";
 
 import { fetchJson } from "@/lib/api";
 import { LoadingState, ErrorState, EmptyState } from "@/components/ui-state";
+import { ConfidenceMeter } from "@/components/ui/ConfidenceMeter";
+import { RiskPill } from "@/components/ui/RiskPill";
+import { DeltaChip } from "@/components/ui/DeltaChip";
 
 type ChipPlannerResponse = {
   gameweek: number;
@@ -80,6 +83,14 @@ function formatUtc(value?: string | null): string {
     minute: "2-digit",
     timeZoneName: "short",
   });
+}
+
+function confidenceToRisk(confidence?: number): "low" | "medium" | "high" | "critical" {
+  if (typeof confidence !== "number") return "medium";
+  if (confidence >= 0.8) return "low";
+  if (confidence >= 0.6) return "medium";
+  if (confidence >= 0.4) return "high";
+  return "critical";
 }
 
 export default function PlannerPage() {
@@ -255,13 +266,13 @@ export default function PlannerPage() {
       </section>
 
       {error ? (
-        <div className="mb-4">
-          <ErrorState message={error} onRetry={() => void loadChip()} />
+        <div className="mb-4 transition-opacity duration-200 ease-out">
+          <ErrorState message={error} onRetry={() => void loadChip()} className="animate-slide-up" />
         </div>
       ) : null}
 
       {gwStatus ? (
-        <section className={`${cardClass} mb-4`}>
+        <section className={`${cardClass} mb-4 animate-fade-in`}>
           <h2 className="font-semibold text-[#00ff87] mb-2">Gameweek Status</h2>
           <div className="grid md:grid-cols-2 gap-2 text-sm text-white/85">
             <p>Current GW: <strong>{gwStatus.current_gw ?? "—"}</strong> ({gwStatus.current_gw_status.replace("_", " ")})</p>
@@ -274,16 +285,28 @@ export default function PlannerPage() {
 
       {loadingChip && !chip ? (
         <div className="mb-4">
-          <LoadingState label="Analyzing chip strategy..." />
+          <LoadingState label="Analyzing chip strategy..." className="animate-slide-up" />
         </div>
       ) : chip ? (
-        <section className={cardClass}>
+        <section className={`${cardClass} animate-fade-in`}>
           <h2 className="font-semibold text-[#00ff87] mb-2">Chip Planner • GW {chip.gameweek}</h2>
           <p className="text-sm text-white/75 mb-3">
             Recommendation: <strong>{chip.recommendation}</strong>
             {chip.alternative ? <> • Alt: <strong>{chip.alternative}</strong></> : null}
             {typeof chip.confidence === "number" ? <> • Confidence: <strong>{Math.round(chip.confidence * 100)}%</strong></> : null}
           </p>
+          <div className="grid gap-2 md:grid-cols-2 mb-3">
+            <div className="rounded-md border border-white/10 bg-black/20 p-3">
+              <ConfidenceMeter
+                score={Math.max(0, Math.min(100, Math.round((chip.confidence ?? 0.5) * 100)))}
+                label="Plan confidence"
+              />
+            </div>
+            <div className="rounded-md border border-white/10 bg-black/20 p-3 flex items-center justify-between gap-2">
+              <p className="text-xs uppercase tracking-wider text-white/70 font-semibold">Strategy risk</p>
+              <RiskPill level={confidenceToRisk(chip.confidence)} />
+            </div>
+          </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3 text-sm">
             {([
               ["wildcard", "Wildcard", chip.chip_scores.wildcard],
@@ -327,11 +350,12 @@ export default function PlannerPage() {
             title="No chip strategy data" 
             description="We couldn't generate a chip strategy at this moment."
             onRetry={() => void loadChip()}
+            className="animate-slide-up"
           />
         </div>
       ) : null}
 
-      <section className={`${cardClass} mt-4`}>
+      <section className={`${cardClass} mt-4 animate-fade-in`}>
         <h2 className="font-semibold text-[#00ff87] mb-2">Rival Intelligence</h2>
         <div className="grid sm:flex gap-3 mb-4 items-end">
           <div className="flex-1">
@@ -368,10 +392,23 @@ export default function PlannerPage() {
         </div>
 
         {loadingRival ? (
-          <LoadingState label="Comparing team differentials..." />
+          <LoadingState label="Comparing team differentials..." className="animate-slide-up" />
         ) : rival ? (
           <div className="text-sm text-white/85 space-y-3">
             <p>GW {rival.gameweek} • Overlap: <strong>{rival.overlap_count}</strong> • My differentials: <strong>{rival.my_only_count}</strong> • Rival differentials: <strong>{rival.rival_only_count}</strong></p>
+            <div className="flex flex-wrap gap-2">
+              <DeltaChip value={rival.overlap_count} label="overlap" trend="neutral" />
+              <DeltaChip
+                value={rival.my_only_count}
+                label="my differentials"
+                trend={rival.my_only_count > rival.rival_only_count ? "up" : rival.my_only_count < rival.rival_only_count ? "down" : "neutral"}
+              />
+              <DeltaChip
+                value={rival.rival_only_count}
+                label="rival differentials"
+                trend={rival.rival_only_count > rival.my_only_count ? "down" : rival.rival_only_count < rival.my_only_count ? "up" : "neutral"}
+              />
+            </div>
             <p>Overall Rank — Me: <strong>{rival.entry_overall_rank ? rival.entry_overall_rank.toLocaleString() : "—"}</strong> • Rival: <strong>{rival.rival_overall_rank ? rival.rival_overall_rank.toLocaleString() : "—"}</strong></p>
             <p><strong>My differentials:</strong> {rival.my_differentials.join(", ") || "None"}</p>
             <p><strong>Rival differentials:</strong> {rival.rival_differentials.join(", ") || "None"}</p>

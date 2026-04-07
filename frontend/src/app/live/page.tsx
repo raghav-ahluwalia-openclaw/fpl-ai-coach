@@ -193,15 +193,15 @@ export default function LivePage() {
       </section>
 
       {error ? (
-        <div className="mb-4">
-          <ErrorState message={error} onRetry={() => void load()} />
+        <div className="mb-4 transition-opacity duration-200 ease-out">
+          <ErrorState message={error} onRetry={() => void load()} className="animate-slide-up" />
         </div>
       ) : null}
 
       {loading && !data ? (
-        <LoadingState label="Loading live team data..." />
+        <LoadingState label="Loading live team data..." className="animate-slide-up" />
       ) : data ? (
-        <div className="grid gap-4">
+        <div className="grid gap-4 animate-fade-in">
           <section className={cardClass}>
             <p className="text-sm text-white/75 mb-2">Entry #{data.entry_id} • GW {data.gameweek}</p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm mb-3">
@@ -293,10 +293,11 @@ export default function LivePage() {
           </section>
         </div>
       ) : !loading && !error && settings?.fpl_entry_id ? (
-        <EmptyState 
-          title="No live data available yet" 
+        <EmptyState
+          title="No live data available yet"
           description="Live data might not be available before the gameweek deadline passes."
           onRetry={() => void load()}
+          className="animate-slide-up"
         />
       ) : null}
     </main>
