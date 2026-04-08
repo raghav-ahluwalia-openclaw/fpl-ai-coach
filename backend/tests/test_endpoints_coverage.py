@@ -18,14 +18,21 @@ def mock_db_data():
     for i in range(1, 16):
         p = Player(
             id=i,
+            first_name=f"Player{i}",
+            second_name=str(i),
             web_name=f"Player {i}",
             element_type=(i % 4) + 1,
             now_cost=50,
             form=5.0,
+            points_per_game=5.0,
             minutes=2000,
             chance_of_playing_next_round=100,
             selected_by_percent=10.0,
-            team_id=(i % 20) + 1
+            team_id=(i % 20) + 1,
+            news="",
+            goals_scored=0,
+            assists=0,
+            clean_sheets=0
         )
         players.append(p)
     return players
@@ -35,9 +42,21 @@ def mock_db(mock_db_data):
     with patch("app.api.routes.team.SessionLocal") as mock_session_local:
         mock_session = MagicMock()
         mock_session_local.return_value = mock_session
-        mock_session.query(Player).all.return_value = mock_db_data
-        mock_session.query(Fixture).all.return_value = []
-        mock_session.query(UserSquadPick).filter.return_value.delete.return_value = None
+        
+        def query_side_effect(model):
+            query_mock = MagicMock()
+            if model is Player:
+                query_mock.all.return_value = mock_db_data
+            elif model is Fixture:
+                query_mock.all.return_value = []
+            elif model is UserSquadPick:
+                query_mock.filter.return_value.delete.return_value = None
+            else:
+                query_mock.all.return_value = []
+            return query_mock
+        
+        mock_session.query.side_effect = query_side_effect
+        mock_session.get.return_value = None
         yield mock_session
 
 def test_team_recommendation_endpoint(mock_auth, mock_db, mock_db_data):
@@ -50,7 +69,7 @@ def test_team_recommendation_endpoint(mock_auth, mock_db, mock_db_data):
                 bench = [(2.0, p) for p in mock_db_data[11:15]]
                 mock_build.return_value = (starting, bench, "4-4-2")
                 with patch("app.api.routes.team._choose_captains") as mock_cap:
-                    mock_cap.return_value = (mock_db_data[0], mock_db_data[1])
+                    mock_cap.return_value = (mock_db_data[0].web_name, mock_db_data[1].web_name)
                     response = client.get(f"/api/fpl/team/{entry_id}/recommendation?mode=balanced")
                     assert response.status_code == 200
                     data = response.json()
