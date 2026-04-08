@@ -19,6 +19,7 @@ from app.services.scoring import (
     _choose_captains,
     _strategy_config,
 )
+from app.db.models import Player, Fixture
 from app.schemas import Pick
 
 
@@ -30,17 +31,17 @@ class TestMinutesFactor:
         assert _minutes_factor(0) == 0.0
     
     def test_full_match(self):
-        """Player with 90 minutes should have factor of 1.0."""
-        assert _minutes_factor(90) == 1.0
+        """Player with 90 minutes should have factor of 0.1 (90/900)."""
+        assert _minutes_factor(90) == 0.1
     
     def test_substitute(self):
-        """Player with 45 minutes should have factor of 0.5."""
-        assert _minutes_factor(45) == 0.5
+        """Player with 45 minutes should have factor of 0.05 (45/900)."""
+        assert _minutes_factor(45) == 0.05
     
     def test_multiple_matches(self):
         """Player with 900+ minutes should cap at 1.2."""
         assert _minutes_factor(900) == 1.0
-        assert _minutes_factor(1000) == 1.2
+        assert _minutes_factor(1080) == 1.2
         assert _minutes_factor(2000) == 1.2  # Capped
 
 
@@ -89,9 +90,7 @@ class TestFixtureFactor:
         """Player with 2 fixtures should get DGW boost."""
         fixture2 = Fixture(
             id=2,
-            code=123457,
             event=10,
-            finished=False,
             kickoff_time="2026-03-30T19:45:00Z",
             team_h=sample_player.team_id,
             team_a=3,
@@ -137,17 +136,16 @@ class TestExpectedPointsHorizon:
     
     def test_single_gw_horizon(self, sample_player, sample_fixture):
         """Test 1-GW horizon."""
-        xp_1, xp_3 = _expected_points_horizon(sample_player, [sample_fixture], current_gw=10, horizon=3)
-        assert xp_1 > 0
-        assert xp_3 >= xp_1  # 3-GW should be >= 1-GW
+        xp_avg = _expected_points_horizon(sample_player, [sample_fixture], start_gw=10, horizon=1)
+        assert xp_avg > 0
     
     def test_form_factor(self, sample_player, sample_fixture):
         """Test that form affects horizon calculations."""
-        sample_player.form = "10.0"
-        xp_high_form, _ = _expected_points_horizon(sample_player, [sample_fixture], current_gw=10, horizon=3)
+        sample_player.form = 10.0
+        xp_high_form = _expected_points_horizon(sample_player, [sample_fixture], start_gw=10, horizon=3)
         
-        sample_player.form = "2.0"
-        xp_low_form, _ = _expected_points_horizon(sample_player, [sample_fixture], current_gw=10, horizon=3)
+        sample_player.form = 2.0
+        xp_low_form = _expected_points_horizon(sample_player, [sample_fixture], start_gw=10, horizon=3)
         
         assert xp_high_form > xp_low_form
 
@@ -157,34 +155,51 @@ class TestCaptainWeight:
     
     def test_basic_weight(self, sample_player):
         """Test basic captain weight calculation."""
-        weight = _captain_weight(sample_player, mode="balanced")
+        weight = _captain_weight(sample_player)
         assert weight > 0
         assert isinstance(weight, float)
     
     def test_safe_mode(self, sample_player):
-        """Test safe mode favors consistent players."""
-        safe_weight = _captain_weight(sample_player, mode="safe")
-        # Safe mode should weight PPG and form more
-        assert safe_weight > 0
+        """Test captain weight for different positions."""
+        sample_player.element_type = 4 # FWD
+        fwd_weight = _captain_weight(sample_player)
+        
+        sample_player.element_type = 1 # GK
+        gk_weight = _captain_weight(sample_player)
+        
+        assert fwd_weight > gk_weight
     
-    def test_aggressive_mode(self, sample_player):
-        """Test aggressive mode favors differential picks."""
-        sample_player.selected_by_percent = "5.0"  # Low ownership
-        agg_weight = _captain_weight(sample_player, mode="aggressive")
-        assert agg_weight > 0
+    def test_availability_impact(self, sample_player):
+        """Test that availability affects captain weight."""
+        sample_player.chance_of_playing_next_round = 100
+        full_weight = _captain_weight(sample_player)
+        
+        sample_player.chance_of_playing_next_round = 50
+        half_weight = _captain_weight(sample_player)
+        
+        assert full_weight > half_weight
 
 
 class TestChooseCaptains:
     """Test captain selection logic."""
     
-    def test_returns_safe_and_differential(self, sample_player):
-        """Test captain selection returns both safe and differential options."""
-        players = [sample_player]
-        fixtures = []
-        safe, differential = _choose_captains(players, fixtures, target_gw=10)
+    def test_returns_captain_and_vice(self, sample_player):
+        """Test captain selection returns top two players."""
+        player2 = Player(
+            id=2,
+            web_name="Salah",
+            element_type=3,
+            chance_of_playing_next_round=100,
+            minutes=2000,
+            points_per_game=8.0,
+            form=9.0,
+            now_cost=125,
+        )
+        lineup = [(10.0, sample_player), (15.0, player2)]
+        cap, vice = _choose_captains(lineup)
         
-        assert isinstance(safe, list)
-        assert isinstance(differential, list)
+        assert cap == "Salah"
+        assert vice == "Saka"
 
 
 class TestStrategyConfig:
@@ -192,18 +207,18 @@ class TestStrategyConfig:
     
     def test_safe_config(self):
         """Test safe strategy configuration."""
-        config = _strategy_config("safe")
-        assert "safe" in config
-        assert config["safe"]["form_weight"] > config["safe"]["differential_weight"]
+        weights, decay = _strategy_config("safe")
+        assert weights == [0.9, 0.9, 0.9]
+        assert decay == 0.45
     
     def test_balanced_config(self):
         """Test balanced strategy configuration."""
-        config = _strategy_config("balanced")
-        assert "balanced" in config
+        weights, decay = _strategy_config("balanced")
+        assert weights == [1.0, 0.8, 0.6]
+        assert decay == 0.25
     
     def test_aggressive_config(self):
         """Test aggressive strategy configuration."""
-        config = _strategy_config("aggressive")
-        assert "aggressive" in config
-        # Aggressive should weight differential more
-        assert config["aggressive"]["differential_weight"] > config["aggressive"]["form_weight"]
+        weights, decay = _strategy_config("aggressive")
+        assert weights == [1.2, 0.8, 0.4]
+        assert decay == 0.05

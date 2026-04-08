@@ -40,7 +40,13 @@ class LiveAndDiagnosticsEndpointsTest(unittest.TestCase):
         self.assertTrue(any(p.get("is_captain") for p in payload["players"]))
 
     def test_diagnostics_shape(self) -> None:
-        r = self.client.get("/api/fpl/diagnostics")
+        # Mock environment variables for authentication
+        with patch("app.core.security.API_KEY", "test_api_key"):
+            with patch("app.core.security.ADMIN_API_KEY", "test_admin_key"):
+                r = self.client.get(
+                    "/api/fpl/diagnostics",
+                    headers={"x-admin-token": "test_admin_key"}
+                )
         self.assertEqual(r.status_code, 200)
         payload = r.json()
         self.assertTrue(payload.get("ok"))
