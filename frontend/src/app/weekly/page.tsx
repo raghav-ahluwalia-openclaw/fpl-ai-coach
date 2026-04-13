@@ -118,6 +118,18 @@ type PerformanceWeekly = {
   };
 };
 
+type SimulationPreviewPayload = {
+  captain_outcome_bands: Array<{
+    id: number;
+    name: string;
+    band: { p50: number };
+  }>;
+  transfer_outcome_bands: Array<{
+    plan: string;
+    band: { p50: number; prob_positive?: number };
+  }>;
+};
+
 type GameweekHub = {
   entry_id: number;
   gameweek: number;
@@ -298,6 +310,8 @@ export default function WeeklyPage() {
   const [data, setData] = useState<GameweekHub | null>(null);
   const [gwStatus, setGwStatus] = useState<GameweekStatus | null>(null);
   const [performance, setPerformance] = useState<PerformanceWeekly | null>(null);
+  const [simulationPreview, setSimulationPreview] = useState<SimulationPreviewPayload | null>(null);
+  const [simulationPreviewLoading, setSimulationPreviewLoading] = useState(false);
   const [performanceInfoOpen, setPerformanceInfoOpen] = useState(false);
   const [performanceInfoPinned, setPerformanceInfoPinned] = useState(false);
   const [captainInfoOpen, setCaptainInfoOpen] = useState(false);
@@ -342,11 +356,23 @@ export default function WeeklyPage() {
       setData(hub);
       setPerformance(perf);
       setGwStatus(status);
+
+      // Non-blocking simulation preview (silent failure fallback).
+      setSimulationPreviewLoading(true);
+      void fetchJson<SimulationPreviewPayload>(`/api/fpl/team/${id}/simulation-lab?mode=${mode}&iterations=1000`, {
+        cacheMode: "no-store",
+      })
+        .then((sim) => setSimulationPreview(sim))
+        .catch(() => setSimulationPreview(null))
+        .finally(() => setSimulationPreviewLoading(false));
+
       if (typeof window !== "undefined") {
         localStorage.setItem("fpl_weekly_loaded", "true");
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load Gameweek Hub");
+      setSimulationPreview(null);
+      setSimulationPreviewLoading(false);
     } finally {
       setLoading(false);
       setIsRefreshing(false);
@@ -419,6 +445,12 @@ export default function WeeklyPage() {
             <option value="balanced">Balanced</option>
             <option value="aggressive">Aggressive</option>
           </select>
+          <Link
+            href="/simulation"
+            className="rounded-md h-10 px-3 inline-flex items-center bg-black/30 border border-white/20 text-white/90 hover:border-[#00ff87] hover:text-[#00ff87]"
+          >
+            Simulation Lab
+          </Link>
         </div>
       </div>
 
@@ -615,6 +647,48 @@ export default function WeeklyPage() {
                 </div>
               </div>
             </div>
+          </section>
+
+          <section className={cardClass}>
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <h2 className="font-semibold text-[#00ff87]">Simulation Preview</h2>
+              <Link href="/simulation" className="text-xs text-white/75 hover:text-[#00ff87]">Open full lab →</Link>
+            </div>
+
+            {simulationPreviewLoading ? (
+              <p className="text-sm text-white/70">Running simulation preview…</p>
+            ) : simulationPreview ? (
+              <div className="grid md:grid-cols-2 gap-3 text-sm">
+                <div className="rounded-md border border-white/10 bg-black/20 p-3">
+                  <p className="text-white/70 mb-2">Top captain bands (P50)</p>
+                  <div className="space-y-1.5">
+                    {simulationPreview.captain_outcome_bands.slice(0, 2).map((c) => (
+                      <div key={c.id} className="flex items-center justify-between">
+                        <span className="text-white/90">{c.name}</span>
+                        <span className="font-semibold text-emerald-300">{c.band.p50.toFixed(1)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-md border border-white/10 bg-black/20 p-3">
+                  <p className="text-white/70 mb-2">Top transfer bands</p>
+                  <div className="space-y-1.5">
+                    {simulationPreview.transfer_outcome_bands.slice(0, 2).map((t) => (
+                      <div key={t.plan} className="flex items-center justify-between gap-3">
+                        <span className="text-white/90">{t.plan}</span>
+                        <span className="text-right">
+                          <span className="font-semibold text-emerald-300">P50 {t.band.p50.toFixed(1)}</span>
+                          <span className="block text-xs text-white/70">+ve {Math.round((t.band.prob_positive ?? 0) * 100)}%</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-white/70">Simulation preview unavailable right now. You can still open the full Simulation Lab.</p>
+            )}
           </section>
 
           <section id="changes" className={cardClass}>

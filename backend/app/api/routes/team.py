@@ -4,6 +4,7 @@ from collections import defaultdict
 import json
 from datetime import datetime, timezone
 from itertools import combinations
+import random
 from statistics import median
 from typing import List, Optional, Tuple
 
@@ -349,6 +350,34 @@ def _format_eta(hours: int) -> str:
     return f"{days}d"
 
 
+def _percentile(sorted_values: list[float], q: float) -> float:
+    if not sorted_values:
+        return 0.0
+    q = max(0.0, min(1.0, q))
+    idx = int(round((len(sorted_values) - 1) * q))
+    return float(sorted_values[idx])
+
+
+def _simulate_band(*, mean_value: float, sigma: float, iterations: int, rng: random.Random) -> dict:
+    draws: list[float] = []
+    for _ in range(iterations):
+        draws.append(max(0.0, rng.gauss(mean_value, sigma)))
+    draws.sort()
+
+    avg = sum(draws) / len(draws) if draws else 0.0
+    p10 = _percentile(draws, 0.10)
+    p50 = _percentile(draws, 0.50)
+    p90 = _percentile(draws, 0.90)
+
+    return {
+        "mean": round(avg, 2),
+        "p10": round(p10, 2),
+        "p50": round(p50, 2),
+        "p90": round(p90, 2),
+        "samples": len(draws),
+    }
+
+
 @router.get("/api/fpl/team/{entry_id}/what-if")
 def what_if_simulator(
     entry_id: int,
@@ -525,6 +554,137 @@ def what_if_simulator(
             "count": min(len(scenarios), limit),
             "scenarios": scenarios[:limit],
             "summary": "What-if transfer simulator ranked by projected net gain over selected horizon.",
+        }
+    finally:
+        db.close()
+
+
+@router.get("/api/fpl/team/{entry_id}/simulation-lab")
+def simulation_lab(
+    entry_id: int,
+    gameweek: Optional[int] = Query(default=None, ge=1, le=38),
+    mode: str = Query(default="balanced", pattern="^(safe|balanced|aggressive)$"),
+    iterations: int = Query(default=1500, ge=500, le=10000),
+    captain_limit: int = Query(default=5, ge=3, le=8),
+    transfer_limit: int = Query(default=5, ge=3, le=10),
+    seed: Optional[int] = Query(default=None, ge=1, le=2_147_483_647),
+):
+    db = SessionLocal()
+    try:
+        players = db.query(Player).all()
+        if not players:
+            raise HTTPException(status_code=400, detail="No player data found. Run POST /api/fpl/ingest/bootstrap first.")
+
+        target_gw = _resolve_gameweek(db, gameweek)
+        current_gw = _int(_get_meta(db, "current_gw"), 0)
+        payload, _ = _fetch_entry_picks_with_fallback(entry_id, target_gw, [current_gw, target_gw - 1])
+        gw = target_gw
+        picks = payload.get("picks", [])
+        if len(picks) < 11:
+            raise HTTPException(status_code=400, detail="FPL returned incomplete squad data")
+
+        fixtures = db.query(Fixture).all()
+        player_by_id = {p.id: p for p in players}
+        squad_ids = [_int(p.get("element")) for p in picks]
+        squad_players = [player_by_id.get(pid) for pid in squad_ids if player_by_id.get(pid) is not None]
+        if len(squad_players) < 11:
+            raise HTTPException(status_code=400, detail="Your squad has players missing from local DB. Re-run bootstrap ingest.")
+
+        rng = random.Random(seed if seed is not None else (entry_id * 1000 + gw * 17 + iterations))
+
+        # Captain simulation bands (team-specific candidates)
+        captain_rows = []
+        for p in squad_players:
+            xp1 = _expected_points(p, fixtures, gw)
+            availability_risk = max(0.0, 1.0 - _availability_factor(p.chance_of_playing_next_round, p.news))
+            minutes_risk = max(0.0, 1.0 - min(_minutes_factor(p.minutes), 1.0))
+            risk_score = min(1.0, availability_risk * 0.6 + minutes_risk * 0.4)
+            sigma = max(1.0, xp1 * (0.30 + (risk_score * 0.85)))
+
+            band = _simulate_band(mean_value=xp1 * 2.0, sigma=sigma * 2.0, iterations=iterations, rng=rng)
+            band_draws = [max(0.0, rng.gauss(xp1 * 2.0, sigma * 2.0)) for _ in range(iterations)]
+            prob_10_plus = (sum(1 for d in band_draws if d >= 10.0) / iterations) if iterations > 0 else 0.0
+            prob_blank = (sum(1 for d in band_draws if d <= 2.0) / iterations) if iterations > 0 else 0.0
+
+            captain_rows.append(
+                {
+                    "id": p.id,
+                    "name": p.web_name,
+                    "position": POSITION_MAP.get(p.element_type, str(p.element_type)),
+                    "projected_points_1": round(xp1, 2),
+                    "risk_score": round(risk_score, 2),
+                    "band": {
+                        **band,
+                        "prob_10_plus": round(prob_10_plus, 3),
+                        "prob_blank_2_or_less": round(prob_blank, 3),
+                    },
+                }
+            )
+
+        captain_rows.sort(key=lambda r: r["band"]["p50"], reverse=True)
+        captain_rows = captain_rows[:captain_limit]
+
+        # Transfer simulation bands (scenario net gains)
+        transfer_sim = what_if_simulator(
+            entry_id=entry_id,
+            gameweek=gw,
+            horizon=3,
+            max_transfers=2,
+            free_transfers=1,
+            hit_cost=4,
+            per_out_limit=6,
+            limit=max(transfer_limit, 8),
+        )
+        scenarios = (transfer_sim.get("scenarios") or [])[:transfer_limit]
+
+        transfer_rows = []
+        for idx, scenario in enumerate(scenarios):
+            transfers = scenario.get("transfers", [])
+            net_gain = _float(scenario.get("net_gain"), 0.0)
+            hit = _int(scenario.get("hit"), 0)
+            value_urgency = _float(scenario.get("value_urgency_score"), 0.0)
+
+            # Risk-aware sigma: more transfers/hits = wider uncertainty bands.
+            sigma = max(0.8, (abs(net_gain) * 0.55) + (len(transfers) * 0.9) + (0.7 if hit > 0 else 0.0) + ((1.0 - value_urgency) * 1.1))
+            band = _simulate_band(mean_value=net_gain, sigma=sigma, iterations=iterations, rng=rng)
+            band_draws = [rng.gauss(net_gain, sigma) for _ in range(iterations)]
+            prob_positive = (sum(1 for d in band_draws if d > 0.0) / iterations) if iterations > 0 else 0.0
+            prob_4_plus = (sum(1 for d in band_draws if d >= 4.0) / iterations) if iterations > 0 else 0.0
+            prob_minus_4_or_worse = (sum(1 for d in band_draws if d <= -4.0) / iterations) if iterations > 0 else 0.0
+
+            transfer_rows.append(
+                {
+                    "plan": f"Option {idx + 1}",
+                    "transfer_count": len(transfers),
+                    "hit": hit,
+                    "net_gain_mean_input": round(net_gain, 2),
+                    "moves": [f"{t.get('out', '—')} → {t.get('in', '—')}" for t in transfers],
+                    "band": {
+                        **band,
+                        "prob_positive": round(prob_positive, 3),
+                        "prob_4_plus": round(prob_4_plus, 3),
+                        "prob_minus_4_or_worse": round(prob_minus_4_or_worse, 3),
+                    },
+                }
+            )
+
+        transfer_rows.sort(key=lambda r: r["band"]["p50"], reverse=True)
+
+        return {
+            "entry_id": entry_id,
+            "gameweek": gw,
+            "mode": mode,
+            "schema": "simulation-lab-v1",
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "settings": {
+                "iterations": iterations,
+                "captain_limit": captain_limit,
+                "transfer_limit": transfer_limit,
+                "seed": seed,
+            },
+            "captain_outcome_bands": captain_rows,
+            "transfer_outcome_bands": transfer_rows,
+            "summary": "Monte Carlo outcome bands for captaincy and transfer decisions.",
         }
     finally:
         db.close()

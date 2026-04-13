@@ -16,7 +16,10 @@ const navGroups: (NavPrimary | NavGroup)[] = [
   },
   {
     group: "Plan",
-    items: [{ href: "/planner", label: "Planner" }],
+    items: [
+      { href: "/planner", label: "Planner" },
+      { href: "/simulation", label: "Sim Lab" },
+    ],
   },
   {
     group: "Research",

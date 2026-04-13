@@ -30,6 +30,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Run backend pytest (coverage gate)
+        working-directory: backend
+        run: |
+          source .venv/bin/activate
+          python -m pytest -q
+
       - name: Run backend validation
         run: ./scripts/validate_backend.py
 
