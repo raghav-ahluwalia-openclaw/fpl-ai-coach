@@ -85,6 +85,19 @@ def test_team_what_if_endpoint(mock_auth, mock_db, mock_db_data):
             assert response.status_code == 200
             assert "scenarios" in response.json()
 
+
+def test_team_simulation_lab_endpoint(mock_auth, mock_db, mock_db_data):
+    entry_id = 12345
+    picks = [{"element": i, "position": i} for i in range(1, 16)]
+    with patch("app.api.routes.team._resolve_gameweek", return_value=10):
+        with patch("app.api.routes.team._fetch_entry_picks_with_fallback", return_value=({"picks": picks, "entry_history": {}}, 10)):
+            response = client.get(f"/api/fpl/team/{entry_id}/simulation-lab?iterations=500")
+            assert response.status_code == 200
+            payload = response.json()
+            assert payload["schema"] == "simulation-lab-v1"
+            assert "captain_outcome_bands" in payload
+            assert "transfer_outcome_bands" in payload
+
 def test_chip_planner_endpoint(mock_auth, mock_db):
     with patch("app.api.routes.team._resolve_gameweek", return_value=10):
         with patch("app.api.routes.team._int", return_value=10):

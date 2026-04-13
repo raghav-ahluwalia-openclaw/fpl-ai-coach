@@ -12,6 +12,11 @@ const primaryCards = [
     href: "/planner",
   },
   {
+    title: "Simulation Lab",
+    desc: "Monte Carlo outcome bands for captaincy and transfer options.",
+    href: "/simulation",
+  },
+  {
     title: "Live Team",
     desc: "Track your in-progress GW score with starter/bench split and captain impact.",
     href: "/live",

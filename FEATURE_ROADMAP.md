@@ -165,11 +165,11 @@
    - Goal alerts (captain haul, rival swing, bench haul risk, injury/sub confirmations).
    - Status: deferred to backlog by product decision (2026-04-01).
 
-5. Explainability v2 (decision confidence provenance)
-   - Show why plan changed since previous run with factor deltas + confidence drift.
+5. Explainability v2 (decision confidence provenance) (**Done**)
+   - Shows why plan changed since previous run with factor deltas + confidence drift in Gameweek Hub payload + UI.
 
-6. Simulation lab
-   - Monte Carlo outcome bands for captain and transfer choices.
+6. Simulation lab (**Done**)
+   - Monte Carlo outcome bands for captain and transfer choices via `GET /api/fpl/team/{entry_id}/simulation-lab` and `/simulation` page.
 
 7. Retention loop
    - Personalized push digest (morning/evening) with one recommended action.
@@ -180,16 +180,14 @@
 - **P4.2 (done):** Logging + diagnostics baseline (`x-request-id`, request timing logs, `/api/fpl/diagnostics`).
 - **P4.3 (done):** Live rank + mini-league delta tracker (`rank_context`, `mini_league_context`, `/live` movement cards).
 - **P4.4:** Smart alerting engine v2 (captain haul, rival swing, bench haul risk, injury/sub confirmations).
-- **P4.5:** Explainability v2 (why recommendation changed + confidence drift).
-- **P4.6:** Simulation lab (Monte Carlo outcome bands for captain + transfer decisions).
+- **P4.5 (done):** Explainability v2 (why recommendation changed + confidence drift).
+- **P4.6 (done):** Simulation lab (Monte Carlo outcome bands for captain + transfer decisions).
 - **P4.7:** Retention loop (personalized AM/PM digest with one suggested action).
 
 ### Suggested implementation order (highest ROI first)
 
-1. P4.5 Explainability v2
-2. P4.6 Simulation lab
-3. P4.7 Retention loop
-4. P4.4 Smart alerting engine v2 (Backlog)
+1. P4.7 Retention loop
+2. P4.4 Smart alerting engine v2 (Backlog)
 
 ---
 
