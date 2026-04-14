@@ -10,6 +10,9 @@ import { ConfidenceMeter } from "@/components/ui/ConfidenceMeter";
 import { DeltaChip } from "@/components/ui/DeltaChip";
 import { RiskPill } from "@/components/ui/RiskPill";
 import { EmptyState } from "@/components/ui/EmptyState";
+import DecisionRail from "@/components/decision-rail";
+import FreshnessBadge from "@/components/ui/FreshnessBadge";
+import DataHealthBanner from "@/components/ui/DataHealthBanner";
 
 type Mode = "safe" | "balanced" | "aggressive";
 type XpView = "1gw" | "3gw";
@@ -413,8 +416,20 @@ export default function WeeklyPage() {
 
   const retryLoad = () => void run(undefined, { forceImport: false, cacheMode: "no-store" });
 
+  const freshnessMinutes = data?.generated_at
+    ? Math.max(0, Math.floor((Date.now() - new Date(data.generated_at).getTime()) / 60000))
+    : null;
+  const healthLevel: "good" | "warn" | "bad" =
+    freshnessMinutes === null ? "warn" : freshnessMinutes <= 45 ? "good" : freshnessMinutes <= 240 ? "warn" : "bad";
+  const healthMessage =
+    healthLevel === "good" ? "Live and fresh" : healthLevel === "warn" ? "Usable with caution" : "Stale data risk";
+  const healthDetail = data
+    ? `Hub updated ${freshnessMinutes ?? "?"}m ago • source GW ${data.picks_source_gw ?? data.gameweek ?? "—"}${gwStatus?.source ? ` • status source ${gwStatus.source}` : ""}`
+    : "Waiting for first successful load.";
+
   return (
-    <main className="min-h-screen p-3 sm:p-4 md:p-8 max-w-6xl mx-auto text-white">
+    <main className="min-h-screen p-3 sm:p-4 md:p-8 pb-24 md:pb-8 max-w-6xl mx-auto text-white">
+      <DecisionRail mode={mode} />
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
         <div>
           <h1 className="text-2xl sm:text-2xl sm:text-3xl font-black">Gameweek Hub</h1>
@@ -424,14 +439,14 @@ export default function WeeklyPage() {
             <button
               type="button"
               onClick={() => setXpView("1gw")}
-              className={`px-3 py-2 text-sm ${xpView === "1gw" ? "bg-[#00ff87] text-[#37003c]" : "bg-black/30 text-white/80"}`}
+              className={`touch-target px-3 py-2 text-sm ${xpView === "1gw" ? "bg-[#00ff87] text-[#37003c]" : "bg-black/30 text-white/80"}`}
             >
               xP 1GW
             </button>
             <button
               type="button"
               onClick={() => setXpView("3gw")}
-              className={`px-3 py-2 text-sm ${xpView === "3gw" ? "bg-[#00ff87] text-[#37003c]" : "bg-black/30 text-white/80"}`}
+              className={`touch-target px-3 py-2 text-sm ${xpView === "3gw" ? "bg-[#00ff87] text-[#37003c]" : "bg-black/30 text-white/80"}`}
             >
               xP 3GW
             </button>
@@ -439,7 +454,7 @@ export default function WeeklyPage() {
           <select
             value={mode}
             onChange={(e) => setMode(e.target.value as Mode)}
-            className="rounded-md h-10 px-3 bg-black/30 border border-white/20"
+            className="rounded-md touch-target px-3 bg-black/30 border border-white/20"
           >
             <option value="safe">Safe</option>
             <option value="balanced">Balanced</option>
@@ -447,9 +462,9 @@ export default function WeeklyPage() {
           </select>
           <Link
             href="/simulation"
-            className="rounded-md h-10 px-3 inline-flex items-center bg-black/30 border border-white/20 text-white/90 hover:border-[#00ff87] hover:text-[#00ff87]"
+            className="rounded-md touch-target px-3 inline-flex items-center bg-black/30 border border-white/20 text-white/90 hover:border-[#00ff87] hover:text-[#00ff87]"
           >
-            Simulation Lab
+            Action: Simulation Lab
           </Link>
         </div>
       </div>
@@ -485,6 +500,12 @@ export default function WeeklyPage() {
                     Updated: {new Date(data.generated_at).toLocaleString(undefined, { timeZoneName: "short" })}
                   </span>
                 )}
+                <FreshnessBadge
+                  timestamp={data?.generated_at}
+                  sourceLabel={gwStatus?.source || "gameweek hub"}
+                  cacheState={healthLevel === "good" ? "live" : "cached"}
+                  className="mt-2 max-w-fit"
+                />
                 {!settings.rival_entry_id && (
                   <Link 
                     href="/settings" 
@@ -577,6 +598,8 @@ export default function WeeklyPage() {
         </section>
       ) : null}
 
+      <DataHealthBanner level={healthLevel} message={healthMessage} detail={healthDetail} className="mb-4" />
+
       {error ? (
         <div className="mb-4">
           <ErrorState message={error} onRetry={retryLoad} />
@@ -608,8 +631,23 @@ export default function WeeklyPage() {
 
       {data ? (
         <div className="grid gap-4">
+          <section className="card-supporting">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+              <h2 className="font-semibold text-[#00ff87]">Global change summary</h2>
+              <FreshnessBadge
+                timestamp={data.generated_at}
+                sourceLabel={gwStatus?.source || "gameweek hub"}
+                cacheState={healthLevel === "good" ? "live" : "cached"}
+              />
+            </div>
+            <p className="text-sm text-white/85">
+              {data.explainability_v2?.summary_reason || "No explainability summary yet. Run refresh after imports to track deltas."}
+            </p>
+            <p className="text-xs text-white/65 mt-1">Change events tracked: {data.what_changed?.length || 0}</p>
+          </section>
+
           {/* Weekly Action Summary Section */}
-          <section id="summary" className={`${cardClass} bg-gradient-to-br from-[#00ff87]/15 to-transparent border-[#00ff87]/30 shadow-lg shadow-[#00ff87]/5`}>
+          <section id="summary" className="card-primary">
             <div className="flex items-center justify-between gap-3 mb-4">
               <h2 className="text-xl font-black text-[#00ff87] tracking-tight">Weekly Action Summary</h2>
               <div className="text-xs text-[#00ff87]/70 font-medium px-2 py-0.5 rounded-full border border-[#00ff87]/30 bg-[#00ff87]/5 uppercase tracking-wider">
@@ -649,7 +687,7 @@ export default function WeeklyPage() {
             </div>
           </section>
 
-          <section className={cardClass}>
+          <section className="card-supporting">
             <div className="flex items-center justify-between gap-3 mb-3">
               <h2 className="font-semibold text-[#00ff87]">Simulation Preview</h2>
               <Link href="/simulation" className="text-xs text-white/75 hover:text-[#00ff87]">Open full lab →</Link>
@@ -691,7 +729,7 @@ export default function WeeklyPage() {
             )}
           </section>
 
-          <section id="changes" className={cardClass}>
+          <section id="changes" className="card-diagnostic">
             <h2 className="font-semibold text-[#00ff87] mb-2">What changed since last run</h2>
             {data.explainability_v2?.has_previous_snapshot ? (
               <div className="space-y-3 text-sm">
@@ -1157,6 +1195,30 @@ export default function WeeklyPage() {
           </div>
         </div>
       ) : null}
+
+      <div className="md:hidden fixed bottom-0 inset-x-0 z-40 border-t border-white/15 bg-[#240033]/95 backdrop-blur-md p-3">
+        <div className="max-w-6xl mx-auto grid grid-cols-3 gap-2">
+          <button
+            type="button"
+            onClick={retryLoad}
+            className="touch-target rounded-md border border-white/20 bg-black/25 text-white/90 text-xs font-semibold"
+          >
+            Action: Refresh
+          </button>
+          <Link
+            href="/simulation"
+            className="touch-target rounded-md border border-white/20 bg-black/25 text-white/90 text-xs font-semibold inline-flex items-center justify-center"
+          >
+            Action: Sim
+          </Link>
+          <a
+            href="#transfers"
+            className="touch-target rounded-md border border-white/20 bg-black/25 text-white/90 text-xs font-semibold inline-flex items-center justify-center"
+          >
+            Action: Transfers
+          </a>
+        </div>
+      </div>
     </main>
   );
 }

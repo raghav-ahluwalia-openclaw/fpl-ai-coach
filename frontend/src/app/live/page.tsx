@@ -5,6 +5,9 @@ import Link from "next/link";
 
 import { fetchJson } from "@/lib/api";
 import { LoadingState, ErrorState, EmptyState } from "@/components/ui-state";
+import DecisionRail from "@/components/decision-rail";
+import FreshnessBadge from "@/components/ui/FreshnessBadge";
+import DataHealthBanner from "@/components/ui/DataHealthBanner";
 
 type AppSettings = {
   fpl_entry_id: number | null;
@@ -78,6 +81,12 @@ export default function LivePage() {
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<LivePayload | null>(null);
 
+  const freshnessMinutes = data?.generated_at
+    ? Math.max(0, Math.floor((Date.now() - new Date(data.generated_at).getTime()) / 60000))
+    : null;
+  const healthLevel: "good" | "warn" | "bad" =
+    freshnessMinutes === null ? "warn" : freshnessMinutes <= 20 ? "good" : freshnessMinutes <= 120 ? "warn" : "bad";
+
   useEffect(() => {
     fetchJson<AppSettings>("/internal/settings", { cacheMode: "no-store" })
       .then((s) => {
@@ -113,6 +122,7 @@ export default function LivePage() {
 
   return (
     <main className="min-h-screen p-3 sm:p-4 md:p-8 max-w-6xl mx-auto text-white">
+      <DecisionRail mode="balanced" />
       <h1 className="text-2xl sm:text-3xl font-black mb-4">Live Team View</h1>
 
       <section className={`${cardClass} mb-4`}>
@@ -192,6 +202,13 @@ export default function LivePage() {
         </div>
       </section>
 
+      <DataHealthBanner
+        level={healthLevel}
+        message={healthLevel === "good" ? "Live data flowing" : healthLevel === "warn" ? "Live data slightly delayed" : "Live feed stale"}
+        detail={data?.generated_at ? `Last live pull: ${new Date(data.generated_at).toLocaleString()}` : "Waiting for first live pull."}
+        className="mb-4"
+      />
+
       {error ? (
         <div className="mb-4 transition-opacity duration-200 ease-out">
           <ErrorState message={error} onRetry={() => void load()} className="animate-slide-up" />
@@ -203,7 +220,10 @@ export default function LivePage() {
       ) : data ? (
         <div className="grid gap-4 animate-fade-in">
           <section className={cardClass}>
-            <p className="text-sm text-white/75 mb-2">Entry #{data.entry_id} • GW {data.gameweek}</p>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm text-white/75">Entry #{data.entry_id} • GW {data.gameweek}</p>
+              <FreshnessBadge timestamp={data.generated_at} sourceLabel="live endpoint" cacheState={healthLevel === "good" ? "live" : "cached"} />
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm mb-3">
               <div className="rounded-md border border-white/10 bg-black/20 p-3">
                 <p className="text-white/70">Live total</p>

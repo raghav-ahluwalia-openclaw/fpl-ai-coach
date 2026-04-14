@@ -8,6 +8,7 @@ import { LoadingState, ErrorState, EmptyState } from "@/components/ui-state";
 import { ConfidenceMeter } from "@/components/ui/ConfidenceMeter";
 import { RiskPill } from "@/components/ui/RiskPill";
 import { DeltaChip } from "@/components/ui/DeltaChip";
+import DecisionRail from "@/components/decision-rail";
 
 type ChipPlannerResponse = {
   gameweek: number;
@@ -172,6 +173,7 @@ export default function PlannerPage() {
 
   return (
     <main className="min-h-screen p-3 sm:p-4 md:p-8 max-w-6xl mx-auto text-white">
+      <DecisionRail mode="balanced" />
       <h1 className="text-2xl sm:text-2xl sm:text-3xl font-black mb-4">Planner</h1>
 
       <section className={`${cardClass} mb-4`}>

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { fetchJson } from "@/lib/api";
 import { ErrorState, LoadingState } from "@/components/ui-state";
+import DecisionRail from "@/components/decision-rail";
 
 type Mode = "safe" | "balanced" | "aggressive";
 
@@ -113,6 +114,7 @@ export default function SimulationPage() {
 
   return (
     <main className="min-h-screen p-3 sm:p-4 md:p-8 max-w-6xl mx-auto text-white">
+      <DecisionRail mode={mode} />
       <section className="mb-6 rounded-2xl p-4 sm:p-6 border border-white/20 bg-gradient-to-r from-[#1f0030] via-[#37003c] to-[#4b006e]">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -162,7 +164,7 @@ export default function SimulationPage() {
             className="rounded-md bg-[#00ff87] text-[#37003c] font-bold px-4 py-2 hover:bg-[#00e676]"
             onClick={() => entryId && load(entryId, mode, iterations)}
           >
-            Re-run
+            Action: Recompute
           </button>
         </div>
       </section>
