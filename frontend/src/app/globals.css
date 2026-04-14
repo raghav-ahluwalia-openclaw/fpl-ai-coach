@@ -110,3 +110,25 @@ body {
     border-radius: 4px;
   }
 }
+
+@layer components {
+  .card-primary {
+    @apply rounded-2xl border border-[#00ff87]/35 bg-gradient-to-br from-[#00ff87]/15 to-transparent backdrop-blur-md p-4 md:p-5 shadow-lg;
+  }
+
+  .card-supporting {
+    @apply rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md p-4 md:p-5;
+  }
+
+  .card-diagnostic {
+    @apply rounded-2xl border border-amber-300/30 bg-amber-300/5 backdrop-blur-md p-4 md:p-5;
+  }
+
+  .pill {
+    @apply inline-flex items-center rounded-full border border-white/20 bg-black/25 px-2.5 py-1;
+  }
+
+  .touch-target {
+    min-height: 44px;
+  }
+}

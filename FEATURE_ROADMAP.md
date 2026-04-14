@@ -261,3 +261,116 @@ Move FPL AI Coach from "functional" to "premium" with polished motion, clearer h
 ### IA simplification follow-up
 - Added page consolidation map and naming standards doc: `docs/IA_CONSOLIDATION_PLAN.md`.
 - Objective: simpler nav + fewer overlapping pages while preserving all decision workflows.
+
+---
+
+## Phase 5 — Professional UX/Product Polish Plan (added 2026-04-13)
+
+### Goal
+Move from feature-rich dashboard to polished, decision-first product with stronger trust UX, faster workflows, and premium app feel.
+
+### 1) Information architecture + consistency
+1. Decision Rail (global)
+   - Persistent rail/header showing: Entry, Mode, Horizon, Captain, Transfer, Confidence, Deadline.
+   - Visible across `/weekly`, `/planner`, `/simulation`, `/live`.
+
+2. Cross-page state consistency
+   - Persist `entryId + mode + horizon + risk` across pages and sessions.
+   - Eliminate duplicate mode/horizon setup friction.
+
+3. Copy and interaction model standardization
+   - Normalize all recommendation cards to: **Action / Why / Risk / Confidence / Fallback**.
+   - Align labels and naming across nav and cards.
+
+### 2) Trust UX (data confidence + freshness)
+4. Card-level freshness/source badges
+   - Add `FreshnessBadge` to major cards (updated time, source, cache/live).
+
+5. Data health banner
+   - Add top-level health state (green/yellow/red) with concise explanation.
+   - Show fallback/degraded mode clearly.
+
+6. Global "what changed since last run"
+   - Page-level change summary (not only per-module) with key deltas.
+
+### 3) Power-user workflow speed
+7. Command palette
+   - `Cmd/Ctrl+K` quick actions: open page, run sim, refresh import, jump to transfer/captain sections.
+
+8. Saved presets
+   - Presets like "Safe Deadline", "Balanced Default", "Aggressive Catch-up".
+   - One-click preset apply.
+
+9. Weekly checklist flow
+   - Structured checklist: Import -> Review -> Simulate -> Decide -> Lock.
+   - Progress persistence and completion state.
+
+### 4) Comparative decision UX
+10. Plan comparison drawer
+    - Side-by-side Plan A/B/C + Hold with EV, downside, hit impact, confidence, value urgency.
+
+11. Baseline always-visible benchmark
+    - Keep "No transfer / Roll" comparator pinned as control option.
+
+12. Multi-week impact visualization
+    - Compact 1/3/5 GW mini-chart for P10/P50/P90 where simulation exists.
+
+### 5) Notifications + retention UX
+13. Notification center
+    - In-app history of alerts and dispatch status.
+
+14. Alert policy manager
+    - Per-alert toggles, frequency, quiet hours, snooze/mute controls.
+
+15. Alert explainability
+    - "Why you received this alert" with trigger details and thresholds.
+
+16. Retention digest loop (P4.7 expansion)
+    - Morning/evening digest templates with one recommended action and confidence rationale.
+
+### 6) Visual polish + mobile ergonomics
+17. Card hierarchy system
+    - Tiered visual hierarchy: primary decision cards vs supporting analytics vs diagnostics.
+
+18. Mobile action ergonomics
+    - Sticky bottom action bar for key actions on mobile.
+    - Improve touch target consistency and section jump behavior.
+
+19. Motion consistency pass
+    - Reuse motion tokens consistently for deltas, confidence transitions, and state changes.
+
+### 7) Accessibility + quality completeness
+20. Keyboard and focus audit
+    - Full keyboard traversal and visible focus state coverage on all critical routes.
+
+21. Contrast and reduced-motion parity
+    - WCAG AA validation for core UI states.
+    - Ensure reduced-motion alternatives across animated flows.
+
+22. UX regression guardrails
+    - Add route-level UX QA checklist + snapshots for `/weekly`, `/live`, `/planner`, `/simulation`.
+
+### Suggested implementation order (highest ROI)
+1. Trust UX (items 4-6)
+2. Comparative decision UX (items 10-12)
+3. Workflow speed (items 7-9)
+4. Notifications + retention UX (items 13-16)
+5. Visual + mobile + accessibility passes (items 17-22)
+
+### Implementation progress (2026-04-14, slice 1)
+- Added initial **Decision Rail** component and surfaced it on `/weekly`, `/planner`, `/live`, and `/simulation` (entry + mode + GW window + deadline countdown).
+- Introduced visual hierarchy utility classes in global styles: `card-primary`, `card-supporting`, `card-diagnostic`, plus reusable `pill` and `touch-target` helpers.
+- Applied hierarchy styles to key Gameweek Hub sections (`summary`, `simulation preview`, `changes`).
+- Added mobile sticky action bar on `/weekly` with fast actions: Refresh, Simulation Lab, Jump to Transfers.
+- Increased touch target sizing/consistency for top controls in Weekly and updated CTA copy to action-oriented labels for consistency.
+
+### Implementation progress (2026-04-14, slice 2)
+- Added reusable **FreshnessBadge** component (recency + source + live/cached state).
+- Added reusable **DataHealthBanner** component (good/warn/bad health state with concise detail).
+- Wired trust UX into `/weekly`:
+  - Global change summary strip at top of content section.
+  - Data health banner after gameweek status.
+  - Freshness badge in team overview and global change summary.
+- Wired trust UX into `/live`:
+  - Data health banner near top.
+  - Freshness badge in live summary card header.
