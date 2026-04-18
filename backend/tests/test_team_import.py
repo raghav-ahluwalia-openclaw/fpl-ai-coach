@@ -1,10 +1,22 @@
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from app.main import app
+from app.db import get_db
 from app.db.models import UserSquadPick
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def mock_db_override():
+    mock_session = MagicMock()
+    mock_session.get.return_value = None
+    mock_session.query.return_value.filter.return_value.delete.return_value = None
+    app.dependency_overrides[get_db] = lambda: mock_session
+    yield mock_session
+    app.dependency_overrides.clear()
+
 
 def test_import_user_team_success():
     entry_id = 12345
@@ -15,7 +27,7 @@ def test_import_user_team_success():
         ],
         "entry_history": {"points": 50, "bank": 50, "value": 1000}
     }
-    
+
     with patch("app.api.routes.team._resolve_gameweek", return_value=10):
         with patch("app.api.routes.team._get_meta", return_value="10"):
             with patch("app.api.routes.team._fetch_entry_picks_with_fallback", return_value=(fake_picks_payload, 10)):
@@ -26,7 +38,7 @@ def test_import_user_team_success():
                                 f"/api/fpl/team/{entry_id}/import",
                                 headers={"x-api-key": "test_api_key"}
                             )
-    
+
     assert response.status_code == 200
     assert response.json() == {
         "ok": True,

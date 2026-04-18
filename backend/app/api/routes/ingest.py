@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from fastapi import Depends, HTTPException, Query, Request
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from app.core.security import diagnostics_access_check, rate_limit_admin_ops, require_admin
 from app.services.ttl_cache import api_ttl_cache
@@ -12,7 +13,7 @@ from .base import (
     FPL_BOOTSTRAP_URL,
     FPL_FIXTURES_URL,
     INGEST_TTL_MINUTES,
-    SessionLocal,
+    get_db,
     Team,
     Player,
     Fixture,
@@ -26,6 +27,7 @@ from .base import (
     _is_recently_ingested,
     _set_meta,
 )
+
 
 @router.get("/health")
 def health():
@@ -41,9 +43,8 @@ def health():
 
 
 @router.get("/api/fpl/diagnostics")
-def diagnostics(request: Request):
+def diagnostics(request: Request, db: Session = Depends(get_db)):
     diagnostics_access_check(request)
-    db = SessionLocal()
     try:
         with engine.connect() as c:
             c.exec_driver_sql("SELECT 1")
@@ -73,16 +74,13 @@ def diagnostics(request: Request):
         }
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"Diagnostics failed: {e}")
-    finally:
-        db.close()
 
 
 @router.post(
     "/api/fpl/ingest/bootstrap",
     dependencies=[Depends(require_admin), Depends(rate_limit_admin_ops)],
 )
-def ingest_bootstrap(force: bool = Query(default=False)):
-    db = SessionLocal()
+def ingest_bootstrap(force: bool = Query(default=False), db: Session = Depends(get_db)):
     try:
         if not force and _is_recently_ingested(db, INGEST_TTL_MINUTES):
             logger.info("ingest skipped: within TTL", extra={"ttl_minutes": INGEST_TTL_MINUTES})
@@ -101,7 +99,7 @@ def ingest_bootstrap(force: bool = Query(default=False)):
             timeout=25,
             upstream_error_prefix="FPL bootstrap source unavailable",
         )
-        fixtures = fetch_json(
+        fixtures_data = fetch_json(
             FPL_FIXTURES_URL,
             timeout=25,
             upstream_error_prefix="FPL fixtures source unavailable",
@@ -147,7 +145,7 @@ def ingest_bootstrap(force: bool = Query(default=False)):
             row.chance_of_playing_next_round = p.get("chance_of_playing_next_round")
 
         db.query(Fixture).delete()
-        for f in fixtures:
+        for f in fixtures_data:
             row = Fixture(
                 id=_int(f.get("id")),
                 event=f.get("event"),
@@ -179,13 +177,13 @@ def ingest_bootstrap(force: bool = Query(default=False)):
         api_ttl_cache.clear()
         logger.info(
             "ingest completed",
-            extra={"teams": len(teams), "players": len(players), "fixtures": len(fixtures), "next_gw": next_gw},
+            extra={"teams": len(teams), "players": len(players), "fixtures": len(fixtures_data), "next_gw": next_gw},
         )
         return {
             "ok": True,
             "teams": len(teams),
             "players": len(players),
-            "fixtures": len(fixtures),
+            "fixtures": len(fixtures_data),
             "current_gw": current_gw,
             "next_gw": next_gw,
             "next_deadline_utc": next_deadline_utc,
@@ -194,5 +192,3 @@ def ingest_bootstrap(force: bool = Query(default=False)):
     except SQLAlchemyError as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database error during ingest: {e}")
-    finally:
-        db.close()

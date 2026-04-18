@@ -3,24 +3,30 @@ from __future__ import annotations
 import os
 import unittest
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 from fastapi.testclient import TestClient
 
-os.environ.setdefault("API_KEY", "test_api_key")
-os.environ.setdefault("ADMIN_API_KEY", "test_admin_key")
-
-from app.db import SessionLocal
-from app.db.models import Meta
+from app.db import Base, SessionLocal, engine, get_db
+from app.db.models import Meta, Player
 from app.main import app
+from app.services.ttl_cache import api_ttl_cache
 
 
 class NotificationEndpointsTest(unittest.TestCase):
-    auth_headers = {"X-Admin-Token": os.environ.get("ADMIN_API_KEY", "test_admin_key")}
+    TEST_API_KEY = "test_api_key"
+    TEST_ADMIN_KEY = "test_admin_key"
+    auth_headers = {"X-Admin-Token": TEST_ADMIN_KEY}
 
     @classmethod
     def setUpClass(cls) -> None:
+        Base.metadata.create_all(bind=engine)
         cls.client = TestClient(app)
+        api_ttl_cache.clear()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        api_ttl_cache.clear()
 
     def _set_meta(self, key: str, value: str) -> None:
         db = SessionLocal()
@@ -36,26 +42,61 @@ class NotificationEndpointsTest(unittest.TestCase):
         finally:
             db.close()
 
+    def _ensure_players(self) -> None:
+        db = SessionLocal()
+        try:
+            existing = db.query(Player).count()
+            if existing >= 15:
+                return
+            for i in range(1, 20):
+                p = Player(
+                    id=i,
+                    first_name=f"Player{i}",
+                    second_name=str(i),
+                    web_name=f"P{i}",
+                    element_type=(i % 4) + 1,
+                    now_cost=50,
+                    form=5.0,
+                    points_per_game=5.0,
+                    minutes=2000,
+                    chance_of_playing_next_round=100,
+                    selected_by_percent=10.0,
+                    team_id=(i % 20) + 1,
+                    news="",
+                    goals_scored=0,
+                    assists=0,
+                    clean_sheets=0,
+                )
+                db.merge(p)
+            db.commit()
+        finally:
+            db.close()
+
     def setUp(self) -> None:
         now = datetime.now(timezone.utc)
         self._set_meta("next_gw", "31")
+        self._set_meta("current_gw", "30")
         self._set_meta("next_deadline_utc", (now + timedelta(hours=48)).isoformat())
         self._set_meta("notif_enabled", "false")
         self._set_meta("notif_lead_hours", "6")
         self._set_meta("notif_mode", "balanced")
         self._set_meta("notif_model_version", "xgb_hist_v1")
+        self._ensure_players()
+        api_ttl_cache.clear()
 
     def test_settings_roundtrip(self) -> None:
-        r = self.client.post(
-            "/api/fpl/notification-settings",
-            params={
-                "enabled": True,
-                "lead_hours": 8,
-                "mode": "safe",
-                "model_version": "xgb_v1",
-            },
-            headers=self.auth_headers,
-        )
+        with patch("app.core.security.API_KEY", self.TEST_API_KEY), \
+             patch("app.core.security.ADMIN_API_KEY", self.TEST_ADMIN_KEY):
+            r = self.client.post(
+                "/api/fpl/notification-settings",
+                params={
+                    "enabled": True,
+                    "lead_hours": 8,
+                    "mode": "safe",
+                    "model_version": "xgb_v1",
+                },
+                headers=self.auth_headers,
+            )
         self.assertEqual(r.status_code, 200)
 
         g = self.client.get("/api/fpl/notification-settings")

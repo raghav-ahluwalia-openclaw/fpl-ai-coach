@@ -5,11 +5,15 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 from app.api.routes.base import _resolve_gameweek
-from app.db import SessionLocal
+from app.db import Base, SessionLocal, engine
 from app.db.models import Meta
 
 
 class GameweekMetaSyncTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        Base.metadata.create_all(bind=engine)
+
     def _set_meta(self, key: str, value: str) -> None:
         db = SessionLocal()
         try:

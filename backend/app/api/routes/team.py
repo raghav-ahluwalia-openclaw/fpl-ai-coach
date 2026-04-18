@@ -10,6 +10,7 @@ from typing import List, Optional, Tuple
 
 from fastapi import Depends, HTTPException, Query
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from app.core.security import rate_limit_write_ops, require_authenticated
 from app.db.models import RecommendationSnapshot
@@ -41,6 +42,7 @@ from .base import (
     _set_meta,
     _strategy_config,
     fetch_json,
+    get_db,
     logger,
     router,
 )
@@ -49,8 +51,7 @@ from .base import (
     "/api/fpl/team/{entry_id}/import",
     dependencies=[Depends(require_authenticated), Depends(rate_limit_write_ops)],
 )
-def import_user_team(entry_id: int, gameweek: Optional[int] = Query(default=None, ge=1, le=38)):
-    db = SessionLocal()
+def import_user_team(entry_id: int, gameweek: Optional[int] = Query(default=None, ge=1, le=38), db: Session = Depends(get_db)):
     try:
         gw = _resolve_gameweek(db, gameweek)
         current_gw = _int(_get_meta(db, "current_gw"), 0)
@@ -141,163 +142,158 @@ def import_user_team(entry_id: int, gameweek: Optional[int] = Query(default=None
     except SQLAlchemyError as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"DB error while importing team: {e}")
-    finally:
-        db.close()
 
 @router.get("/api/fpl/team/{entry_id}/recommendation", response_model=TeamRecommendation)
 def team_recommendation(
     entry_id: int,
     gameweek: Optional[int] = Query(default=None, ge=1, le=38),
     mode: str = Query(default="balanced", pattern="^(safe|balanced|aggressive)$"),
+    db: Session = Depends(get_db),
 ):
-    db = SessionLocal()
-    try:
-        players = db.query(Player).all()
-        if not players:
-            raise HTTPException(status_code=400, detail="No player data found. Run POST /api/fpl/ingest/bootstrap first.")
+    players = db.query(Player).all()
+    if not players:
+        raise HTTPException(status_code=400, detail="No player data found. Run POST /api/fpl/ingest/bootstrap first.")
 
-        target_gw = _resolve_gameweek(db, gameweek)
-        current_gw = _int(_get_meta(db, "current_gw"), 0)
-        payload, _resolved_gw = _fetch_entry_picks_with_fallback(entry_id, target_gw, [current_gw, target_gw - 1])
-        gw = target_gw
-        picks = payload.get("picks", [])
-        hist = payload.get("entry_history", {})
+    target_gw = _resolve_gameweek(db, gameweek)
+    current_gw = _int(_get_meta(db, "current_gw"), 0)
+    payload, _resolved_gw = _fetch_entry_picks_with_fallback(entry_id, target_gw, [current_gw, target_gw - 1])
+    gw = target_gw
+    picks = payload.get("picks", [])
+    hist = payload.get("entry_history", {})
 
-        horizon_weights, transfer_threshold = _strategy_config(mode)
+    horizon_weights, transfer_threshold = _strategy_config(mode)
 
-        squad_ids = [_int(p.get("element")) for p in picks]
-        if len(squad_ids) < 11:
-            raise HTTPException(status_code=400, detail="FPL returned incomplete squad data")
+    squad_ids = [_int(p.get("element")) for p in picks]
+    if len(squad_ids) < 11:
+        raise HTTPException(status_code=400, detail="FPL returned incomplete squad data")
 
-        player_by_id = {p.id: p for p in players}
-        fixtures = db.query(Fixture).all()
+    player_by_id = {p.id: p for p in players}
+    fixtures = db.query(Fixture).all()
 
-        squad_scored: List[Tuple[float, Player]] = []
-        for pid in squad_ids:
-            player = player_by_id.get(pid)
-            if player is None:
-                continue
-            xpts = _expected_points(player, fixtures, gw)
-            squad_scored.append((xpts, player))
+    squad_scored: List[Tuple[float, Player]] = []
+    for pid in squad_ids:
+        player = player_by_id.get(pid)
+        if player is None:
+            continue
+        xpts = _expected_points(player, fixtures, gw)
+        squad_scored.append((xpts, player))
 
-        if len(squad_scored) < 11:
-            raise HTTPException(status_code=400, detail="Your squad has players missing from local DB. Re-run bootstrap ingest.")
+    if len(squad_scored) < 11:
+        raise HTTPException(status_code=400, detail="Your squad has players missing from local DB. Re-run bootstrap ingest.")
 
-        starting_pairs, bench_pairs, formation = _build_lineup_from_squad(squad_scored)
+    starting_pairs, bench_pairs, formation = _build_lineup_from_squad(squad_scored)
 
-        ordered_starting_pairs = sorted(starting_pairs, key=lambda x: x[0], reverse=True)
-        starting_xi = []
-        for xpts, p in ordered_starting_pairs:
-            fc, fb = _fixture_badge_for_gw(p, fixtures, gw)
-            xpts3 = _expected_points_horizon(p, fixtures, gw, horizon=3, weights=horizon_weights)
-            xpts5 = _expected_points_horizon(p, fixtures, gw, horizon=5)
-            starting_xi.append(
-                _pick_to_response(
-                    p,
-                    xpts,
-                    expected_points_1=round(xpts, 2),
-                    expected_points_3=round(xpts3, 2),
-                    expected_points_5=round(xpts5, 2),
-                    fixture_count=fc,
-                    fixture_badge=fb,
-                )
+    ordered_starting_pairs = sorted(starting_pairs, key=lambda x: x[0], reverse=True)
+    starting_xi = []
+    for xpts, p in ordered_starting_pairs:
+        fc, fb = _fixture_badge_for_gw(p, fixtures, gw)
+        xpts3 = _expected_points_horizon(p, fixtures, gw, horizon=3, weights=horizon_weights)
+        xpts5 = _expected_points_horizon(p, fixtures, gw, horizon=5)
+        starting_xi.append(
+            _pick_to_response(
+                p,
+                xpts,
+                expected_points_1=round(xpts, 2),
+                expected_points_3=round(xpts3, 2),
+                expected_points_5=round(xpts5, 2),
+                fixture_count=fc,
+                fixture_badge=fb,
             )
+        )
 
-        bench = []
-        for xpts, p in bench_pairs:
-            fc, fb = _fixture_badge_for_gw(p, fixtures, gw)
-            xpts3 = _expected_points_horizon(p, fixtures, gw, horizon=3, weights=horizon_weights)
-            xpts5 = _expected_points_horizon(p, fixtures, gw, horizon=5)
-            bench.append(
-                _pick_to_response(
-                    p,
-                    xpts,
-                    expected_points_1=round(xpts, 2),
-                    expected_points_3=round(xpts3, 2),
-                    expected_points_5=round(xpts5, 2),
-                    fixture_count=fc,
-                    fixture_badge=fb,
-                )
+    bench = []
+    for xpts, p in bench_pairs:
+        fc, fb = _fixture_badge_for_gw(p, fixtures, gw)
+        xpts3 = _expected_points_horizon(p, fixtures, gw, horizon=3, weights=horizon_weights)
+        xpts5 = _expected_points_horizon(p, fixtures, gw, horizon=5)
+        bench.append(
+            _pick_to_response(
+                p,
+                xpts,
+                expected_points_1=round(xpts, 2),
+                expected_points_3=round(xpts3, 2),
+                expected_points_5=round(xpts5, 2),
+                fixture_count=fc,
+                fixture_badge=fb,
             )
+        )
 
-        captain, vice = _choose_captains(ordered_starting_pairs)
+    captain, vice = _choose_captains(ordered_starting_pairs)
 
-        bank = _float(hist.get("bank"), 0.0) / 10.0
-        squad_value = _float(hist.get("value"), 0.0) / 10.0
+    bank = _float(hist.get("bank"), 0.0) / 10.0
+    squad_value = _float(hist.get("value"), 0.0) / 10.0
 
-        squad_id_set = set(squad_ids)
+    squad_id_set = set(squad_ids)
 
-        # Transfer logic uses weighted next-3-GW horizon with mode-specific weights.
-        squad_horizon_scored: List[Tuple[float, Player]] = []
-        for _, p in squad_scored:
-            hxpts = _expected_points_horizon(p, fixtures, gw, horizon=3, weights=horizon_weights)
-            squad_horizon_scored.append((hxpts, p))
+    # Transfer logic uses weighted next-3-GW horizon with mode-specific weights.
+    squad_horizon_scored: List[Tuple[float, Player]] = []
+    for _, p in squad_scored:
+        hxpts = _expected_points_horizon(p, fixtures, gw, horizon=3, weights=horizon_weights)
+        squad_horizon_scored.append((hxpts, p))
 
-        weakest_hxpts, weakest_player = sorted(squad_horizon_scored, key=lambda x: x[0])[0]
-        max_affordable = weakest_player.now_cost / 10.0 + bank
+    weakest_hxpts, weakest_player = sorted(squad_horizon_scored, key=lambda x: x[0])[0]
+    max_affordable = weakest_player.now_cost / 10.0 + bank
 
-        replacement_pool: List[Tuple[float, Player]] = []
-        for p in players:
-            if p.id in squad_id_set:
-                continue
-            if p.element_type != weakest_player.element_type:
-                continue
-            price = p.now_cost / 10.0
-            if price > max_affordable:
-                continue
-            hxpts = _expected_points_horizon(p, fixtures, gw, horizon=3, weights=horizon_weights)
-            replacement_pool.append((hxpts, p))
+    replacement_pool: List[Tuple[float, Player]] = []
+    for p in players:
+        if p.id in squad_id_set:
+            continue
+        if p.element_type != weakest_player.element_type:
+            continue
+        price = p.now_cost / 10.0
+        if price > max_affordable:
+            continue
+        hxpts = _expected_points_horizon(p, fixtures, gw, horizon=3, weights=horizon_weights)
+        replacement_pool.append((hxpts, p))
 
-        replacement_pool.sort(key=lambda x: x[0], reverse=True)
+    replacement_pool.sort(key=lambda x: x[0], reverse=True)
 
-        if replacement_pool and replacement_pool[0][0] > weakest_hxpts + transfer_threshold:
-            best_hxpts, best_player = replacement_pool[0]
-            transfer_out = weakest_player.web_name
-            transfer_in = best_player.web_name
-            gain = round(best_hxpts - weakest_hxpts, 2)
-            transfer_reason = (
-                f"[{mode}] Estimated +{gain} weighted xP over next 3 GWs (starting GW {gw}) "
-                f"within budget (£{max_affordable:.1f})."
-            )
+    if replacement_pool and replacement_pool[0][0] > weakest_hxpts + transfer_threshold:
+        best_hxpts, best_player = replacement_pool[0]
+        transfer_out = weakest_player.web_name
+        transfer_in = best_player.web_name
+        gain = round(best_hxpts - weakest_hxpts, 2)
+        transfer_reason = (
+            f"[{mode}] Estimated +{gain} weighted xP over next 3 GWs (starting GW {gw}) "
+            f"within budget (£{max_affordable:.1f})."
+        )
 
-            # Consistency guardrails
-            if best_player.id in squad_id_set or best_player.id == weakest_player.id:
-                transfer_out = "No urgent sale"
-                transfer_in = "Roll transfer"
-                transfer_reason = (
-                    f"[{mode}] Guardrail: suggested transfer was invalid (duplicate/self transfer). "
-                    "Rolled transfer instead."
-                )
-        else:
+        # Consistency guardrails
+        if best_player.id in squad_id_set or best_player.id == weakest_player.id:
             transfer_out = "No urgent sale"
             transfer_in = "Roll transfer"
             transfer_reason = (
-                f"[{mode}] No same-position replacement offers a clear weighted gain over "
-                f"the next 3 GWs within budget."
+                f"[{mode}] Guardrail: suggested transfer was invalid (duplicate/self transfer). "
+                "Rolled transfer instead."
             )
-
-        confidence = min(0.9, max(0.55, sum(p.expected_points for p in starting_xi) / 70.0))
-
-        return TeamRecommendation(
-            entry_id=entry_id,
-            gameweek=gw,
-            strategy_mode=mode,
-            formation=formation,
-            starting_xi=starting_xi,
-            bench=bench,
-            captain=captain,
-            vice_captain=vice,
-            transfer_out=transfer_out,
-            transfer_in=transfer_in,
-            transfer_reason=transfer_reason,
-            bank=round(bank, 1),
-            squad_value=round(squad_value, 1),
-            confidence=round(confidence, 2),
-            last_ingested_at=_get_meta(db, "last_ingested_at"),
-            summary=f"Team-specific XI from your current squad, with {mode} transfer suggestions optimized on a weighted next-3-GW horizon.",
+    else:
+        transfer_out = "No urgent sale"
+        transfer_in = "Roll transfer"
+        transfer_reason = (
+            f"[{mode}] No same-position replacement offers a clear weighted gain over "
+            f"the next 3 GWs within budget."
         )
-    finally:
-        db.close()
+
+    confidence = min(0.9, max(0.55, sum(p.expected_points for p in starting_xi) / 70.0))
+
+    return TeamRecommendation(
+        entry_id=entry_id,
+        gameweek=gw,
+        strategy_mode=mode,
+        formation=formation,
+        starting_xi=starting_xi,
+        bench=bench,
+        captain=captain,
+        vice_captain=vice,
+        transfer_out=transfer_out,
+        transfer_in=transfer_in,
+        transfer_reason=transfer_reason,
+        bank=round(bank, 1),
+        squad_value=round(squad_value, 1),
+        confidence=round(confidence, 2),
+        last_ingested_at=_get_meta(db, "last_ingested_at"),
+        summary=f"Team-specific XI from your current squad, with {mode} transfer suggestions optimized on a weighted next-3-GW horizon.",
+    )
 
 def _price_rise_pressure(p: Player) -> float:
     ownership = max(0.0, min(_float(p.selected_by_percent), 100.0))
@@ -388,175 +384,172 @@ def what_if_simulator(
     hit_cost: int = Query(default=4, ge=0, le=12),
     per_out_limit: int = Query(default=5, ge=2, le=12),
     limit: int = Query(default=10, ge=1, le=25),
+    db: Session = Depends(get_db),
 ):
-    db = SessionLocal()
-    try:
-        players = db.query(Player).all()
-        if not players:
-            raise HTTPException(status_code=400, detail="No player data found. Run POST /api/fpl/ingest/bootstrap first.")
+    players = db.query(Player).all()
+    if not players:
+        raise HTTPException(status_code=400, detail="No player data found. Run POST /api/fpl/ingest/bootstrap first.")
 
-        target_gw = _resolve_gameweek(db, gameweek)
-        current_gw = _int(_get_meta(db, "current_gw"), 0)
-        payload, _resolved_gw = _fetch_entry_picks_with_fallback(entry_id, target_gw, [current_gw, target_gw - 1])
-        gw = target_gw
-        picks = payload.get("picks", [])
-        hist = payload.get("entry_history", {})
+    target_gw = _resolve_gameweek(db, gameweek)
+    current_gw = _int(_get_meta(db, "current_gw"), 0)
+    payload, _resolved_gw = _fetch_entry_picks_with_fallback(entry_id, target_gw, [current_gw, target_gw - 1])
+    gw = target_gw
+    picks = payload.get("picks", [])
+    hist = payload.get("entry_history", {})
 
-        squad_ids = [_int(p.get("element")) for p in picks]
-        if len(squad_ids) < 11:
-            raise HTTPException(status_code=400, detail="FPL returned incomplete squad data")
+    squad_ids = [_int(p.get("element")) for p in picks]
+    if len(squad_ids) < 11:
+        raise HTTPException(status_code=400, detail="FPL returned incomplete squad data")
 
-        player_by_id = {p.id: p for p in players}
-        fixtures = db.query(Fixture).all()
+    player_by_id = {p.id: p for p in players}
+    fixtures = db.query(Fixture).all()
 
-        squad_players = [player_by_id.get(pid) for pid in squad_ids]
-        squad_players = [p for p in squad_players if p is not None]
-        if len(squad_players) < 11:
-            raise HTTPException(status_code=400, detail="Your squad has players missing from local DB. Re-run bootstrap ingest.")
+    squad_players = [player_by_id.get(pid) for pid in squad_ids]
+    squad_players = [p for p in squad_players if p is not None]
+    if len(squad_players) < 11:
+        raise HTTPException(status_code=400, detail="Your squad has players missing from local DB. Re-run bootstrap ingest.")
 
-        bank = _float(hist.get("bank"), 0.0) / 10.0
-        squad_id_set = {p.id for p in squad_players}
+    bank = _float(hist.get("bank"), 0.0) / 10.0
+    squad_id_set = {p.id for p in squad_players}
 
-        horizon_score = {
-            p.id: _expected_points_horizon(p, fixtures, gw, horizon=horizon)
-            for p in squad_players
-        }
+    horizon_score = {
+        p.id: _expected_points_horizon(p, fixtures, gw, horizon=horizon)
+        for p in squad_players
+    }
 
-        # Build replacement options for each outbound player.
-        replacements: dict[int, list[tuple[float, Player]]] = {}
-        for out_p in squad_players:
-            budget = (out_p.now_cost / 10.0) + bank
-            options: list[tuple[float, Player]] = []
-            for cand in players:
-                if cand.id in squad_id_set:
-                    continue
-                if cand.element_type != out_p.element_type:
-                    continue
-                if (cand.now_cost / 10.0) > budget:
-                    continue
-                cand_h = _expected_points_horizon(cand, fixtures, gw, horizon=horizon)
-                gain = cand_h - horizon_score[out_p.id]
-                options.append((gain, cand))
-            options.sort(key=lambda x: x[0], reverse=True)
-            replacements[out_p.id] = options[:per_out_limit]
+    # Build replacement options for each outbound player.
+    replacements: dict[int, list[tuple[float, Player]]] = {}
+    for out_p in squad_players:
+        budget = (out_p.now_cost / 10.0) + bank
+        options: list[tuple[float, Player]] = []
+        for cand in players:
+            if cand.id in squad_id_set:
+                continue
+            if cand.element_type != out_p.element_type:
+                continue
+            if (cand.now_cost / 10.0) > budget:
+                continue
+            cand_h = _expected_points_horizon(cand, fixtures, gw, horizon=horizon)
+            gain = cand_h - horizon_score[out_p.id]
+            options.append((gain, cand))
+        options.sort(key=lambda x: x[0], reverse=True)
+        replacements[out_p.id] = options[:per_out_limit]
 
-        scenarios: list[dict] = []
+    scenarios: list[dict] = []
 
-        # Single-transfer scenarios
-        for out_p in squad_players:
-            for gain, in_p in replacements.get(out_p.id, []):
-                if in_p.id == out_p.id or in_p.id in squad_id_set:
-                    continue
-                transfers = 1
-                hit = max(0, transfers - free_transfers) * hit_cost
-                rise_in = _price_rise_pressure(in_p)
-                fall_out = _price_fall_pressure(out_p)
-                value_urgency = round(min(1.0, (rise_in * 0.55) + (fall_out * 0.45)), 3)
-                price_change_bonus = round(value_urgency * 0.6, 3)
-                net = round(gain - hit, 2)
-                ranking_score = round(net + price_change_bonus, 3)
-                scenarios.append(
-                    {
-                        "transfers": [
-                            {
-                                "out": out_p.web_name,
-                                "out_id": out_p.id,
-                                "in": in_p.web_name,
-                                "in_id": in_p.id,
-                                "position": POSITION_MAP.get(out_p.element_type, str(out_p.element_type)),
-                                "gain": round(gain, 2),
-                                "price_rise_pressure_in": rise_in,
-                                "price_fall_pressure_out": fall_out,
-                                "value_urgency_score": value_urgency,
-                            }
-                        ],
-                        "hit": hit,
-                        "projected_gain": round(gain, 2),
-                        "net_gain": net,
-                        "price_change_bonus": price_change_bonus,
-                        "value_urgency_score": value_urgency,
-                        "ranking_score": ranking_score,
-                        "horizon": horizon,
-                    }
-                )
+    # Single-transfer scenarios
+    for out_p in squad_players:
+        for gain, in_p in replacements.get(out_p.id, []):
+            if in_p.id == out_p.id or in_p.id in squad_id_set:
+                continue
+            transfers = 1
+            hit = max(0, transfers - free_transfers) * hit_cost
+            rise_in = _price_rise_pressure(in_p)
+            fall_out = _price_fall_pressure(out_p)
+            value_urgency = round(min(1.0, (rise_in * 0.55) + (fall_out * 0.45)), 3)
+            price_change_bonus = round(value_urgency * 0.6, 3)
+            net = round(gain - hit, 2)
+            ranking_score = round(net + price_change_bonus, 3)
+            scenarios.append(
+                {
+                    "transfers": [
+                        {
+                            "out": out_p.web_name,
+                            "out_id": out_p.id,
+                            "in": in_p.web_name,
+                            "in_id": in_p.id,
+                            "position": POSITION_MAP.get(out_p.element_type, str(out_p.element_type)),
+                            "gain": round(gain, 2),
+                            "price_rise_pressure_in": rise_in,
+                            "price_fall_pressure_out": fall_out,
+                            "value_urgency_score": value_urgency,
+                        }
+                    ],
+                    "hit": hit,
+                    "projected_gain": round(gain, 2),
+                    "net_gain": net,
+                    "price_change_bonus": price_change_bonus,
+                    "value_urgency_score": value_urgency,
+                    "ranking_score": ranking_score,
+                    "horizon": horizon,
+                }
+            )
 
-        # Two-transfer scenarios
-        if max_transfers >= 2:
-            for out_a, out_b in combinations(squad_players, 2):
-                for gain_a, in_a in replacements.get(out_a.id, []):
-                    for gain_b, in_b in replacements.get(out_b.id, []):
-                        if in_a.id == in_b.id:
-                            continue
+    # Two-transfer scenarios
+    if max_transfers >= 2:
+        for out_a, out_b in combinations(squad_players, 2):
+            for gain_a, in_a in replacements.get(out_a.id, []):
+                for gain_b, in_b in replacements.get(out_b.id, []):
+                    if in_a.id == in_b.id:
+                        continue
 
-                        total_in_price = (in_a.now_cost + in_b.now_cost) / 10.0
-                        total_out_price = (out_a.now_cost + out_b.now_cost) / 10.0
-                        if total_in_price > total_out_price + bank:
-                            continue
+                    total_in_price = (in_a.now_cost + in_b.now_cost) / 10.0
+                    total_out_price = (out_a.now_cost + out_b.now_cost) / 10.0
+                    if total_in_price > total_out_price + bank:
+                        continue
 
-                        projected = gain_a + gain_b
-                        transfers = 2
-                        hit = max(0, transfers - free_transfers) * hit_cost
-                        net = round(projected - hit, 2)
+                    projected = gain_a + gain_b
+                    transfers = 2
+                    hit = max(0, transfers - free_transfers) * hit_cost
+                    net = round(projected - hit, 2)
 
-                        rise_a = _price_rise_pressure(in_a)
-                        rise_b = _price_rise_pressure(in_b)
-                        fall_a = _price_fall_pressure(out_a)
-                        fall_b = _price_fall_pressure(out_b)
-                        value_urgency = round(min(1.0, ((rise_a + rise_b) * 0.275) + ((fall_a + fall_b) * 0.225)), 3)
-                        price_change_bonus = round(value_urgency * 0.6, 3)
-                        ranking_score = round(net + price_change_bonus, 3)
+                    rise_a = _price_rise_pressure(in_a)
+                    rise_b = _price_rise_pressure(in_b)
+                    fall_a = _price_fall_pressure(out_a)
+                    fall_b = _price_fall_pressure(out_b)
+                    value_urgency = round(min(1.0, ((rise_a + rise_b) * 0.275) + ((fall_a + fall_b) * 0.225)), 3)
+                    price_change_bonus = round(value_urgency * 0.6, 3)
+                    ranking_score = round(net + price_change_bonus, 3)
 
-                        scenarios.append(
-                            {
-                                "transfers": [
-                                    {
-                                        "out": out_a.web_name,
-                                        "out_id": out_a.id,
-                                        "in": in_a.web_name,
-                                        "in_id": in_a.id,
-                                        "position": POSITION_MAP.get(out_a.element_type, str(out_a.element_type)),
-                                        "gain": round(gain_a, 2),
-                                        "price_rise_pressure_in": rise_a,
-                                        "price_fall_pressure_out": fall_a,
-                                        "value_urgency_score": round(min(1.0, rise_a * 0.55 + fall_a * 0.45), 3),
-                                    },
-                                    {
-                                        "out": out_b.web_name,
-                                        "out_id": out_b.id,
-                                        "in": in_b.web_name,
-                                        "in_id": in_b.id,
-                                        "position": POSITION_MAP.get(out_b.element_type, str(out_b.element_type)),
-                                        "gain": round(gain_b, 2),
-                                        "price_rise_pressure_in": rise_b,
-                                        "price_fall_pressure_out": fall_b,
-                                        "value_urgency_score": round(min(1.0, rise_b * 0.55 + fall_b * 0.45), 3),
-                                    },
-                                ],
-                                "hit": hit,
-                                "projected_gain": round(projected, 2),
-                                "net_gain": net,
-                                "price_change_bonus": price_change_bonus,
-                                "value_urgency_score": value_urgency,
-                                "ranking_score": ranking_score,
-                                "horizon": horizon,
-                            }
-                        )
+                    scenarios.append(
+                        {
+                            "transfers": [
+                                {
+                                    "out": out_a.web_name,
+                                    "out_id": out_a.id,
+                                    "in": in_a.web_name,
+                                    "in_id": in_a.id,
+                                    "position": POSITION_MAP.get(out_a.element_type, str(out_a.element_type)),
+                                    "gain": round(gain_a, 2),
+                                    "price_rise_pressure_in": rise_a,
+                                    "price_fall_pressure_out": fall_a,
+                                    "value_urgency_score": round(min(1.0, rise_a * 0.55 + fall_a * 0.45), 3),
+                                },
+                                {
+                                    "out": out_b.web_name,
+                                    "out_id": out_b.id,
+                                    "in": in_b.web_name,
+                                    "in_id": in_b.id,
+                                    "position": POSITION_MAP.get(out_b.element_type, str(out_b.element_type)),
+                                    "gain": round(gain_b, 2),
+                                    "price_rise_pressure_in": rise_b,
+                                    "price_fall_pressure_out": fall_b,
+                                    "value_urgency_score": round(min(1.0, rise_b * 0.55 + fall_b * 0.45), 3),
+                                },
+                            ],
+                            "hit": hit,
+                            "projected_gain": round(projected, 2),
+                            "net_gain": net,
+                            "price_change_bonus": price_change_bonus,
+                            "value_urgency_score": value_urgency,
+                            "ranking_score": ranking_score,
+                            "horizon": horizon,
+                        }
+                    )
 
-        scenarios.sort(key=lambda x: (x.get("ranking_score", x.get("net_gain", 0.0))), reverse=True)
+    scenarios.sort(key=lambda x: (x.get("ranking_score", x.get("net_gain", 0.0))), reverse=True)
 
-        return {
-            "entry_id": entry_id,
-            "gameweek": gw,
-            "horizon": horizon,
-            "bank": round(bank, 1),
-            "free_transfers": free_transfers,
-            "hit_cost": hit_cost,
-            "count": min(len(scenarios), limit),
-            "scenarios": scenarios[:limit],
-            "summary": "What-if transfer simulator ranked by projected net gain over selected horizon.",
-        }
-    finally:
-        db.close()
+    return {
+        "entry_id": entry_id,
+        "gameweek": gw,
+        "horizon": horizon,
+        "bank": round(bank, 1),
+        "free_transfers": free_transfers,
+        "hit_cost": hit_cost,
+        "count": min(len(scenarios), limit),
+        "scenarios": scenarios[:limit],
+        "summary": "What-if transfer simulator ranked by projected net gain over selected horizon.",
+    }
 
 
 @router.get("/api/fpl/team/{entry_id}/simulation-lab")
@@ -568,126 +561,124 @@ def simulation_lab(
     captain_limit: int = Query(default=5, ge=3, le=8),
     transfer_limit: int = Query(default=5, ge=3, le=10),
     seed: Optional[int] = Query(default=None, ge=1, le=2_147_483_647),
+    db: Session = Depends(get_db),
 ):
-    db = SessionLocal()
-    try:
-        players = db.query(Player).all()
-        if not players:
-            raise HTTPException(status_code=400, detail="No player data found. Run POST /api/fpl/ingest/bootstrap first.")
+    players = db.query(Player).all()
+    if not players:
+        raise HTTPException(status_code=400, detail="No player data found. Run POST /api/fpl/ingest/bootstrap first.")
 
-        target_gw = _resolve_gameweek(db, gameweek)
-        current_gw = _int(_get_meta(db, "current_gw"), 0)
-        payload, _ = _fetch_entry_picks_with_fallback(entry_id, target_gw, [current_gw, target_gw - 1])
-        gw = target_gw
-        picks = payload.get("picks", [])
-        if len(picks) < 11:
-            raise HTTPException(status_code=400, detail="FPL returned incomplete squad data")
+    target_gw = _resolve_gameweek(db, gameweek)
+    current_gw = _int(_get_meta(db, "current_gw"), 0)
+    payload, _ = _fetch_entry_picks_with_fallback(entry_id, target_gw, [current_gw, target_gw - 1])
+    gw = target_gw
+    picks = payload.get("picks", [])
+    if len(picks) < 11:
+        raise HTTPException(status_code=400, detail="FPL returned incomplete squad data")
 
-        fixtures = db.query(Fixture).all()
-        player_by_id = {p.id: p for p in players}
-        squad_ids = [_int(p.get("element")) for p in picks]
-        squad_players = [player_by_id.get(pid) for pid in squad_ids if player_by_id.get(pid) is not None]
-        if len(squad_players) < 11:
-            raise HTTPException(status_code=400, detail="Your squad has players missing from local DB. Re-run bootstrap ingest.")
+    fixtures = db.query(Fixture).all()
+    player_by_id = {p.id: p for p in players}
+    squad_ids = [_int(p.get("element")) for p in picks]
+    squad_players = [player_by_id.get(pid) for pid in squad_ids if player_by_id.get(pid) is not None]
+    if len(squad_players) < 11:
+        raise HTTPException(status_code=400, detail="Your squad has players missing from local DB. Re-run bootstrap ingest.")
 
-        rng = random.Random(seed if seed is not None else (entry_id * 1000 + gw * 17 + iterations))
+    rng = random.Random(seed if seed is not None else (entry_id * 1000 + gw * 17 + iterations))
 
-        # Captain simulation bands (team-specific candidates)
-        captain_rows = []
-        for p in squad_players:
-            xp1 = _expected_points(p, fixtures, gw)
-            availability_risk = max(0.0, 1.0 - _availability_factor(p.chance_of_playing_next_round, p.news))
-            minutes_risk = max(0.0, 1.0 - min(_minutes_factor(p.minutes), 1.0))
-            risk_score = min(1.0, availability_risk * 0.6 + minutes_risk * 0.4)
-            sigma = max(1.0, xp1 * (0.30 + (risk_score * 0.85)))
+    # Captain simulation bands (team-specific candidates)
+    captain_rows = []
+    for p in squad_players:
+        xp1 = _expected_points(p, fixtures, gw)
+        availability_risk = max(0.0, 1.0 - _availability_factor(p.chance_of_playing_next_round, p.news))
+        minutes_risk = max(0.0, 1.0 - min(_minutes_factor(p.minutes), 1.0))
+        risk_score = min(1.0, availability_risk * 0.6 + minutes_risk * 0.4)
+        sigma = max(1.0, xp1 * (0.30 + (risk_score * 0.85)))
 
-            band = _simulate_band(mean_value=xp1 * 2.0, sigma=sigma * 2.0, iterations=iterations, rng=rng)
-            band_draws = [max(0.0, rng.gauss(xp1 * 2.0, sigma * 2.0)) for _ in range(iterations)]
-            prob_10_plus = (sum(1 for d in band_draws if d >= 10.0) / iterations) if iterations > 0 else 0.0
-            prob_blank = (sum(1 for d in band_draws if d <= 2.0) / iterations) if iterations > 0 else 0.0
+        band = _simulate_band(mean_value=xp1 * 2.0, sigma=sigma * 2.0, iterations=iterations, rng=rng)
+        band_draws = [max(0.0, rng.gauss(xp1 * 2.0, sigma * 2.0)) for _ in range(iterations)]
+        prob_10_plus = (sum(1 for d in band_draws if d >= 10.0) / iterations) if iterations > 0 else 0.0
+        prob_blank = (sum(1 for d in band_draws if d <= 2.0) / iterations) if iterations > 0 else 0.0
 
-            captain_rows.append(
-                {
-                    "id": p.id,
-                    "name": p.web_name,
-                    "position": POSITION_MAP.get(p.element_type, str(p.element_type)),
-                    "projected_points_1": round(xp1, 2),
-                    "risk_score": round(risk_score, 2),
-                    "band": {
-                        **band,
-                        "prob_10_plus": round(prob_10_plus, 3),
-                        "prob_blank_2_or_less": round(prob_blank, 3),
-                    },
-                }
-            )
-
-        captain_rows.sort(key=lambda r: r["band"]["p50"], reverse=True)
-        captain_rows = captain_rows[:captain_limit]
-
-        # Transfer simulation bands (scenario net gains)
-        transfer_sim = what_if_simulator(
-            entry_id=entry_id,
-            gameweek=gw,
-            horizon=3,
-            max_transfers=2,
-            free_transfers=1,
-            hit_cost=4,
-            per_out_limit=6,
-            limit=max(transfer_limit, 8),
+        captain_rows.append(
+            {
+                "id": p.id,
+                "name": p.web_name,
+                "position": POSITION_MAP.get(p.element_type, str(p.element_type)),
+                "projected_points_1": round(xp1, 2),
+                "risk_score": round(risk_score, 2),
+                "band": {
+                    **band,
+                    "prob_10_plus": round(prob_10_plus, 3),
+                    "prob_blank_2_or_less": round(prob_blank, 3),
+                },
+            }
         )
-        scenarios = (transfer_sim.get("scenarios") or [])[:transfer_limit]
 
-        transfer_rows = []
-        for idx, scenario in enumerate(scenarios):
-            transfers = scenario.get("transfers", [])
-            net_gain = _float(scenario.get("net_gain"), 0.0)
-            hit = _int(scenario.get("hit"), 0)
-            value_urgency = _float(scenario.get("value_urgency_score"), 0.0)
+    captain_rows.sort(key=lambda r: r["band"]["p50"], reverse=True)
+    captain_rows = captain_rows[:captain_limit]
 
-            # Risk-aware sigma: more transfers/hits = wider uncertainty bands.
-            sigma = max(0.8, (abs(net_gain) * 0.55) + (len(transfers) * 0.9) + (0.7 if hit > 0 else 0.0) + ((1.0 - value_urgency) * 1.1))
-            band = _simulate_band(mean_value=net_gain, sigma=sigma, iterations=iterations, rng=rng)
-            band_draws = [rng.gauss(net_gain, sigma) for _ in range(iterations)]
-            prob_positive = (sum(1 for d in band_draws if d > 0.0) / iterations) if iterations > 0 else 0.0
-            prob_4_plus = (sum(1 for d in band_draws if d >= 4.0) / iterations) if iterations > 0 else 0.0
-            prob_minus_4_or_worse = (sum(1 for d in band_draws if d <= -4.0) / iterations) if iterations > 0 else 0.0
+    # Transfer simulation bands (scenario net gains)
+    transfer_sim = what_if_simulator(
+        entry_id=entry_id,
+        gameweek=gw,
+        horizon=3,
+        max_transfers=2,
+        free_transfers=1,
+        hit_cost=4,
+        per_out_limit=6,
+        limit=max(transfer_limit, 8),
+        db=db,
+    )
+    scenarios = (transfer_sim.get("scenarios") or [])[:transfer_limit]
 
-            transfer_rows.append(
-                {
-                    "plan": f"Option {idx + 1}",
-                    "transfer_count": len(transfers),
-                    "hit": hit,
-                    "net_gain_mean_input": round(net_gain, 2),
-                    "moves": [f"{t.get('out', '—')} → {t.get('in', '—')}" for t in transfers],
-                    "band": {
-                        **band,
-                        "prob_positive": round(prob_positive, 3),
-                        "prob_4_plus": round(prob_4_plus, 3),
-                        "prob_minus_4_or_worse": round(prob_minus_4_or_worse, 3),
-                    },
-                }
-            )
+    transfer_rows = []
+    for idx, scenario in enumerate(scenarios):
+        transfers = scenario.get("transfers", [])
+        net_gain = _float(scenario.get("net_gain"), 0.0)
+        hit = _int(scenario.get("hit"), 0)
+        value_urgency = _float(scenario.get("value_urgency_score"), 0.0)
 
-        transfer_rows.sort(key=lambda r: r["band"]["p50"], reverse=True)
+        # Risk-aware sigma: more transfers/hits = wider uncertainty bands.
+        sigma = max(0.8, (abs(net_gain) * 0.55) + (len(transfers) * 0.9) + (0.7 if hit > 0 else 0.0) + ((1.0 - value_urgency) * 1.1))
+        band = _simulate_band(mean_value=net_gain, sigma=sigma, iterations=iterations, rng=rng)
+        band_draws = [rng.gauss(net_gain, sigma) for _ in range(iterations)]
+        prob_positive = (sum(1 for d in band_draws if d > 0.0) / iterations) if iterations > 0 else 0.0
+        prob_4_plus = (sum(1 for d in band_draws if d >= 4.0) / iterations) if iterations > 0 else 0.0
+        prob_minus_4_or_worse = (sum(1 for d in band_draws if d <= -4.0) / iterations) if iterations > 0 else 0.0
 
-        return {
-            "entry_id": entry_id,
-            "gameweek": gw,
-            "mode": mode,
-            "schema": "simulation-lab-v1",
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "settings": {
-                "iterations": iterations,
-                "captain_limit": captain_limit,
-                "transfer_limit": transfer_limit,
-                "seed": seed,
-            },
-            "captain_outcome_bands": captain_rows,
-            "transfer_outcome_bands": transfer_rows,
-            "summary": "Monte Carlo outcome bands for captaincy and transfer decisions.",
-        }
-    finally:
-        db.close()
+        transfer_rows.append(
+            {
+                "plan": f"Option {idx + 1}",
+                "transfer_count": len(transfers),
+                "hit": hit,
+                "net_gain_mean_input": round(net_gain, 2),
+                "moves": [f"{t.get('out', '—')} → {t.get('in', '—')}" for t in transfers],
+                "band": {
+                    **band,
+                    "prob_positive": round(prob_positive, 3),
+                    "prob_4_plus": round(prob_4_plus, 3),
+                    "prob_minus_4_or_worse": round(prob_minus_4_or_worse, 3),
+                },
+            }
+        )
+
+    transfer_rows.sort(key=lambda r: r["band"]["p50"], reverse=True)
+
+    return {
+        "entry_id": entry_id,
+        "gameweek": gw,
+        "mode": mode,
+        "schema": "simulation-lab-v1",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "settings": {
+            "iterations": iterations,
+            "captain_limit": captain_limit,
+            "transfer_limit": transfer_limit,
+            "seed": seed,
+        },
+        "captain_outcome_bands": captain_rows,
+        "transfer_outcome_bands": transfer_rows,
+        "summary": "Monte Carlo outcome bands for captaincy and transfer decisions.",
+    }
 
 
 @router.get("/api/fpl/team/{entry_id}/gameweek-hub")
@@ -696,667 +687,665 @@ def weekly_cockpit(
     entry_id: int,
     gameweek: Optional[int] = Query(default=None, ge=1, le=38),
     mode: str = Query(default="balanced", pattern="^(safe|balanced|aggressive)$"),
+    db: Session = Depends(get_db),
 ):
-    db = SessionLocal()
-    try:
-        players = db.query(Player).all()
-        if not players:
-            raise HTTPException(status_code=400, detail="No player data found. Run POST /api/fpl/ingest/bootstrap first.")
+    players = db.query(Player).all()
+    if not players:
+        raise HTTPException(status_code=400, detail="No player data found. Run POST /api/fpl/ingest/bootstrap first.")
 
-        target_gw = _resolve_gameweek(db, gameweek)
-        current_gw = _int(_get_meta(db, "current_gw"), 0)
-        payload, picks_source_gw = _fetch_entry_picks_with_fallback(entry_id, target_gw, [current_gw, target_gw - 1])
-        # Keep planning anchored to target_gw (upcoming decision GW), even if picks fallback uses last available squad snapshot.
-        gw = target_gw
-        picks = payload.get("picks", [])
-        hist = payload.get("entry_history", {})
+    target_gw = _resolve_gameweek(db, gameweek)
+    current_gw = _int(_get_meta(db, "current_gw"), 0)
+    payload, picks_source_gw = _fetch_entry_picks_with_fallback(entry_id, target_gw, [current_gw, target_gw - 1])
+    # Keep planning anchored to target_gw (upcoming decision GW), even if picks fallback uses last available squad snapshot.
+    gw = target_gw
+    picks = payload.get("picks", [])
+    hist = payload.get("entry_history", {})
 
-        if len(picks) < 11:
-            raise HTTPException(status_code=400, detail="FPL returned incomplete squad data")
+    if len(picks) < 11:
+        raise HTTPException(status_code=400, detail="FPL returned incomplete squad data")
 
-        fixtures = db.query(Fixture).all()
-        player_by_id = {p.id: p for p in players}
-        squad_ids = [_int(p.get("element")) for p in picks]
-        squad_players = [player_by_id.get(pid) for pid in squad_ids if player_by_id.get(pid) is not None]
-        if len(squad_players) < 11:
-            raise HTTPException(status_code=400, detail="Your squad has players missing from local DB. Re-run bootstrap ingest.")
+    fixtures = db.query(Fixture).all()
+    player_by_id = {p.id: p for p in players}
+    squad_ids = [_int(p.get("element")) for p in picks]
+    squad_players = [player_by_id.get(pid) for pid in squad_ids if player_by_id.get(pid) is not None]
+    if len(squad_players) < 11:
+        raise HTTPException(status_code=400, detail="Your squad has players missing from local DB. Re-run bootstrap ingest.")
 
-        mode_weights, _ = _strategy_config(mode)
+    mode_weights, _ = _strategy_config(mode)
 
-        def _fixture_window_next_3(player: Player) -> dict:
-            counts = [_fixture_count_for_gw(player, fixtures, gw + i) for i in range(3)]
-            blanks = sum(1 for c in counts if c == 0)
-            doubles = sum(1 for c in counts if c >= 2)
-            singles = sum(1 for c in counts if c == 1)
-            return {
-                "counts": counts,
-                "blanks": blanks,
-                "doubles": doubles,
-                "singles": singles,
-                "label": f"B{blanks} / S{singles} / D{doubles}",
-            }
-
-        scored = [(_expected_points(p, fixtures, gw), p) for p in squad_players]
-        starting_pairs, bench_pairs, formation = _build_lineup_from_squad(scored)
-
-        picked_by_pos = sorted(
-            [p for p in picks if _int(p.get("position"), 0) > 0],
-            key=lambda r: _int(r.get("position"), 99),
-        )
-        current_start_ids = [_int(p.get("element")) for p in picked_by_pos if _int(p.get("position"), 0) <= 11]
-        current_bench_ids = [_int(p.get("element")) for p in picked_by_pos if _int(p.get("position"), 0) > 11]
-
-        rec_start_ids = [p.id for _, p in sorted(starting_pairs, key=lambda x: x[0], reverse=True)]
-        rec_bench_ids = [p.id for _, p in bench_pairs]
-
-        def _lineup_points(player_ids: list[int], horizon_points: bool = False) -> float:
-            total = 0.0
-            for pid in player_ids:
-                p = player_by_id.get(pid)
-                if not p:
-                    continue
-                if horizon_points:
-                    total += _expected_points_horizon(p, fixtures, gw, horizon=3, weights=mode_weights)
-                else:
-                    total += _expected_points(p, fixtures, gw)
-            return round(total, 2)
-
-        def _bench_weighted_score(player_ids: list[int], horizon_points: bool = False) -> float:
-            # Approximate autosub importance: bench 1 matters most.
-            weights = [1.0, 0.65, 0.35, 0.15]
-            total = 0.0
-            for idx, pid in enumerate(player_ids[:4]):
-                p = player_by_id.get(pid)
-                if not p:
-                    continue
-                xp = _expected_points_horizon(p, fixtures, gw, horizon=3, weights=mode_weights) if horizon_points else _expected_points(p, fixtures, gw)
-                total += xp * weights[idx]
-            return round(total, 2)
-
-        lineup_optimizer = {
-            "formation": formation,
-            "starting_xi": [
-                {
-                    "id": p.id,
-                    "name": p.web_name,
-                    "position": POSITION_MAP.get(p.element_type, str(p.element_type)),
-                    "xP_next_1": round(xpts, 2),
-                    "xP_next_3": round(_expected_points_horizon(p, fixtures, gw, horizon=3, weights=mode_weights), 2),
-                    "xP_next_5": round(_expected_points_horizon(p, fixtures, gw, horizon=5), 2),
-                    "fixture_badge": _fixture_badge_for_gw(p, fixtures, gw)[1],
-                    "fixture_window_next_3": _fixture_window_next_3(p),
-                }
-                for xpts, p in sorted(starting_pairs, key=lambda x: x[0], reverse=True)
-            ],
-            "bench_order": [
-                {
-                    "id": p.id,
-                    "name": p.web_name,
-                    "position": POSITION_MAP.get(p.element_type, str(p.element_type)),
-                    "bench_rank": idx + 1,
-                    "xP_next_1": round(xpts, 2),
-                    "xP_next_3": round(_expected_points_horizon(p, fixtures, gw, horizon=3, weights=mode_weights), 2),
-                    "xP_next_5": round(_expected_points_horizon(p, fixtures, gw, horizon=5), 2),
-                    "fixture_badge": _fixture_badge_for_gw(p, fixtures, gw)[1],
-                    "fixture_window_next_3": _fixture_window_next_3(p),
-                }
-                for idx, (xpts, p) in enumerate(bench_pairs)
-            ],
-            "expected_gain_vs_current_xi_1": round(_lineup_points(rec_start_ids, horizon_points=False) - _lineup_points(current_start_ids, horizon_points=False), 2),
-            "expected_gain_vs_current_xi_3": round(_lineup_points(rec_start_ids, horizon_points=True) - _lineup_points(current_start_ids, horizon_points=True), 2),
-            "bench_order_gain_1": round(_bench_weighted_score(rec_bench_ids, horizon_points=False) - _bench_weighted_score(current_bench_ids, horizon_points=False), 2),
-            "bench_order_gain_3": round(_bench_weighted_score(rec_bench_ids, horizon_points=True) - _bench_weighted_score(current_bench_ids, horizon_points=True), 2),
+    def _fixture_window_next_3(player: Player) -> dict:
+        counts = [_fixture_count_for_gw(player, fixtures, gw + i) for i in range(3)]
+        blanks = sum(1 for c in counts if c == 0)
+        doubles = sum(1 for c in counts if c >= 2)
+        singles = sum(1 for c in counts if c == 1)
+        return {
+            "counts": counts,
+            "blanks": blanks,
+            "doubles": doubles,
+            "singles": singles,
+            "label": f"B{blanks} / S{singles} / D{doubles}",
         }
 
-        # Team health
-        health_rows = []
-        for p in squad_players:
-            xp1 = _expected_points(p, fixtures, gw)
-            xp3 = _expected_points_horizon(p, fixtures, gw, horizon=3, weights=mode_weights)
-            xp5 = _expected_points_horizon(p, fixtures, gw, horizon=5)
-            fc, fb = _fixture_badge_for_gw(p, fixtures, gw)
-            fixture_window = _fixture_window_next_3(p)
-            availability = _availability_factor(p.chance_of_playing_next_round, p.news)
-            minutes_factor = _minutes_factor(p.minutes)
-            minutes_risk = round(max(0.0, 1.0 - min(minutes_factor, 1.0)), 2)
-            availability_risk = round(max(0.0, 1.0 - availability), 2)
-            risk = round(min(1.0, availability_risk * 0.6 + minutes_risk * 0.4), 2)
-            upside_safety = round(max(-2.5, min(2.5, (xp3 - 5.5) - (risk * 2.0))), 2)
-            action = "hold"
-            if fixture_window["blanks"] >= 1 and xp3 < 5.2:
-                action = "watch"
-            if fixture_window["blanks"] >= 2 or (risk >= 0.45 and xp3 < 4.8):
-                action = "sell"
-            elif action != "sell" and (risk >= 0.3 or xp3 < 5.3):
-                action = "watch"
+    scored = [(_expected_points(p, fixtures, gw), p) for p in squad_players]
+    starting_pairs, bench_pairs, formation = _build_lineup_from_squad(scored)
 
-            rise_pressure = _price_rise_pressure(p)
-            fall_pressure = _price_fall_pressure(p)
+    picked_by_pos = sorted(
+        [p for p in picks if _int(p.get("position"), 0) > 0],
+        key=lambda r: _int(r.get("position"), 99),
+    )
+    current_start_ids = [_int(p.get("element")) for p in picked_by_pos if _int(p.get("position"), 0) <= 11]
+    current_bench_ids = [_int(p.get("element")) for p in picked_by_pos if _int(p.get("position"), 0) > 11]
 
-            # Direction + ETA estimate (rebalance to avoid "always up" bias)
-            score = rise_pressure - (fall_pressure * 1.08)
-            if action == "sell" and fall_pressure >= 0.28 and score < 0.18:
-                direction = "down"
-                dir_pressure = fall_pressure
-            elif score >= 0.18:
-                direction = "up"
-                dir_pressure = rise_pressure
-            elif score <= -0.06:
-                direction = "down"
-                dir_pressure = fall_pressure
+    rec_start_ids = [p.id for _, p in sorted(starting_pairs, key=lambda x: x[0], reverse=True)]
+    rec_bench_ids = [p.id for _, p in bench_pairs]
+
+    def _lineup_points(player_ids: list[int], horizon_points: bool = False) -> float:
+        total = 0.0
+        for pid in player_ids:
+            p = player_by_id.get(pid)
+            if not p:
+                continue
+            if horizon_points:
+                total += _expected_points_horizon(p, fixtures, gw, horizon=3, weights=mode_weights)
             else:
-                direction = "flat"
-                dir_pressure = max(rise_pressure, fall_pressure)
+                total += _expected_points(p, fixtures, gw)
+        return round(total, 2)
 
-            eta_hours = _price_change_eta_hours(dir_pressure)
+    def _bench_weighted_score(player_ids: list[int], horizon_points: bool = False) -> float:
+        # Approximate autosub importance: bench 1 matters most.
+        weights = [1.0, 0.65, 0.35, 0.15]
+        total = 0.0
+        for idx, pid in enumerate(player_ids[:4]):
+            p = player_by_id.get(pid)
+            if not p:
+                continue
+            xp = _expected_points_horizon(p, fixtures, gw, horizon=3, weights=mode_weights) if horizon_points else _expected_points(p, fixtures, gw)
+            total += xp * weights[idx]
+        return round(total, 2)
 
-            health_rows.append(
-                {
-                    "id": p.id,
-                    "name": p.web_name,
-                    "position": POSITION_MAP.get(p.element_type, str(p.element_type)),
-                    "price": round(p.now_cost / 10.0, 1),
-                    "projected_points_1": round(xp1, 2),
-                    "projected_points_3": round(xp3, 2),
-                    "projected_points_5": round(xp5, 2),
-                    "fixture_count": fc,
-                    "fixture_badge": fb,
-                    "fixture_window_next_3": fixture_window,
-                    "fixture_difficulty_factor": round(_fixture_factor(p, fixtures, gw), 2),
-                    "minutes_risk": minutes_risk,
-                    "availability_risk": availability_risk,
-                    "injury_news": p.news or "",
-                    "upside_safety_score": upside_safety,
-                    "price_rise_pressure": rise_pressure,
-                    "price_fall_pressure": fall_pressure,
-                    "price_change_direction": direction,
-                    "price_change_eta_hours": eta_hours,
-                    "price_change_eta": _format_eta(eta_hours),
-                    "action": action,
-                }
-            )
-
-        sells = sorted([x for x in health_rows if x["action"] == "sell"], key=lambda x: (x["projected_points_3"], -x["minutes_risk"]))[:5]
-        holds = sorted([x for x in health_rows if x["action"] == "hold"], key=lambda x: x["projected_points_3"], reverse=True)[:6]
-        watch = sorted([x for x in health_rows if x["action"] == "watch"], key=lambda x: (x["minutes_risk"] + x["availability_risk"]), reverse=True)[:6]
-
-        action_rank = {"sell": 0, "watch": 1, "hold": 2}
-        all_rows = sorted(
-            health_rows,
-            key=lambda x: (
-                action_rank.get(str(x.get("action")), 9),
-                -float(x.get("projected_points_3", 0)),
-                str(x.get("name", "")),
-            ),
-        )
-
-        # Transfer plans (1FT + 2FT)
-        sim = what_if_simulator(
-            entry_id=entry_id,
-            gameweek=gw,
-            horizon=3,
-            max_transfers=2,
-            free_transfers=1,
-            hit_cost=4,
-            per_out_limit=6,
-            limit=30,
-        )
-        scenarios = sim.get("scenarios", [])
-
-        one_ft = [s for s in scenarios if len(s.get("transfers", [])) == 1 and s.get("hit", 0) == 0][:3]
-        two_ft = [s for s in scenarios if len(s.get("transfers", [])) == 2][:3]
-
-        def enrich_plan(plan: dict, label: str):
-            transfers = []
-            risk_components = []
-            for t in plan.get("transfers", []):
-                out_p = player_by_id.get(_int(t.get("out_id")))
-                in_p = player_by_id.get(_int(t.get("in_id")))
-                if not out_p or not in_p:
-                    continue
-                out_xp1 = _expected_points(out_p, fixtures, gw)
-                in_xp1 = _expected_points(in_p, fixtures, gw)
-                out_xp3 = _expected_points_horizon(out_p, fixtures, gw, horizon=3, weights=mode_weights)
-                in_xp3 = _expected_points_horizon(in_p, fixtures, gw, horizon=3, weights=mode_weights)
-                out_xp5 = _expected_points_horizon(out_p, fixtures, gw, horizon=5)
-                in_xp5 = _expected_points_horizon(in_p, fixtures, gw, horizon=5)
-                in_availability_risk = round(max(0.0, 1.0 - _availability_factor(in_p.chance_of_playing_next_round, in_p.news)), 2)
-                in_minutes_risk = round(max(0.0, 1.0 - min(_minutes_factor(in_p.minutes), 1.0)), 2)
-                in_upside_safety = round((in_xp3 - 5.5) - ((in_availability_risk * 0.6 + in_minutes_risk * 0.4) * 2.0), 2)
-                in_fixture_window = _fixture_window_next_3(in_p)
-                transfer_risk = min(1.0, (in_availability_risk * 0.6) + (in_minutes_risk * 0.25) + (0.15 if in_fixture_window["blanks"] > 0 else 0.0))
-                rise_in = _price_rise_pressure(in_p)
-                fall_out = _price_fall_pressure(out_p)
-                value_urgency = round(min(1.0, (rise_in * 0.55) + (fall_out * 0.45)), 3)
-                risk_components.append(transfer_risk)
-                transfers.append(
-                    {
-                        **t,
-                        "projected_points_1_in": round(in_xp1, 2),
-                        "projected_points_1_out": round(out_xp1, 2),
-                        "projected_points_3_in": round(in_xp3, 2),
-                        "projected_points_3_out": round(out_xp3, 2),
-                        "projected_points_5_in": round(in_xp5, 2),
-                        "projected_points_5_out": round(out_xp5, 2),
-                        "fixture_difficulty_factor_in": round(_fixture_factor(in_p, fixtures, gw), 2),
-                        "fixture_window_next_3_in": in_fixture_window,
-                        "minutes_risk_in": in_minutes_risk,
-                        "availability_risk_in": in_availability_risk,
-                        "injury_news_in": in_p.news or "",
-                        "upside_safety_score_in": in_upside_safety,
-                        "risk_score_in": round(transfer_risk, 2),
-                        "price_rise_pressure_in": rise_in,
-                        "price_fall_pressure_out": fall_out,
-                        "value_urgency_score": value_urgency,
-                    }
-                )
-
-            hit = int(plan.get("hit", 0) or 0)
-
-            projected_gain_1 = round(
-                sum((float(t.get("projected_points_1_in", 0.0) or 0.0) - float(t.get("projected_points_1_out", 0.0) or 0.0)) for t in transfers),
-                2,
-            )
-            projected_gain_3 = round(
-                sum((float(t.get("projected_points_3_in", 0.0) or 0.0) - float(t.get("projected_points_3_out", 0.0) or 0.0)) for t in transfers),
-                2,
-            )
-            projected_gain_5 = round(
-                sum((float(t.get("projected_points_5_in", 0.0) or 0.0) - float(t.get("projected_points_5_out", 0.0) or 0.0)) for t in transfers),
-                2,
-            )
-
-            net_gain_1 = round(projected_gain_1 - hit, 2)
-            net_gain_3 = round(projected_gain_3 - hit, 2)
-            net_gain_5 = round(projected_gain_5 - hit, 2)
-
-            # Backward-compatible aliases default to 3GW horizon values.
-            projected_gain = projected_gain_3
-            net_gain = net_gain_3
-            avg_risk = sum(risk_components) / len(risk_components) if risk_components else 0.0
-            risk_score = min(1.0, avg_risk + (0.08 if hit > 0 else 0.0))
-
-            value_urgency_score = max(
-                0.0,
-                min(1.0, sum(float(t.get("value_urgency_score", 0.0) or 0.0) for t in transfers) / max(1, len(transfers))),
-            )
-            price_change_bonus = round(value_urgency_score * 0.6, 3)
-
-            gain_signal = max(0.0, min(1.0, (net_gain + price_change_bonus) / 6.0))
-            raw_confidence = max(0.25, min(0.92, (0.35 + (gain_signal * 0.55)) - (risk_score * 0.28)))
-            confidence, confidence_bucket = _calibrate_confidence(
-                raw_confidence,
-                risk_score=risk_score,
-                hit=hit,
-                value_urgency=value_urgency_score,
-            )
-
-            return {
-                "plan": label,
-                "transfer_count": len(transfers),
-                "projected_gain": round(projected_gain, 2),
-                "projected_gain_1": projected_gain_1,
-                "projected_gain_3": projected_gain_3,
-                "projected_gain_5": projected_gain_5,
-                "net_gain": round(net_gain, 2),
-                "net_gain_1": net_gain_1,
-                "net_gain_3": net_gain_3,
-                "net_gain_5": net_gain_5,
-                "hit": hit,
-                "ev": round(net_gain + price_change_bonus, 2),
-                "risk_score": round(risk_score, 2),
-                "price_change_bonus": round(price_change_bonus, 3),
-                "value_urgency_score": round(value_urgency_score, 3),
-                "confidence_raw": round(raw_confidence, 3),
-                "confidence": round(confidence, 2),
-                "confidence_bucket": confidence_bucket,
-                "confidence_calibration": {
-                    "version": "cal_v1",
-                    "method": "rule-calibrated",
-                },
-                "transfers": transfers,
+    lineup_optimizer = {
+        "formation": formation,
+        "starting_xi": [
+            {
+                "id": p.id,
+                "name": p.web_name,
+                "position": POSITION_MAP.get(p.element_type, str(p.element_type)),
+                "xP_next_1": round(xpts, 2),
+                "xP_next_3": round(_expected_points_horizon(p, fixtures, gw, horizon=3, weights=mode_weights), 2),
+                "xP_next_5": round(_expected_points_horizon(p, fixtures, gw, horizon=5), 2),
+                "fixture_badge": _fixture_badge_for_gw(p, fixtures, gw)[1],
+                "fixture_window_next_3": _fixture_window_next_3(p),
             }
-
-        one_ft_plans = [enrich_plan(p, f"Plan {chr(65 + idx)}") for idx, p in enumerate(one_ft)]
-        two_ft_plans = [enrich_plan(p, f"Plan {chr(65 + idx)}") for idx, p in enumerate(two_ft)]
-
-        def _pad_plans(plans: list[dict], transfer_count: int) -> list[dict]:
-            out = plans[:]
-            while len(out) < 3:
-                label = f"Plan {chr(65 + len(out))}"
-                out.append(
-                    {
-                        "plan": label,
-                        "transfer_count": transfer_count,
-                        "projected_gain": 0.0,
-                        "projected_gain_1": 0.0,
-                        "projected_gain_3": 0.0,
-                        "projected_gain_5": 0.0,
-                        "net_gain": 0.0,
-                        "net_gain_1": 0.0,
-                        "net_gain_3": 0.0,
-                        "net_gain_5": 0.0,
-                        "hit": 0,
-                        "ev": 0.0,
-                        "risk_score": 0.0,
-                        "confidence": 0.65,
-                        "confidence_bucket": "medium",
-                        "transfers": [],
-                        "note": "No higher-edge move found; rolling transfer is viable.",
-                    }
-                )
-            return out[:3]
-
-        one_ft_plans = _pad_plans(one_ft_plans, transfer_count=1)
-        two_ft_plans = _pad_plans(two_ft_plans, transfer_count=2)
-
-        bank = _float(hist.get("bank"), 0.0) / 10.0
-        squad_value = _float(hist.get("value"), 0.0) / 10.0
-        confidence = min(0.9, max(0.55, sum(x for x, _ in starting_pairs) / 70.0))
-
-        # Captain matrix from likely starters
-        matrix = []
-        for xpts, p in sorted(starting_pairs, key=lambda x: x[0], reverse=True):
-            xp1 = _expected_points(p, fixtures, gw)
-            xp3 = _expected_points_horizon(p, fixtures, gw, horizon=3, weights=mode_weights)
-            xp5 = _expected_points_horizon(p, fixtures, gw, horizon=5)
-            ownership = max(0.0, min(p.selected_by_percent, 100.0))
-            availability_risk = max(0.0, 1.0 - _availability_factor(p.chance_of_playing_next_round, p.news))
-            minutes_risk = max(0.0, 1.0 - min(_minutes_factor(p.minutes), 1.0))
-            risk = min(1.0, availability_risk * 0.6 + minutes_risk * 0.4)
-            safe_score = round(xp3 * (1.0 - risk * 0.65) + (ownership * 0.01), 2)
-            fixture_window = _fixture_window_next_3(p)
-            fixture_swing_bonus = (fixture_window["doubles"] * 0.35) - (fixture_window["blanks"] * 0.6)
-            differential_score = round(
-                xp3 * (1.0 - risk * 0.2) + (max(0.0, 30.0 - ownership) / 30.0) * 1.6 + fixture_swing_bonus,
-                2,
-            )
-            safe_score = round(safe_score + fixture_swing_bonus * 0.6, 2)
-            matrix.append(
-                {
-                    "id": p.id,
-                    "name": p.web_name,
-                    "safe_score": safe_score,
-                    "differential_score": differential_score,
-                    "projected_points_1": round(xp1, 2),
-                    "projected_points_3": round(xp3, 2),
-                    "projected_points_5": round(xp5, 2),
-                    "ownership_pct": round(ownership, 1),
-                    "fixture_window_next_3": fixture_window,
-                    "minutes_risk": round(minutes_risk, 2),
-                    "availability_risk": round(availability_risk, 2),
-                }
-            )
-
-        safe_caps = sorted(matrix, key=lambda x: x["safe_score"], reverse=True)[:5]
-        safe_ids = {c["id"] for c in safe_caps}
-        diff_caps = [c for c in sorted(matrix, key=lambda x: x["differential_score"], reverse=True) if c["id"] not in safe_ids][:5]
-
-        # What changed since last week
-        changes = []
-        if gw > 1:
-            try:
-                prev_payload, _ = _fetch_entry_picks_with_fallback(entry_id, gw - 1, [gw - 1, gw - 2])
-                prev_ids = {_int(p.get("element")) for p in prev_payload.get("picks", [])}
-                curr_ids = set(squad_ids)
-                out_ids = list(prev_ids - curr_ids)
-                in_ids = list(curr_ids - prev_ids)
-                if out_ids or in_ids:
-                    changes.append(
-                        {
-                            "type": "squad_changes",
-                            "summary": "Transfers since last GW",
-                            "out": [player_by_id[i].web_name for i in out_ids if i in player_by_id],
-                            "in": [player_by_id[i].web_name for i in in_ids if i in player_by_id],
-                        }
-                    )
-            except HTTPException:
-                pass
-
-        injury_flags = [h for h in health_rows if h["injury_news"]][:5]
-        if injury_flags:
-            changes.append(
-                {
-                    "type": "injury_news",
-                    "summary": "Current injury/news flags",
-                    "players": [{"name": h["name"], "news": h["injury_news"]} for h in injury_flags],
-                }
-            )
-
-        fixture_swings = []
-        for p in squad_players:
-            now_count = _fixture_count_for_gw(p, fixtures, gw)
-            prev_count = _fixture_count_for_gw(p, fixtures, gw - 1)
-            if now_count != prev_count:
-                fixture_swings.append(
-                    {
-                        "name": p.web_name,
-                        "from": "DGW" if prev_count >= 2 else ("BLANK" if prev_count == 0 else "SGW"),
-                        "to": "DGW" if now_count >= 2 else ("BLANK" if now_count == 0 else "SGW"),
-                    }
-                )
-        if fixture_swings:
-            changes.append(
-                {
-                    "type": "fixture_swings",
-                    "summary": "Fixture context changes",
-                    "players": fixture_swings[:8],
-                }
-            )
-
-        squad_window = {
-            "blank_flags_next_3": sum(1 for p in squad_players if _fixture_window_next_3(p)["blanks"] > 0),
-            "double_flags_next_3": sum(1 for p in squad_players if _fixture_window_next_3(p)["doubles"] > 0),
-        }
-
-        # Explainability v2: persist current recommendation snapshot and diff with previous run.
-        now_iso = datetime.now(timezone.utc).isoformat()
-        primary_transfer_plan = (one_ft_plans[:1] + two_ft_plans[:1])
-        primary_transfer = (primary_transfer_plan[0].get("transfers") or [{}])[0] if primary_transfer_plan else {}
-
-        def _as_float(v, default: float = 0.0) -> float:
-            try:
-                return float(v)
-            except Exception:  # noqa: BLE001
-                return default
-
-        current_snapshot = {
-            "captain": (safe_caps[0].get("name") if safe_caps else None),
-            "vice_captain": (safe_caps[1].get("name") if len(safe_caps) > 1 else None),
-            "transfer_out": primary_transfer.get("out"),
-            "transfer_in": primary_transfer.get("in"),
-            "confidence": round(confidence, 3),
-            "factors": {
-                "captain_projected_points_3": _as_float((safe_caps[0] if safe_caps else {}).get("projected_points_3"), 0.0),
-                "captain_ownership_pct": _as_float((safe_caps[0] if safe_caps else {}).get("ownership_pct"), 0.0),
-                "transfer_net_gain_3": _as_float((primary_transfer_plan[0] if primary_transfer_plan else {}).get("net_gain_3"), 0.0),
-                "transfer_risk_score": _as_float((primary_transfer_plan[0] if primary_transfer_plan else {}).get("risk_score"), 0.0),
-                "lineup_gain_3": _as_float(lineup_optimizer.get("expected_gain_vs_current_xi_3"), 0.0),
-                "squad_blank_flags_next_3": _as_float(squad_window.get("blank_flags_next_3"), 0.0),
-                "squad_double_flags_next_3": _as_float(squad_window.get("double_flags_next_3"), 0.0),
-            },
-        }
-
-        previous_snapshot_row = (
-            db.query(RecommendationSnapshot)
-            .filter(
-                RecommendationSnapshot.entry_id == entry_id,
-                RecommendationSnapshot.gameweek == gw,
-                RecommendationSnapshot.mode == mode,
-            )
-            .order_by(RecommendationSnapshot.created_at.desc())
-            .first()
-        )
-
-        previous_snapshot = None
-        if previous_snapshot_row is not None:
-            try:
-                previous_snapshot = {
-                    "captain": previous_snapshot_row.captain,
-                    "vice_captain": previous_snapshot_row.vice_captain,
-                    "transfer_out": previous_snapshot_row.transfer_out,
-                    "transfer_in": previous_snapshot_row.transfer_in,
-                    "confidence": _as_float(previous_snapshot_row.confidence, 0.0),
-                    "factors": json.loads(previous_snapshot_row.factors_json or "{}"),
-                    "generated_at": previous_snapshot_row.created_at.isoformat() if previous_snapshot_row.created_at else None,
-                }
-            except Exception:  # noqa: BLE001
-                previous_snapshot = None
-
-        factor_labels = {
-            "captain_projected_points_3": "Captain projection",
-            "captain_ownership_pct": "Captain ownership",
-            "transfer_net_gain_3": "Transfer gain",
-            "transfer_risk_score": "Transfer risk",
-            "lineup_gain_3": "Lineup gain",
-            "squad_blank_flags_next_3": "Blank flags",
-            "squad_double_flags_next_3": "Double flags",
-        }
-
-        factor_deltas = []
-        captain_changed = False
-        transfer_changed = False
-        confidence_drift = {
-            "previous": None,
-            "current": round(current_snapshot["confidence"], 3),
-            "delta": None,
-            "direction": "unknown",
-        }
-
-        if previous_snapshot is not None:
-            captain_changed = (previous_snapshot.get("captain") or "") != (current_snapshot.get("captain") or "")
-            transfer_changed = (
-                (previous_snapshot.get("transfer_out") or "", previous_snapshot.get("transfer_in") or "")
-                != (current_snapshot.get("transfer_out") or "", current_snapshot.get("transfer_in") or "")
-            )
-
-            prev_conf = _as_float(previous_snapshot.get("confidence"), 0.0)
-            curr_conf = _as_float(current_snapshot.get("confidence"), 0.0)
-            conf_delta = round(curr_conf - prev_conf, 3)
-            confidence_drift = {
-                "previous": round(prev_conf, 3),
-                "current": round(curr_conf, 3),
-                "delta": conf_delta,
-                "direction": "up" if conf_delta > 0 else "down" if conf_delta < 0 else "flat",
+            for xpts, p in sorted(starting_pairs, key=lambda x: x[0], reverse=True)
+        ],
+        "bench_order": [
+            {
+                "id": p.id,
+                "name": p.web_name,
+                "position": POSITION_MAP.get(p.element_type, str(p.element_type)),
+                "bench_rank": idx + 1,
+                "xP_next_1": round(xpts, 2),
+                "xP_next_3": round(_expected_points_horizon(p, fixtures, gw, horizon=3, weights=mode_weights), 2),
+                "xP_next_5": round(_expected_points_horizon(p, fixtures, gw, horizon=5), 2),
+                "fixture_badge": _fixture_badge_for_gw(p, fixtures, gw)[1],
+                "fixture_window_next_3": _fixture_window_next_3(p),
             }
+            for idx, (xpts, p) in enumerate(bench_pairs)
+        ],
+        "expected_gain_vs_current_xi_1": round(_lineup_points(rec_start_ids, horizon_points=False) - _lineup_points(current_start_ids, horizon_points=False), 2),
+        "expected_gain_vs_current_xi_3": round(_lineup_points(rec_start_ids, horizon_points=True) - _lineup_points(current_start_ids, horizon_points=True), 2),
+        "bench_order_gain_1": round(_bench_weighted_score(rec_bench_ids, horizon_points=False) - _bench_weighted_score(current_bench_ids, horizon_points=False), 2),
+        "bench_order_gain_3": round(_bench_weighted_score(rec_bench_ids, horizon_points=True) - _bench_weighted_score(current_bench_ids, horizon_points=True), 2),
+    }
 
-            prev_factors = previous_snapshot.get("factors") or {}
-            curr_factors = current_snapshot.get("factors") or {}
-            for k, curr_val in curr_factors.items():
-                prev_val = _as_float(prev_factors.get(k), 0.0)
-                delta = round(_as_float(curr_val, 0.0) - prev_val, 3)
-                if delta == 0:
-                    continue
-                factor_deltas.append(
-                    {
-                        "key": k,
-                        "label": factor_labels.get(k, k),
-                        "previous": round(prev_val, 3),
-                        "current": round(_as_float(curr_val, 0.0), 3),
-                        "delta": delta,
-                        "direction": "up" if delta > 0 else "down",
-                    }
-                )
-            factor_deltas.sort(key=lambda x: abs(_as_float(x.get("delta"), 0.0)), reverse=True)
+    # Team health
+    health_rows = []
+    for p in squad_players:
+        xp1 = _expected_points(p, fixtures, gw)
+        xp3 = _expected_points_horizon(p, fixtures, gw, horizon=3, weights=mode_weights)
+        xp5 = _expected_points_horizon(p, fixtures, gw, horizon=5)
+        fc, fb = _fixture_badge_for_gw(p, fixtures, gw)
+        fixture_window = _fixture_window_next_3(p)
+        availability = _availability_factor(p.chance_of_playing_next_round, p.news)
+        minutes_factor = _minutes_factor(p.minutes)
+        minutes_risk = round(max(0.0, 1.0 - min(minutes_factor, 1.0)), 2)
+        availability_risk = round(max(0.0, 1.0 - availability), 2)
+        risk = round(min(1.0, availability_risk * 0.6 + minutes_risk * 0.4), 2)
+        upside_safety = round(max(-2.5, min(2.5, (xp3 - 5.5) - (risk * 2.0))), 2)
+        action = "hold"
+        if fixture_window["blanks"] >= 1 and xp3 < 5.2:
+            action = "watch"
+        if fixture_window["blanks"] >= 2 or (risk >= 0.45 and xp3 < 4.8):
+            action = "sell"
+        elif action != "sell" and (risk >= 0.3 or xp3 < 5.3):
+            action = "watch"
 
-        if previous_snapshot is None:
-            summary_reason = "First tracked run for this gameweek and mode; baseline snapshot captured."
-        elif captain_changed or transfer_changed:
-            changed_bits = []
-            if captain_changed:
-                changed_bits.append(f"captain {previous_snapshot.get('captain') or '—'} → {current_snapshot.get('captain') or '—'}")
-            if transfer_changed:
-                changed_bits.append(
-                    f"transfer {(previous_snapshot.get('transfer_out') or '—')}→{(previous_snapshot.get('transfer_in') or '—')} "
-                    f"to {(current_snapshot.get('transfer_out') or '—')}→{(current_snapshot.get('transfer_in') or '—')}"
-                )
-            top_factor = factor_deltas[0]["label"] if factor_deltas else "model factors"
-            summary_reason = f"Recommendation changed: {', '.join(changed_bits)}. Largest driver: {top_factor}."
+        rise_pressure = _price_rise_pressure(p)
+        fall_pressure = _price_fall_pressure(p)
+
+        # Direction + ETA estimate (rebalance to avoid "always up" bias)
+        score = rise_pressure - (fall_pressure * 1.08)
+        if action == "sell" and fall_pressure >= 0.28 and score < 0.18:
+            direction = "down"
+            dir_pressure = fall_pressure
+        elif score >= 0.18:
+            direction = "up"
+            dir_pressure = rise_pressure
+        elif score <= -0.06:
+            direction = "down"
+            dir_pressure = fall_pressure
         else:
-            summary_reason = "Recommendation stable versus previous run; no captain/transfer change detected."
+            direction = "flat"
+            dir_pressure = max(rise_pressure, fall_pressure)
 
-        explainability_v2 = {
-            "has_previous_snapshot": previous_snapshot is not None,
-            "generated_at": now_iso,
-            "decision_diff": {
-                "captain_changed": captain_changed,
-                "transfer_changed": transfer_changed,
-                "previous": {
-                    "captain": previous_snapshot.get("captain") if previous_snapshot else None,
-                    "vice_captain": previous_snapshot.get("vice_captain") if previous_snapshot else None,
-                    "transfer_out": previous_snapshot.get("transfer_out") if previous_snapshot else None,
-                    "transfer_in": previous_snapshot.get("transfer_in") if previous_snapshot else None,
-                },
-                "current": {
-                    "captain": current_snapshot.get("captain"),
-                    "vice_captain": current_snapshot.get("vice_captain"),
-                    "transfer_out": current_snapshot.get("transfer_out"),
-                    "transfer_in": current_snapshot.get("transfer_in"),
-                },
-            },
-            "confidence_drift": confidence_drift,
-            "factor_deltas": factor_deltas[:4],
-            "summary_reason": summary_reason,
-        }
+        eta_hours = _price_change_eta_hours(dir_pressure)
 
-        # Persist snapshot for future diff calculations.
-        db.add(
-            RecommendationSnapshot(
-                entry_id=entry_id,
-                gameweek=gw,
-                mode=mode,
-                captain=current_snapshot.get("captain"),
-                vice_captain=current_snapshot.get("vice_captain"),
-                transfer_out=current_snapshot.get("transfer_out"),
-                transfer_in=current_snapshot.get("transfer_in"),
-                confidence=current_snapshot.get("confidence"),
-                factors_json=json.dumps(current_snapshot.get("factors") or {}, separators=(",", ":")),
-            )
+        health_rows.append(
+            {
+                "id": p.id,
+                "name": p.web_name,
+                "position": POSITION_MAP.get(p.element_type, str(p.element_type)),
+                "price": round(p.now_cost / 10.0, 1),
+                "projected_points_1": round(xp1, 2),
+                "projected_points_3": round(xp3, 2),
+                "projected_points_5": round(xp5, 2),
+                "fixture_count": fc,
+                "fixture_badge": fb,
+                "fixture_window_next_3": fixture_window,
+                "fixture_difficulty_factor": round(_fixture_factor(p, fixtures, gw), 2),
+                "minutes_risk": minutes_risk,
+                "availability_risk": availability_risk,
+                "injury_news": p.news or "",
+                "upside_safety_score": upside_safety,
+                "price_rise_pressure": rise_pressure,
+                "price_fall_pressure": fall_pressure,
+                "price_change_direction": direction,
+                "price_change_eta_hours": eta_hours,
+                "price_change_eta": _format_eta(eta_hours),
+                "action": action,
+            }
         )
-        db.commit()
+
+    sells = sorted([x for x in health_rows if x["action"] == "sell"], key=lambda x: (x["projected_points_3"], -x["minutes_risk"]))[:5]
+    holds = sorted([x for x in health_rows if x["action"] == "hold"], key=lambda x: x["projected_points_3"], reverse=True)[:6]
+    watch = sorted([x for x in health_rows if x["action"] == "watch"], key=lambda x: (x["minutes_risk"] + x["availability_risk"]), reverse=True)[:6]
+
+    action_rank = {"sell": 0, "watch": 1, "hold": 2}
+    all_rows = sorted(
+        health_rows,
+        key=lambda x: (
+            action_rank.get(str(x.get("action")), 9),
+            -float(x.get("projected_points_3", 0)),
+            str(x.get("name", "")),
+        ),
+    )
+
+    # Transfer plans (1FT + 2FT)
+    sim = what_if_simulator(
+        entry_id=entry_id,
+        gameweek=gw,
+        horizon=3,
+        max_transfers=2,
+        free_transfers=1,
+        hit_cost=4,
+        per_out_limit=6,
+        limit=30,
+        db=db,
+    )
+    scenarios = sim.get("scenarios", [])
+
+    one_ft = [s for s in scenarios if len(s.get("transfers", [])) == 1 and s.get("hit", 0) == 0][:3]
+    two_ft = [s for s in scenarios if len(s.get("transfers", [])) == 2][:3]
+
+    def enrich_plan(plan: dict, label: str):
+        transfers = []
+        risk_components = []
+        for t in plan.get("transfers", []):
+            out_p = player_by_id.get(_int(t.get("out_id")))
+            in_p = player_by_id.get(_int(t.get("in_id")))
+            if not out_p or not in_p:
+                continue
+            out_xp1 = _expected_points(out_p, fixtures, gw)
+            in_xp1 = _expected_points(in_p, fixtures, gw)
+            out_xp3 = _expected_points_horizon(out_p, fixtures, gw, horizon=3, weights=mode_weights)
+            in_xp3 = _expected_points_horizon(in_p, fixtures, gw, horizon=3, weights=mode_weights)
+            out_xp5 = _expected_points_horizon(out_p, fixtures, gw, horizon=5)
+            in_xp5 = _expected_points_horizon(in_p, fixtures, gw, horizon=5)
+            in_availability_risk = round(max(0.0, 1.0 - _availability_factor(in_p.chance_of_playing_next_round, in_p.news)), 2)
+            in_minutes_risk = round(max(0.0, 1.0 - min(_minutes_factor(in_p.minutes), 1.0)), 2)
+            in_upside_safety = round((in_xp3 - 5.5) - ((in_availability_risk * 0.6 + in_minutes_risk * 0.4) * 2.0), 2)
+            in_fixture_window = _fixture_window_next_3(in_p)
+            transfer_risk = min(1.0, (in_availability_risk * 0.6) + (in_minutes_risk * 0.25) + (0.15 if in_fixture_window["blanks"] > 0 else 0.0))
+            rise_in = _price_rise_pressure(in_p)
+            fall_out = _price_fall_pressure(out_p)
+            value_urgency = round(min(1.0, (rise_in * 0.55) + (fall_out * 0.45)), 3)
+            risk_components.append(transfer_risk)
+            transfers.append(
+                {
+                    **t,
+                    "projected_points_1_in": round(in_xp1, 2),
+                    "projected_points_1_out": round(out_xp1, 2),
+                    "projected_points_3_in": round(in_xp3, 2),
+                    "projected_points_3_out": round(out_xp3, 2),
+                    "projected_points_5_in": round(in_xp5, 2),
+                    "projected_points_5_out": round(out_xp5, 2),
+                    "fixture_difficulty_factor_in": round(_fixture_factor(in_p, fixtures, gw), 2),
+                    "fixture_window_next_3_in": in_fixture_window,
+                    "minutes_risk_in": in_minutes_risk,
+                    "availability_risk_in": in_availability_risk,
+                    "injury_news_in": in_p.news or "",
+                    "upside_safety_score_in": in_upside_safety,
+                    "risk_score_in": round(transfer_risk, 2),
+                    "price_rise_pressure_in": rise_in,
+                    "price_fall_pressure_out": fall_out,
+                    "value_urgency_score": value_urgency,
+                }
+            )
+
+        hit = int(plan.get("hit", 0) or 0)
+
+        projected_gain_1 = round(
+            sum((float(t.get("projected_points_1_in", 0.0) or 0.0) - float(t.get("projected_points_1_out", 0.0) or 0.0)) for t in transfers),
+            2,
+        )
+        projected_gain_3 = round(
+            sum((float(t.get("projected_points_3_in", 0.0) or 0.0) - float(t.get("projected_points_3_out", 0.0) or 0.0)) for t in transfers),
+            2,
+        )
+        projected_gain_5 = round(
+            sum((float(t.get("projected_points_5_in", 0.0) or 0.0) - float(t.get("projected_points_5_out", 0.0) or 0.0)) for t in transfers),
+            2,
+        )
+
+        net_gain_1 = round(projected_gain_1 - hit, 2)
+        net_gain_3 = round(projected_gain_3 - hit, 2)
+        net_gain_5 = round(projected_gain_5 - hit, 2)
+
+        # Backward-compatible aliases default to 3GW horizon values.
+        projected_gain = projected_gain_3
+        net_gain = net_gain_3
+        avg_risk = sum(risk_components) / len(risk_components) if risk_components else 0.0
+        risk_score = min(1.0, avg_risk + (0.08 if hit > 0 else 0.0))
+
+        value_urgency_score = max(
+            0.0,
+            min(1.0, sum(float(t.get("value_urgency_score", 0.0) or 0.0) for t in transfers) / max(1, len(transfers))),
+        )
+        price_change_bonus = round(value_urgency_score * 0.6, 3)
+
+        gain_signal = max(0.0, min(1.0, (net_gain + price_change_bonus) / 6.0))
+        raw_confidence = max(0.25, min(0.92, (0.35 + (gain_signal * 0.55)) - (risk_score * 0.28)))
+        confidence, confidence_bucket = _calibrate_confidence(
+            raw_confidence,
+            risk_score=risk_score,
+            hit=hit,
+            value_urgency=value_urgency_score,
+        )
 
         return {
+            "plan": label,
+            "transfer_count": len(transfers),
+            "projected_gain": round(projected_gain, 2),
+            "projected_gain_1": projected_gain_1,
+            "projected_gain_3": projected_gain_3,
+            "projected_gain_5": projected_gain_5,
+            "net_gain": round(net_gain, 2),
+            "net_gain_1": net_gain_1,
+            "net_gain_3": net_gain_3,
+            "net_gain_5": net_gain_5,
+            "hit": hit,
+            "ev": round(net_gain + price_change_bonus, 2),
+            "risk_score": round(risk_score, 2),
+            "price_change_bonus": round(price_change_bonus, 3),
+            "value_urgency_score": round(value_urgency_score, 3),
+            "confidence_raw": round(raw_confidence, 3),
+            "confidence": round(confidence, 2),
+            "confidence_bucket": confidence_bucket,
+            "confidence_calibration": {
+                "version": "cal_v1",
+                "method": "rule-calibrated",
+            },
+            "transfers": transfers,
+        }
+
+    one_ft_plans = [enrich_plan(p, f"Plan {chr(65 + idx)}") for idx, p in enumerate(one_ft)]
+    two_ft_plans = [enrich_plan(p, f"Plan {chr(65 + idx)}") for idx, p in enumerate(two_ft)]
+
+    def _pad_plans(plans: list[dict], transfer_count: int) -> list[dict]:
+        out = plans[:]
+        while len(out) < 3:
+            label = f"Plan {chr(65 + len(out))}"
+            out.append(
+                {
+                    "plan": label,
+                    "transfer_count": transfer_count,
+                    "projected_gain": 0.0,
+                    "projected_gain_1": 0.0,
+                    "projected_gain_3": 0.0,
+                    "projected_gain_5": 0.0,
+                    "net_gain": 0.0,
+                    "net_gain_1": 0.0,
+                    "net_gain_3": 0.0,
+                    "net_gain_5": 0.0,
+                    "hit": 0,
+                    "ev": 0.0,
+                    "risk_score": 0.0,
+                    "confidence": 0.65,
+                    "confidence_bucket": "medium",
+                    "transfers": [],
+                    "note": "No higher-edge move found; rolling transfer is viable.",
+                }
+            )
+        return out[:3]
+
+    one_ft_plans = _pad_plans(one_ft_plans, transfer_count=1)
+    two_ft_plans = _pad_plans(two_ft_plans, transfer_count=2)
+
+    bank = _float(hist.get("bank"), 0.0) / 10.0
+    squad_value = _float(hist.get("value"), 0.0) / 10.0
+    confidence = min(0.9, max(0.55, sum(x for x, _ in starting_pairs) / 70.0))
+
+    # Captain matrix from likely starters
+    matrix = []
+    for xpts, p in sorted(starting_pairs, key=lambda x: x[0], reverse=True):
+        xp1 = _expected_points(p, fixtures, gw)
+        xp3 = _expected_points_horizon(p, fixtures, gw, horizon=3, weights=mode_weights)
+        xp5 = _expected_points_horizon(p, fixtures, gw, horizon=5)
+        ownership = max(0.0, min(p.selected_by_percent, 100.0))
+        availability_risk = max(0.0, 1.0 - _availability_factor(p.chance_of_playing_next_round, p.news))
+        minutes_risk = max(0.0, 1.0 - min(_minutes_factor(p.minutes), 1.0))
+        risk = min(1.0, availability_risk * 0.6 + minutes_risk * 0.4)
+        safe_score = round(xp3 * (1.0 - risk * 0.65) + (ownership * 0.01), 2)
+        fixture_window = _fixture_window_next_3(p)
+        fixture_swing_bonus = (fixture_window["doubles"] * 0.35) - (fixture_window["blanks"] * 0.6)
+        differential_score = round(
+            xp3 * (1.0 - risk * 0.2) + (max(0.0, 30.0 - ownership) / 30.0) * 1.6 + fixture_swing_bonus,
+            2,
+        )
+        safe_score = round(safe_score + fixture_swing_bonus * 0.6, 2)
+        matrix.append(
+            {
+                "id": p.id,
+                "name": p.web_name,
+                "safe_score": safe_score,
+                "differential_score": differential_score,
+                "projected_points_1": round(xp1, 2),
+                "projected_points_3": round(xp3, 2),
+                "projected_points_5": round(xp5, 2),
+                "ownership_pct": round(ownership, 1),
+                "fixture_window_next_3": fixture_window,
+                "minutes_risk": round(minutes_risk, 2),
+                "availability_risk": round(availability_risk, 2),
+            }
+        )
+
+    safe_caps = sorted(matrix, key=lambda x: x["safe_score"], reverse=True)[:5]
+    safe_ids = {c["id"] for c in safe_caps}
+    diff_caps = [c for c in sorted(matrix, key=lambda x: x["differential_score"], reverse=True) if c["id"] not in safe_ids][:5]
+
+    # What changed since last week
+    changes = []
+    if gw > 1:
+        try:
+            prev_payload, _ = _fetch_entry_picks_with_fallback(entry_id, gw - 1, [gw - 1, gw - 2])
+            prev_ids = {_int(p.get("element")) for p in prev_payload.get("picks", [])}
+            curr_ids = set(squad_ids)
+            out_ids = list(prev_ids - curr_ids)
+            in_ids = list(curr_ids - prev_ids)
+            if out_ids or in_ids:
+                changes.append(
+                    {
+                        "type": "squad_changes",
+                        "summary": "Transfers since last GW",
+                        "out": [player_by_id[i].web_name for i in out_ids if i in player_by_id],
+                        "in": [player_by_id[i].web_name for i in in_ids if i in player_by_id],
+                    }
+                )
+        except HTTPException:
+            pass
+
+    injury_flags = [h for h in health_rows if h["injury_news"]][:5]
+    if injury_flags:
+        changes.append(
+            {
+                "type": "injury_news",
+                "summary": "Current injury/news flags",
+                "players": [{"name": h["name"], "news": h["injury_news"]} for h in injury_flags],
+            }
+        )
+
+    fixture_swings = []
+    for p in squad_players:
+        now_count = _fixture_count_for_gw(p, fixtures, gw)
+        prev_count = _fixture_count_for_gw(p, fixtures, gw - 1)
+        if now_count != prev_count:
+            fixture_swings.append(
+                {
+                    "name": p.web_name,
+                    "from": "DGW" if prev_count >= 2 else ("BLANK" if prev_count == 0 else "SGW"),
+                    "to": "DGW" if now_count >= 2 else ("BLANK" if now_count == 0 else "SGW"),
+                }
+            )
+    if fixture_swings:
+        changes.append(
+            {
+                "type": "fixture_swings",
+                "summary": "Fixture context changes",
+                "players": fixture_swings[:8],
+            }
+        )
+
+    squad_window = {
+        "blank_flags_next_3": sum(1 for p in squad_players if _fixture_window_next_3(p)["blanks"] > 0),
+        "double_flags_next_3": sum(1 for p in squad_players if _fixture_window_next_3(p)["doubles"] > 0),
+    }
+
+    # Explainability v2: persist current recommendation snapshot and diff with previous run.
+    now_iso = datetime.now(timezone.utc).isoformat()
+    primary_transfer_plan = (one_ft_plans[:1] + two_ft_plans[:1])
+    primary_transfer = (primary_transfer_plan[0].get("transfers") or [{}])[0] if primary_transfer_plan else {}
+
+    def _as_float(v, default: float = 0.0) -> float:
+        try:
+            return float(v)
+        except Exception:  # noqa: BLE001
+            return default
+
+    current_snapshot = {
+        "captain": (safe_caps[0].get("name") if safe_caps else None),
+        "vice_captain": (safe_caps[1].get("name") if len(safe_caps) > 1 else None),
+        "transfer_out": primary_transfer.get("out"),
+        "transfer_in": primary_transfer.get("in"),
+        "confidence": round(confidence, 3),
+        "factors": {
+            "captain_projected_points_3": _as_float((safe_caps[0] if safe_caps else {}).get("projected_points_3"), 0.0),
+            "captain_ownership_pct": _as_float((safe_caps[0] if safe_caps else {}).get("ownership_pct"), 0.0),
+            "transfer_net_gain_3": _as_float((primary_transfer_plan[0] if primary_transfer_plan else {}).get("net_gain_3"), 0.0),
+            "transfer_risk_score": _as_float((primary_transfer_plan[0] if primary_transfer_plan else {}).get("risk_score"), 0.0),
+            "lineup_gain_3": _as_float(lineup_optimizer.get("expected_gain_vs_current_xi_3"), 0.0),
+            "squad_blank_flags_next_3": _as_float(squad_window.get("blank_flags_next_3"), 0.0),
+            "squad_double_flags_next_3": _as_float(squad_window.get("double_flags_next_3"), 0.0),
+        },
+    }
+
+    previous_snapshot_row = (
+        db.query(RecommendationSnapshot)
+        .filter(
+            RecommendationSnapshot.entry_id == entry_id,
+            RecommendationSnapshot.gameweek == gw,
+            RecommendationSnapshot.mode == mode,
+        )
+        .order_by(RecommendationSnapshot.created_at.desc())
+        .first()
+    )
+
+    previous_snapshot = None
+    if previous_snapshot_row is not None:
+        try:
+            previous_snapshot = {
+                "captain": previous_snapshot_row.captain,
+                "vice_captain": previous_snapshot_row.vice_captain,
+                "transfer_out": previous_snapshot_row.transfer_out,
+                "transfer_in": previous_snapshot_row.transfer_in,
+                "confidence": _as_float(previous_snapshot_row.confidence, 0.0),
+                "factors": json.loads(previous_snapshot_row.factors_json or "{}"),
+                "generated_at": previous_snapshot_row.created_at.isoformat() if previous_snapshot_row.created_at else None,
+            }
+        except Exception:  # noqa: BLE001
+            previous_snapshot = None
+
+    factor_labels = {
+        "captain_projected_points_3": "Captain projection",
+        "captain_ownership_pct": "Captain ownership",
+        "transfer_net_gain_3": "Transfer gain",
+        "transfer_risk_score": "Transfer risk",
+        "lineup_gain_3": "Lineup gain",
+        "squad_blank_flags_next_3": "Blank flags",
+        "squad_double_flags_next_3": "Double flags",
+    }
+
+    factor_deltas = []
+    captain_changed = False
+    transfer_changed = False
+    confidence_drift = {
+        "previous": None,
+        "current": round(current_snapshot["confidence"], 3),
+        "delta": None,
+        "direction": "unknown",
+    }
+
+    if previous_snapshot is not None:
+        captain_changed = (previous_snapshot.get("captain") or "") != (current_snapshot.get("captain") or "")
+        transfer_changed = (
+            (previous_snapshot.get("transfer_out") or "", previous_snapshot.get("transfer_in") or "")
+            != (current_snapshot.get("transfer_out") or "", current_snapshot.get("transfer_in") or "")
+        )
+
+        prev_conf = _as_float(previous_snapshot.get("confidence"), 0.0)
+        curr_conf = _as_float(current_snapshot.get("confidence"), 0.0)
+        conf_delta = round(curr_conf - prev_conf, 3)
+        confidence_drift = {
+            "previous": round(prev_conf, 3),
+            "current": round(curr_conf, 3),
+            "delta": conf_delta,
+            "direction": "up" if conf_delta > 0 else "down" if conf_delta < 0 else "flat",
+        }
+
+        prev_factors = previous_snapshot.get("factors") or {}
+        curr_factors = current_snapshot.get("factors") or {}
+        for k, curr_val in curr_factors.items():
+            prev_val = _as_float(prev_factors.get(k), 0.0)
+            delta = round(_as_float(curr_val, 0.0) - prev_val, 3)
+            if delta == 0:
+                continue
+            factor_deltas.append(
+                {
+                    "key": k,
+                    "label": factor_labels.get(k, k),
+                    "previous": round(prev_val, 3),
+                    "current": round(_as_float(curr_val, 0.0), 3),
+                    "delta": delta,
+                    "direction": "up" if delta > 0 else "down",
+                }
+            )
+        factor_deltas.sort(key=lambda x: abs(_as_float(x.get("delta"), 0.0)), reverse=True)
+
+    if previous_snapshot is None:
+        summary_reason = "First tracked run for this gameweek and mode; baseline snapshot captured."
+    elif captain_changed or transfer_changed:
+        changed_bits = []
+        if captain_changed:
+            changed_bits.append(f"captain {previous_snapshot.get('captain') or '—'} → {current_snapshot.get('captain') or '—'}")
+        if transfer_changed:
+            changed_bits.append(
+                f"transfer {(previous_snapshot.get('transfer_out') or '—')}→{(previous_snapshot.get('transfer_in') or '—')} "
+                f"to {(current_snapshot.get('transfer_out') or '—')}→{(current_snapshot.get('transfer_in') or '—')}"
+            )
+        top_factor = factor_deltas[0]["label"] if factor_deltas else "model factors"
+        summary_reason = f"Recommendation changed: {', '.join(changed_bits)}. Largest driver: {top_factor}."
+    else:
+        summary_reason = "Recommendation stable versus previous run; no captain/transfer change detected."
+
+    explainability_v2 = {
+        "has_previous_snapshot": previous_snapshot is not None,
+        "generated_at": now_iso,
+        "decision_diff": {
+            "captain_changed": captain_changed,
+            "transfer_changed": transfer_changed,
+            "previous": {
+                "captain": previous_snapshot.get("captain") if previous_snapshot else None,
+                "vice_captain": previous_snapshot.get("vice_captain") if previous_snapshot else None,
+                "transfer_out": previous_snapshot.get("transfer_out") if previous_snapshot else None,
+                "transfer_in": previous_snapshot.get("transfer_in") if previous_snapshot else None,
+            },
+            "current": {
+                "captain": current_snapshot.get("captain"),
+                "vice_captain": current_snapshot.get("vice_captain"),
+                "transfer_out": current_snapshot.get("transfer_out"),
+                "transfer_in": current_snapshot.get("transfer_in"),
+            },
+        },
+        "confidence_drift": confidence_drift,
+        "factor_deltas": factor_deltas[:4],
+        "summary_reason": summary_reason,
+    }
+
+    # Persist snapshot for future diff calculations.
+    db.add(
+        RecommendationSnapshot(
+            entry_id=entry_id,
+            gameweek=gw,
+            mode=mode,
+            captain=current_snapshot.get("captain"),
+            vice_captain=current_snapshot.get("vice_captain"),
+            transfer_out=current_snapshot.get("transfer_out"),
+            transfer_in=current_snapshot.get("transfer_in"),
+            confidence=current_snapshot.get("confidence"),
+            factors_json=json.dumps(current_snapshot.get("factors") or {}, separators=(",", ":")),
+        )
+    )
+    db.commit()
+
+    return {
+        "entry_id": entry_id,
+        "gameweek": gw,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "picks_source_gw": picks_source_gw,
+        "mode": mode,
+        "team_overview": {
             "entry_id": entry_id,
             "gameweek": gw,
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "picks_source_gw": picks_source_gw,
-            "mode": mode,
-            "team_overview": {
-                "entry_id": entry_id,
-                "gameweek": gw,
-                "formation": formation,
-                "strategy_mode": mode,
-                "confidence": round(confidence, 2),
-                "bank": round(bank, 1),
-                "squad_value": round(squad_value, 1),
-            },
-            "fixture_context": {
-                "gameweek": gw,
-                "considered": True,
-                "method": "All xP(1/3) and transfer/captain scores include SGW/DGW/BLANK via fixture-aware model.",
-                "squad_window": squad_window,
-            },
-            "lineup_optimizer": lineup_optimizer,
-            "team_health": {
-                "sell": sells,
-                "watch": watch,
-                "hold": holds,
-                "all": all_rows,
-            },
-            "top_transfer_plans": {
-                "one_ft": one_ft_plans,
-                "two_ft": two_ft_plans,
-            },
-            "captain_matrix": {
-                "safe": safe_caps,
-                "differential": diff_caps,
-            },
-            "explainability_v2": explainability_v2,
-            "what_changed": changes,
-            "summary": "Gameweek Hub with team health, top transfer plans (1FT/2FT), captain matrix, and latest changes.",
-        }
-    finally:
-        db.close()
+            "formation": formation,
+            "strategy_mode": mode,
+            "confidence": round(confidence, 2),
+            "bank": round(bank, 1),
+            "squad_value": round(squad_value, 1),
+        },
+        "fixture_context": {
+            "gameweek": gw,
+            "considered": True,
+            "method": "All xP(1/3) and transfer/captain scores include SGW/DGW/BLANK via fixture-aware model.",
+            "squad_window": squad_window,
+        },
+        "lineup_optimizer": lineup_optimizer,
+        "team_health": {
+            "sell": sells,
+            "watch": watch,
+            "hold": holds,
+            "all": all_rows,
+        },
+        "top_transfer_plans": {
+            "one_ft": one_ft_plans,
+            "two_ft": two_ft_plans,
+        },
+        "captain_matrix": {
+            "safe": safe_caps,
+            "differential": diff_caps,
+        },
+        "explainability_v2": explainability_v2,
+        "what_changed": changes,
+        "summary": "Gameweek Hub with team health, top transfer plans (1FT/2FT), captain matrix, and latest changes.",
+    }
 
 
 @router.get("/api/fpl/team/{entry_id}/leagues")
@@ -1949,118 +1938,156 @@ def _performance_weekly(*, entry_id: int, lookback: int) -> dict:
 def team_live_view(
     entry_id: int,
     gameweek: Optional[int] = Query(default=None, ge=1, le=38),
+    db: Session = Depends(get_db),
 ):
-    db = SessionLocal()
-    try:
-        current_gw = _int(_get_meta(db, "current_gw"), 0)
-        target_gw = gameweek or current_gw or _resolve_gameweek(db, None)
+    current_gw = _int(_get_meta(db, "current_gw"), 0)
+    target_gw = gameweek or current_gw or _resolve_gameweek(db, None)
 
-        picks_payload, resolved_gw = _fetch_entry_picks_with_fallback(entry_id, target_gw, [current_gw, target_gw - 1])
-        picks = picks_payload.get("picks", [])
-        if not picks:
-            raise HTTPException(status_code=404, detail=f"No picks found for entry {entry_id} in GW {resolved_gw}")
+    picks_payload, resolved_gw = _fetch_entry_picks_with_fallback(entry_id, target_gw, [current_gw, target_gw - 1])
+    picks = picks_payload.get("picks", [])
+    if not picks:
+        raise HTTPException(status_code=404, detail=f"No picks found for entry {entry_id} in GW {resolved_gw}")
 
-        live_payload = fetch_json(
-            f"https://fantasy.premierleague.com/api/event/{resolved_gw}/live/",
-            timeout=20,
-            upstream_error_prefix="Could not fetch live event data from FPL",
+    live_payload = fetch_json(
+        f"https://fantasy.premierleague.com/api/event/{resolved_gw}/live/",
+        timeout=20,
+        upstream_error_prefix="Could not fetch live event data from FPL",
+    )
+    live_elements = {int(e.get("id")): e for e in (live_payload.get("elements", []) or [])}
+
+    players = db.query(Player).all()
+    player_by_id = {p.id: p for p in players}
+
+    starters_live = 0
+    bench_live = 0
+    total_live = 0
+    captain = None
+    vice_captain = None
+    rows = []
+
+    for p in sorted(picks, key=lambda x: _int(x.get("position"), 99)):
+        pid = _int(p.get("element"), 0)
+        pos = _int(p.get("position"), 0)
+        mult = _int(p.get("multiplier"), 1)
+        el = live_elements.get(pid, {})
+        stats = el.get("stats", {}) if isinstance(el, dict) else {}
+        base_points = _int(stats.get("total_points"), 0)
+        live_points = base_points * max(0, mult)
+        total_live += live_points
+        if pos <= 11:
+            starters_live += live_points
+        else:
+            bench_live += live_points
+
+        if bool(p.get("is_captain")):
+            captain = {
+                "id": pid,
+                "name": (player_by_id.get(pid).web_name if player_by_id.get(pid) else f"Player {pid}"),
+                "base_points": base_points,
+                "multiplier": mult,
+                "live_points": live_points,
+            }
+        if bool(p.get("is_vice_captain")):
+            vice_captain = {
+                "id": pid,
+                "name": (player_by_id.get(pid).web_name if player_by_id.get(pid) else f"Player {pid}"),
+                "base_points": base_points,
+                "multiplier": mult,
+                "live_points": live_points,
+            }
+
+        rows.append(
+            {
+                "id": pid,
+                "name": (player_by_id.get(pid).web_name if player_by_id.get(pid) else f"Player {pid}"),
+                "position": pos,
+                "role": "starter" if pos <= 11 else "bench",
+                "multiplier": mult,
+                "base_points": base_points,
+                "live_points": live_points,
+                "is_captain": bool(p.get("is_captain", False)),
+                "is_vice_captain": bool(p.get("is_vice_captain", False)),
+            }
         )
-        live_elements = {int(e.get("id")): e for e in (live_payload.get("elements", []) or [])}
 
-        players = db.query(Player).all()
-        player_by_id = {p.id: p for p in players}
+    # Live rank context (best-effort; fail soft when upstream data is unavailable)
+    rank_context = {
+        "current_overall_rank": None,
+        "reference_overall_rank": None,
+        "rank_delta": None,
+        "direction": "unknown",
+        "source": "unavailable",
+    }
+    try:
+        entry_summary = fetch_json(
+            f"https://fantasy.premierleague.com/api/entry/{entry_id}/",
+            timeout=20,
+            upstream_error_prefix="Could not fetch entry summary",
+        )
+        current_rank = _int(entry_summary.get("summary_overall_rank"), 0)
 
-        starters_live = 0
-        bench_live = 0
-        total_live = 0
-        captain = None
-        vice_captain = None
-        rows = []
+        history_payload = fetch_json(
+            f"https://fantasy.premierleague.com/api/entry/{entry_id}/history/",
+            timeout=20,
+            upstream_error_prefix="Could not fetch entry rank history",
+        )
+        current_rows = history_payload.get("current", []) or []
+        current_rows = [r for r in current_rows if _int(r.get("event"), 0) > 0 and _int(r.get("overall_rank"), 0) > 0]
+        current_rows.sort(key=lambda r: _int(r.get("event"), 0))
 
-        for p in sorted(picks, key=lambda x: _int(x.get("position"), 99)):
-            pid = _int(p.get("element"), 0)
-            pos = _int(p.get("position"), 0)
-            mult = _int(p.get("multiplier"), 1)
-            el = live_elements.get(pid, {})
-            stats = el.get("stats", {}) if isinstance(el, dict) else {}
-            base_points = _int(stats.get("total_points"), 0)
-            live_points = base_points * max(0, mult)
-            total_live += live_points
-            if pos <= 11:
-                starters_live += live_points
+        reference_rank = None
+        for r in reversed(current_rows):
+            ev = _int(r.get("event"), 0)
+            if ev < resolved_gw:
+                reference_rank = _int(r.get("overall_rank"), 0)
+                break
+        if not reference_rank and current_rows:
+            reference_rank = _int(current_rows[-1].get("overall_rank"), 0)
+
+        rank_delta = None
+        direction = "unknown"
+        if current_rank > 0 and reference_rank and reference_rank > 0:
+            # Positive delta means rank improved (numerically lower rank)
+            rank_delta = reference_rank - current_rank
+            if rank_delta > 0:
+                direction = "up"
+            elif rank_delta < 0:
+                direction = "down"
             else:
-                bench_live += live_points
+                direction = "flat"
 
-            if bool(p.get("is_captain")):
-                captain = {
-                    "id": pid,
-                    "name": (player_by_id.get(pid).web_name if player_by_id.get(pid) else f"Player {pid}"),
-                    "base_points": base_points,
-                    "multiplier": mult,
-                    "live_points": live_points,
-                }
-            if bool(p.get("is_vice_captain")):
-                vice_captain = {
-                    "id": pid,
-                    "name": (player_by_id.get(pid).web_name if player_by_id.get(pid) else f"Player {pid}"),
-                    "base_points": base_points,
-                    "multiplier": mult,
-                    "live_points": live_points,
-                }
-
-            rows.append(
-                {
-                    "id": pid,
-                    "name": (player_by_id.get(pid).web_name if player_by_id.get(pid) else f"Player {pid}"),
-                    "position": pos,
-                    "role": "starter" if pos <= 11 else "bench",
-                    "multiplier": mult,
-                    "base_points": base_points,
-                    "live_points": live_points,
-                    "is_captain": bool(p.get("is_captain", False)),
-                    "is_vice_captain": bool(p.get("is_vice_captain", False)),
-                }
-            )
-
-        # Live rank context (best-effort; fail soft when upstream data is unavailable)
         rank_context = {
-            "current_overall_rank": None,
-            "reference_overall_rank": None,
-            "rank_delta": None,
-            "direction": "unknown",
-            "source": "unavailable",
+            "current_overall_rank": current_rank if current_rank > 0 else None,
+            "reference_overall_rank": reference_rank if reference_rank and reference_rank > 0 else None,
+            "rank_delta": rank_delta,
+            "direction": direction,
+            "source": "fpl_entry_summary+history",
         }
-        try:
-            entry_summary = fetch_json(
-                f"https://fantasy.premierleague.com/api/entry/{entry_id}/",
-                timeout=20,
-                upstream_error_prefix="Could not fetch entry summary",
-            )
-            current_rank = _int(entry_summary.get("summary_overall_rank"), 0)
+    except Exception:  # noqa: BLE001
+        pass
 
-            history_payload = fetch_json(
-                f"https://fantasy.premierleague.com/api/entry/{entry_id}/history/",
-                timeout=20,
-                upstream_error_prefix="Could not fetch entry rank history",
-            )
-            current_rows = history_payload.get("current", []) or []
-            current_rows = [r for r in current_rows if _int(r.get("event"), 0) > 0 and _int(r.get("overall_rank"), 0) > 0]
-            current_rows.sort(key=lambda r: _int(r.get("event"), 0))
-
-            reference_rank = None
-            for r in reversed(current_rows):
-                ev = _int(r.get("event"), 0)
-                if ev < resolved_gw:
-                    reference_rank = _int(r.get("overall_rank"), 0)
-                    break
-            if not reference_rank and current_rows:
-                reference_rank = _int(current_rows[-1].get("overall_rank"), 0)
-
-            rank_delta = None
+    # Mini-league movement context (best-effort)
+    mini_league_context = {
+        "league_id": None,
+        "league_name": None,
+        "league_type": None,
+        "current_rank": None,
+        "reference_rank": None,
+        "rank_delta": None,
+        "direction": "unknown",
+        "source": "unavailable",
+    }
+    try:
+        leagues_payload = team_leagues(entry_id)
+        leagues = leagues_payload.get("leagues", []) if isinstance(leagues_payload, dict) else []
+        # Prefer classic mini-league context first, then fallback to any available league.
+        chosen = next((l for l in leagues if str(l.get("type")) == "classic"), None) or (leagues[0] if leagues else None)
+        if chosen:
+            current_rank = _int(chosen.get("your_rank"), 0)
+            reference_rank = _int(chosen.get("last_rank"), 0)
+            rank_delta = chosen.get("rank_delta")
             direction = "unknown"
-            if current_rank > 0 and reference_rank and reference_rank > 0:
-                # Positive delta means rank improved (numerically lower rank)
-                rank_delta = reference_rank - current_rank
+            if isinstance(rank_delta, int):
                 if rank_delta > 0:
                     direction = "up"
                 elif rank_delta < 0:
@@ -2068,72 +2095,31 @@ def team_live_view(
                 else:
                     direction = "flat"
 
-            rank_context = {
-                "current_overall_rank": current_rank if current_rank > 0 else None,
-                "reference_overall_rank": reference_rank if reference_rank and reference_rank > 0 else None,
-                "rank_delta": rank_delta,
+            mini_league_context = {
+                "league_id": _int(chosen.get("league_id"), 0) or None,
+                "league_name": chosen.get("name"),
+                "league_type": chosen.get("type"),
+                "current_rank": current_rank if current_rank > 0 else None,
+                "reference_rank": reference_rank if reference_rank > 0 else None,
+                "rank_delta": rank_delta if isinstance(rank_delta, int) else None,
                 "direction": direction,
-                "source": "fpl_entry_summary+history",
+                "source": "league_standings",
             }
-        except Exception:  # noqa: BLE001
-            pass
+    except Exception:  # noqa: BLE001
+        pass
 
-        # Mini-league movement context (best-effort)
-        mini_league_context = {
-            "league_id": None,
-            "league_name": None,
-            "league_type": None,
-            "current_rank": None,
-            "reference_rank": None,
-            "rank_delta": None,
-            "direction": "unknown",
-            "source": "unavailable",
-        }
-        try:
-            leagues_payload = team_leagues(entry_id)
-            leagues = leagues_payload.get("leagues", []) if isinstance(leagues_payload, dict) else []
-            # Prefer classic mini-league context first, then fallback to any available league.
-            chosen = next((l for l in leagues if str(l.get("type")) == "classic"), None) or (leagues[0] if leagues else None)
-            if chosen:
-                current_rank = _int(chosen.get("your_rank"), 0)
-                reference_rank = _int(chosen.get("last_rank"), 0)
-                rank_delta = chosen.get("rank_delta")
-                direction = "unknown"
-                if isinstance(rank_delta, int):
-                    if rank_delta > 0:
-                        direction = "up"
-                    elif rank_delta < 0:
-                        direction = "down"
-                    else:
-                        direction = "flat"
-
-                mini_league_context = {
-                    "league_id": _int(chosen.get("league_id"), 0) or None,
-                    "league_name": chosen.get("name"),
-                    "league_type": chosen.get("type"),
-                    "current_rank": current_rank if current_rank > 0 else None,
-                    "reference_rank": reference_rank if reference_rank > 0 else None,
-                    "rank_delta": rank_delta if isinstance(rank_delta, int) else None,
-                    "direction": direction,
-                    "source": "league_standings",
-                }
-        except Exception:  # noqa: BLE001
-            pass
-
-        return {
-            "entry_id": entry_id,
-            "gameweek": resolved_gw,
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "live_summary": {
-                "total_live_points": total_live,
-                "starters_live_points": starters_live,
-                "bench_live_points": bench_live,
-            },
-            "captain": captain,
-            "vice_captain": vice_captain,
-            "rank_context": rank_context,
-            "mini_league_context": mini_league_context,
-            "players": rows,
-        }
-    finally:
-        db.close()
+    return {
+        "entry_id": entry_id,
+        "gameweek": resolved_gw,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "live_summary": {
+            "total_live_points": total_live,
+            "starters_live_points": starters_live,
+            "bench_live_points": bench_live,
+        },
+        "captain": captain,
+        "vice_captain": vice_captain,
+        "rank_context": rank_context,
+        "mini_league_context": mini_league_context,
+        "players": rows,
+    }

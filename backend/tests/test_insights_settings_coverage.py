@@ -32,13 +32,13 @@ def test_app_settings_get_with_name_backfill():
         }
         return vals.get(key, "")
 
-    with patch.object(s, "SessionLocal", return_value=db), patch.object(
+    with patch.object(
         s, "request_scope_identity", return_value="default"
     ), patch.object(s, "_get_meta", side_effect=_meta), patch(
         "app.services.http_client.fetch_json",
         return_value={"name": "My Team", "player_first_name": "Raghav", "player_last_name": "A"},
     ):
-        out = s.app_settings_get(_req())
+        out = s.app_settings_get(_req(), db=db)
 
     assert out["fpl_entry_id"] == 12345
     assert out["league_id"] == 777
@@ -48,19 +48,19 @@ def test_app_settings_get_with_name_backfill():
 
 def test_app_settings_set_and_notification_roundtrip():
     db = MagicMock()
-    with patch.object(s, "SessionLocal", return_value=db), patch.object(
+    with patch.object(
         s, "request_scope_identity", return_value="default"
     ), patch.object(s, "_set_meta") as set_meta, patch.object(
         s, "app_settings_get", return_value={"scope": "default", "fpl_entry_id": 1}
     ):
-        out = s.app_settings_set(_req(), fpl_entry_id=1, league_id=2, rival_entry_id=3, clear_missing=False)
+        out = s.app_settings_set(_req(), fpl_entry_id=1, league_id=2, rival_entry_id=3, clear_missing=False, db=db)
 
     assert out["fpl_entry_id"] == 1
     assert set_meta.call_count == 3
     db.commit.assert_called()
 
     # notification get clamps and normalizes values
-    with patch.object(s, "SessionLocal", return_value=db), patch.object(
+    with patch.object(
         s, "_get_meta", side_effect=lambda _db, k: {
             "notif_enabled": "true",
             "notif_lead_hours": "500",
@@ -68,12 +68,12 @@ def test_app_settings_set_and_notification_roundtrip():
             "notif_model_version": "unknown",
         }.get(k, "")
     ):
-        ng = s.notification_settings_get()
+        ng = s.notification_settings_get(db=db)
     assert ng["enabled"] is True
     assert ng["lead_hours"] == 72
     assert ng["mode"] == "balanced"
 
-    with patch.object(s, "SessionLocal", return_value=db), patch.object(s, "_set_meta") as set_meta2:
-        ns = s.notification_settings_set(enabled=False, lead_hours=4, mode="safe", model_version="xgb_hist_v1")
+    with patch.object(s, "_set_meta") as set_meta2:
+        ns = s.notification_settings_set(enabled=False, lead_hours=4, mode="safe", model_version="xgb_hist_v1", db=db)
     assert ns["ok"] is True
     assert set_meta2.call_count == 4

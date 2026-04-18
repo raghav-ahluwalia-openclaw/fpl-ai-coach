@@ -7,9 +7,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-import requests
+import httpx
 from fastapi import Depends, HTTPException, Query
-from sqlalchemy.orm import load_only
+from sqlalchemy.orm import Session, load_only
 
 from app.services.ttl_cache import api_ttl_cache
 
@@ -21,6 +21,7 @@ from .base import (
     Player,
     Team,
     SessionLocal,
+    get_db,
     _expected_points,
     _expected_points_horizon,
     _get_meta,
@@ -134,13 +135,14 @@ def _official_news_payload(limit: int = 8) -> dict:
     """Build official FPL-driven updates for fixture schedule changes + player availability."""
     try:
         headers = {"User-Agent": "fpl-ai-coach/1.0"}
-        b_resp = requests.get(OFFICIAL_FPL_BOOTSTRAP_URL, timeout=20, headers=headers)
-        b_resp.raise_for_status()
-        bootstrap = b_resp.json()
+        with httpx.Client(timeout=20, headers=headers) as client:
+            b_resp = client.get(OFFICIAL_FPL_BOOTSTRAP_URL)
+            b_resp.raise_for_status()
+            bootstrap = b_resp.json()
 
-        f_resp = requests.get(OFFICIAL_FPL_FIXTURES_URL, timeout=20, headers=headers)
-        f_resp.raise_for_status()
-        fixtures = f_resp.json()
+            f_resp = client.get(OFFICIAL_FPL_FIXTURES_URL)
+            f_resp.raise_for_status()
+            fixtures = f_resp.json()
 
         teams = {int(t.get("id")): str(t.get("short_name") or t.get("name") or "") for t in bootstrap.get("teams", [])}
 
@@ -337,12 +339,12 @@ def fpl_socials_refresh(videos_per_creator: int = Query(default=4, ge=1, le=8)):
 
 
 @router.get("/api/fpl/socials")
-def fpl_socials(limit: int = Query(default=5, ge=1, le=10), reddit_window: str = Query(default="week", pattern="^(day|week|month|year|all)$")):
-    db = SessionLocal()
-    try:
-        player_names = [p.web_name for p in db.query(Player).all()]
-    finally:
-        db.close()
+def fpl_socials(
+    limit: int = Query(default=5, ge=1, le=10),
+    reddit_window: str = Query(default="week", pattern="^(day|week|month|year|all)$"),
+    db: Session = Depends(get_db),
+):
+    player_names = [p.web_name for p in db.query(Player).all()]
 
     consensus = {
         "generated_at": None,
@@ -464,13 +466,12 @@ def fpl_socials(limit: int = Query(default=5, ge=1, le=10), reddit_window: str =
     reddit_threads = []
     try:
         headers = {"User-Agent": "fpl-ai-coach/1.0 (by /u/fpl_ai_coach)"}
-        listing = requests.get(
-            f"https://www.reddit.com/r/FantasyPL/top/.json?t={reddit_window}&limit={limit}",
-            timeout=20,
-            headers=headers,
-        )
-        listing.raise_for_status()
-        children = listing.json().get("data", {}).get("children", [])
+        with httpx.Client(timeout=20, headers=headers) as client:
+            listing = client.get(
+                f"https://www.reddit.com/r/FantasyPL/top/.json?t={reddit_window}&limit={limit}",
+            )
+            listing.raise_for_status()
+            children = listing.json().get("data", {}).get("children", [])
 
         for c in children[:limit]:
             d = c.get("data", {})
@@ -484,13 +485,12 @@ def fpl_socials(limit: int = Query(default=5, ge=1, le=10), reddit_window: str =
             top_comment_bodies = []
             if permalink:
                 try:
-                    comments_resp = requests.get(
-                        f"https://www.reddit.com{permalink}.json?sort=top&limit=3",
-                        timeout=20,
-                        headers=headers,
-                    )
-                    comments_resp.raise_for_status()
-                    comments_payload = comments_resp.json()
+                    with httpx.Client(timeout=20, headers=headers) as client:
+                        comments_resp = client.get(
+                            f"https://www.reddit.com{permalink}.json?sort=top&limit=3",
+                        )
+                        comments_resp.raise_for_status()
+                        comments_payload = comments_resp.json()
                     if isinstance(comments_payload, list) and len(comments_payload) > 1:
                         comment_children = comments_payload[1].get("data", {}).get("children", [])
                         for cc in comment_children:
@@ -544,13 +544,12 @@ def top_players(
     position: Optional[str] = Query(default=None),
     compact: bool = Query(default=True),
     include_reason: bool = Query(default=False),
+    db: Session = Depends(get_db),
 ):
     cache_key = ("top_players", limit, position, compact, include_reason)
 
     def _build() -> dict:
-        db = SessionLocal()
-        try:
-            query = db.query(Player).options(
+        query = db.query(Player).options(
                 load_only(
                     Player.id,
                     Player.web_name,
@@ -569,34 +568,34 @@ def top_players(
                 )
             )
 
+        if position and position != "All":
+            rev_map = {v: k for k, v in POSITION_MAP.items()}
+            pos_id = rev_map.get(position.upper())
+            if pos_id:
+                query = query.filter(Player.element_type == pos_id)
+
+        players = query.all()
+        if not players:
+            # If filtered and no players, return empty instead of 400
             if position and position != "All":
-                rev_map = {v: k for k, v in POSITION_MAP.items()}
-                pos_id = rev_map.get(position.upper())
-                if pos_id:
-                    query = query.filter(Player.element_type == pos_id)
+                return {"count": 0, "next_gw": 0, "players": []}
+            raise HTTPException(status_code=400, detail="No data found. Run POST /api/fpl/ingest/bootstrap first.")
 
-            players = query.all()
-            if not players:
-                # If filtered and no players, return empty instead of 400
-                if position and position != "All":
-                    return {"count": 0, "next_gw": 0, "players": []}
-                raise HTTPException(status_code=400, detail="No data found. Run POST /api/fpl/ingest/bootstrap first.")
-
-            fixtures = db.query(Fixture).options(
+        fixtures = db.query(Fixture).options(
                 load_only(Fixture.event, Fixture.team_h, Fixture.team_a, Fixture.team_h_difficulty, Fixture.team_a_difficulty)
             ).all()
-            gw = _resolve_gameweek(db, None)
+        gw = _resolve_gameweek(db, None)
 
-            scored = []
-            for p in players:
-                xpts = _expected_points(p, fixtures, gw)
-                scored.append((xpts, p))
+        scored = []
+        for p in players:
+            xpts = _expected_points(p, fixtures, gw)
+            scored.append((xpts, p))
 
-            scored.sort(key=lambda x: x[0], reverse=True)
+        scored.sort(key=lambda x: x[0], reverse=True)
 
-            top = []
-            for xpts, p in scored[:limit]:
-                row = {
+        top = []
+        for xpts, p in scored[:limit]:
+            row = {
                     "id": p.id,
                     "name": p.web_name,
                     "position": POSITION_MAP.get(p.element_type, str(p.element_type)),
@@ -606,29 +605,27 @@ def top_players(
                     "form": round(p.form, 2),
                     "ppg": round(p.points_per_game, 2),
                 }
-                if not compact:
-                    xpts3 = _expected_points_horizon(p, fixtures, gw, horizon=3)
-                    xpts5 = _expected_points_horizon(p, fixtures, gw, horizon=5)
-                    row.update(
+            if not compact:
+                xpts3 = _expected_points_horizon(p, fixtures, gw, horizon=3)
+                xpts5 = _expected_points_horizon(p, fixtures, gw, horizon=5)
+                row.update(
                         {
                             "expected_points_1": round(xpts, 2),
                             "expected_points_3": round(xpts3, 2),
                             "expected_points_5": round(xpts5, 2),
                         }
                     )
-                if include_reason:
-                    row["reason"] = _reason(p, xpts)
-                top.append(row)
+            if include_reason:
+                row["reason"] = _reason(p, xpts)
+            top.append(row)
 
-            return {
+        return {
                 "count": len(top),
                 "next_gw": gw,
                 "players": top,
                 "last_ingested_at": _get_meta(db, "last_ingested_at"),
                 "cached": True,
             }
-        finally:
-            db.close()
 
     return api_ttl_cache.get_or_set(cache_key, _build, ttl_seconds=90)
 
@@ -637,13 +634,12 @@ def top_players(
 def captaincy_lab(
     gameweek: Optional[int] = Query(default=None, ge=1, le=38),
     limit: int = Query(default=10, ge=3, le=20),
+    db: Session = Depends(get_db),
 ):
     cache_key = ("captaincy_lab", gameweek, limit)
 
     def _build() -> dict:
-        db = SessionLocal()
-        try:
-            players = db.query(Player).options(
+        players = db.query(Player).options(
                 load_only(
                     Player.id,
                     Player.web_name,
@@ -661,16 +657,14 @@ def captaincy_lab(
                     Player.team_id,
                 )
             ).all()
-            if not players:
-                raise HTTPException(status_code=400, detail="No data found. Run POST /api/fpl/ingest/bootstrap first.")
+        if not players:
+            raise HTTPException(status_code=400, detail="No data found. Run POST /api/fpl/ingest/bootstrap first.")
 
-            fixtures = db.query(Fixture).options(
+        fixtures = db.query(Fixture).options(
                 load_only(Fixture.event, Fixture.team_h, Fixture.team_a, Fixture.team_h_difficulty, Fixture.team_a_difficulty)
             ).all()
-            gw = _resolve_gameweek(db, gameweek)
-            return build_captaincy_lab(players, fixtures, gw, limit)
-        finally:
-            db.close()
+        gw = _resolve_gameweek(db, gameweek)
+        return build_captaincy_lab(players, fixtures, gw, limit)
 
     return api_ttl_cache.get_or_set(cache_key, _build, ttl_seconds=120)
 
@@ -681,13 +675,12 @@ def explainability_top(
     limit: int = Query(default=20, ge=5, le=50),
     position: Optional[str] = Query(default=None),
     include_next_5: bool = Query(default=False),
+    db: Session = Depends(get_db),
 ):
     cache_key = ("explainability_top", gameweek, limit, position, include_next_5)
 
     def _build() -> dict:
-        db = SessionLocal()
-        try:
-            query = db.query(Player).options(
+        query = db.query(Player).options(
                 load_only(
                     Player.id,
                     Player.web_name,
@@ -706,26 +699,26 @@ def explainability_top(
                 )
             )
 
+        if position and position != "All":
+            rev_map = {v: k for k, v in POSITION_MAP.items()}
+            pos_id = rev_map.get(position.upper())
+            if pos_id:
+                query = query.filter(Player.element_type == pos_id)
+
+        players = query.all()
+        if not players:
+            # If filtered and no players, return empty instead of 400
             if position and position != "All":
-                rev_map = {v: k for k, v in POSITION_MAP.items()}
-                pos_id = rev_map.get(position.upper())
-                if pos_id:
-                    query = query.filter(Player.element_type == pos_id)
+                return {"gameweek": 0, "count": 0, "players": [], "summary": "No players found for this position."}
+            raise HTTPException(status_code=400, detail="No data found. Run POST /api/fpl/ingest/bootstrap first.")
 
-            players = query.all()
-            if not players:
-                # If filtered and no players, return empty instead of 400
-                if position and position != "All":
-                    return {"gameweek": 0, "count": 0, "players": [], "summary": "No players found for this position."}
-                raise HTTPException(status_code=400, detail="No data found. Run POST /api/fpl/ingest/bootstrap first.")
-
-            fixtures = db.query(Fixture).options(
+        fixtures = db.query(Fixture).options(
                 load_only(Fixture.event, Fixture.team_h, Fixture.team_a, Fixture.team_h_difficulty, Fixture.team_a_difficulty)
             ).all()
-            teams = db.query(Team).options(load_only(Team.id, Team.short_name, Team.name)).all()
-            team_names = {int(t.id): str(t.short_name or t.name or t.id) for t in teams}
-            gw = _resolve_gameweek(db, gameweek)
-            return build_explainability_top(
+        teams = db.query(Team).options(load_only(Team.id, Team.short_name, Team.name)).all()
+        team_names = {int(t.id): str(t.short_name or t.name or t.id) for t in teams}
+        gw = _resolve_gameweek(db, gameweek)
+        return build_explainability_top(
                 players,
                 fixtures,
                 gw,
@@ -733,7 +726,5 @@ def explainability_top(
                 team_names=team_names,
                 include_next_5=include_next_5,
             )
-        finally:
-            db.close()
 
     return api_ttl_cache.get_or_set(cache_key, _build, ttl_seconds=180)

@@ -17,12 +17,12 @@ def _query_mock_for(model_counts: dict):
 
 def test_ingest_bootstrap_skip_when_recent():
     db = MagicMock()
-    with patch.object(ingest, "SessionLocal", return_value=db), patch.object(
+    with patch.object(
         ingest, "_is_recently_ingested", return_value=True
     ), patch.object(
         ingest, "_get_meta", side_effect=lambda _db, k: {"last_ingested_at": "now", "next_gw": "31", "current_gw": "30", "next_deadline_utc": "2026-01-01"}.get(k, "")
     ):
-        out = ingest.ingest_bootstrap(force=False)
+        out = ingest.ingest_bootstrap(force=False, db=db)
 
     assert out["ok"] is True
     assert out["skipped"] is True
@@ -73,14 +73,14 @@ def test_ingest_bootstrap_success_force():
         }
     ]
 
-    with patch.object(ingest, "SessionLocal", return_value=db), patch.object(
+    with patch.object(
         ingest, "_is_recently_ingested", return_value=False
     ), patch.object(
         ingest, "fetch_json", side_effect=[bootstrap_payload, fixtures_payload]
     ), patch.object(ingest, "_set_meta") as set_meta, patch.object(
         ingest.api_ttl_cache, "clear"
     ) as clear_cache:
-        out = ingest.ingest_bootstrap(force=True)
+        out = ingest.ingest_bootstrap(force=True, db=db)
 
     assert out["ok"] is True
     assert out["players"] == 1
@@ -101,12 +101,12 @@ def test_diagnostics_success():
     fake_ctx.__enter__.return_value = fake_conn
     fake_ctx.__exit__.return_value = False
 
-    with patch.object(ingest, "SessionLocal", return_value=db), patch.object(
+    with patch.object(
         ingest, "diagnostics_access_check", return_value=None
     ), patch.object(ingest.engine, "connect", return_value=fake_ctx), patch.object(
         ingest, "_get_meta", side_effect=lambda _db, k: {"current_gw": "30", "next_gw": "31"}.get(k, "")
     ):
-        out = ingest.diagnostics(MagicMock())
+        out = ingest.diagnostics(MagicMock(), db=db)
 
     assert out["ok"] is True
     assert out["counts"]["players"] == 200

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Generator
 
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 load_dotenv()
 
@@ -14,3 +15,12 @@ connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite")
 engine = create_engine(DATABASE_URL, pool_pre_ping=True, connect_args=connect_args)
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 Base = declarative_base()
+
+
+def get_db() -> Generator[Session, None, None]:
+    """FastAPI dependency that provides a DB session and guarantees close on exit."""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

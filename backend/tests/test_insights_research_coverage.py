@@ -63,6 +63,15 @@ def _mk_player(pid: int, name: str, et: int = 3):
     )
 
 
+def _make_httpx_client(*responses):
+    """Create a mock httpx.Client context manager returning given responses in sequence."""
+    mock_client = MagicMock()
+    mock_client.__enter__ = MagicMock(return_value=mock_client)
+    mock_client.__exit__ = MagicMock(return_value=False)
+    mock_client.get.side_effect = list(responses)
+    return mock_client
+
+
 def test_helper_sentiment_and_mentions_and_dedupe():
     txt = "Saka is great. Great upside, but rotation risk exists."
     assert "Great upside" in r._summarize_text(txt)
@@ -82,17 +91,6 @@ def test_helper_sentiment_and_mentions_and_dedupe():
 
 
 def test_official_news_payload_success_and_failure():
-    class _Resp:
-        def __init__(self, payload):
-            self._payload = payload
-            self.status_code = 200
-
-        def raise_for_status(self):
-            return None
-
-        def json(self):
-            return self._payload
-
     bootstrap = {
         "teams": [{"id": 1, "short_name": "ARS"}, {"id": 2, "short_name": "MCI"}],
         "elements": [
@@ -118,13 +116,20 @@ def test_official_news_payload_success_and_failure():
         }
     ]
 
-    with patch.object(r.requests, "get", side_effect=[_Resp(bootstrap), _Resp(fixtures)]):
+    def _mock_resp(payload):
+        resp = MagicMock()
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = payload
+        return resp
+
+    mock_client = _make_httpx_client(_mock_resp(bootstrap), _mock_resp(fixtures))
+    with patch("app.api.routes.insights_research.httpx.Client", return_value=mock_client):
         out = r._official_news_payload(limit=6)
     assert out["source"] == "Official FPL API"
     assert out["injuries"]
     assert out["fixture_updates"]
 
-    with patch.object(r.requests, "get", side_effect=RuntimeError("boom")):
+    with patch("app.api.routes.insights_research.httpx.Client", side_effect=RuntimeError("boom")):
         bad = r._official_news_payload(limit=6)
     assert bad["injuries"] == []
     assert "error" in bad
@@ -154,7 +159,7 @@ def test_top_captaincy_explainability_paths():
     teams = [Team(id=1, short_name="ARS", name="Arsenal"), Team(id=2, short_name="MCI", name="Man City")]
     db = _DBStub(players, fixtures, teams)
 
-    with patch.object(r, "SessionLocal", return_value=db), patch.object(
+    with patch.object(
         r.api_ttl_cache, "get_or_set", side_effect=lambda _k, fn, ttl_seconds=0: fn()
     ), patch.object(r, "_resolve_gameweek", return_value=31), patch.object(
         r, "_expected_points", side_effect=[7.2, 8.1]
@@ -163,24 +168,24 @@ def test_top_captaincy_explainability_paths():
     ), patch.object(
         r, "_reason", return_value="Good form"
     ):
-        tp = r.top_players(limit=2, position=None, compact=False, include_reason=True)
+        tp = r.top_players(limit=2, position=None, compact=False, include_reason=True, db=db)
         assert tp["count"] == 2
         assert tp["players"][0]["name"] == "Haaland"
 
-    with patch.object(r, "SessionLocal", return_value=db), patch.object(
+    with patch.object(
         r.api_ttl_cache, "get_or_set", side_effect=lambda _k, fn, ttl_seconds=0: fn()
     ), patch.object(r, "_resolve_gameweek", return_value=31), patch.object(
         r, "build_captaincy_lab", return_value={"gameweek": 31, "safe_captains": [], "upside_captains": []}
     ):
-        c = r.captaincy_lab(gameweek=31, limit=5)
+        c = r.captaincy_lab(gameweek=31, limit=5, db=db)
         assert c["gameweek"] == 31
 
-    with patch.object(r, "SessionLocal", return_value=db), patch.object(
+    with patch.object(
         r.api_ttl_cache, "get_or_set", side_effect=lambda _k, fn, ttl_seconds=0: fn()
     ), patch.object(r, "_resolve_gameweek", return_value=31), patch.object(
         r, "build_explainability_top", return_value={"gameweek": 31, "count": 1, "players": [{"name": "Saka"}]}
     ):
-        e = r.explainability_top(gameweek=31, limit=5, position=None, include_next_5=False)
+        e = r.explainability_top(gameweek=31, limit=5, position=None, include_next_5=False, db=db)
         assert e["gameweek"] == 31
 
 
@@ -209,10 +214,9 @@ def test_content_consensus_and_socials_fallback_without_digest(tmp_path):
     assert "fpl focal" not in cc["creator_coverage"]
 
     # force no digest; reddit call fails -> fallback thread
-    with patch.object(r, "SessionLocal", return_value=db), patch.object(
-        r, "DIGEST_PATH", tmp_path / "missing.json"
-    ), patch.object(r.requests, "get", side_effect=RuntimeError("reddit down")):
-        out = r.fpl_socials(limit=3, reddit_window="week")
+    with patch.object(r, "DIGEST_PATH", tmp_path / "missing.json"), \
+         patch("app.api.routes.insights_research.httpx.Client", side_effect=RuntimeError("reddit down")):
+        out = r.fpl_socials(limit=3, reddit_window="week", db=db)
 
     assert out["subreddit"] == "FantasyPL"
     assert out["reddit_threads"][0]["title"] == "Reddit fetch unavailable"
