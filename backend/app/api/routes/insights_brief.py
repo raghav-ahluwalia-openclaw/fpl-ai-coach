@@ -5,12 +5,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import HTTPException, Query
+from fastapi import Depends, HTTPException, Query
+from sqlalchemy.orm import Session
 
 from .base import (
     Fixture,
     Player,
     SessionLocal,
+    get_db,
     _fixture_count_for_gw,
     router,
 )
@@ -27,25 +29,27 @@ DIGEST_PATH = Path(__file__).resolve().parents[3] / "data" / "content" / "creato
 def weekly_digest_card(
     mode: str = Query(default="balanced", pattern="^(safe|balanced|aggressive)$"),
     model_version: str = Query(default=DEFAULT_MODEL_VERSION, pattern="^(xgb_v1|xgb_hist_v1)$"),
+    db: Session = Depends(get_db),
 ):
     cache_key = ("weekly_digest_card", mode, model_version)
 
     def _build() -> dict:
-        brief = weekly_brief(gameweek=None, mode=mode, model_version=model_version)
-        cap = captaincy_lab(gameweek=None, limit=3)
-        chip = chip_planner(gameweek=brief["gameweek"], horizon=6)
+        # Cache builders run outside the request lifecycle, so we pass db explicitly.
+        brief = weekly_brief(gameweek=None, mode=mode, model_version=model_version, db=db)
+        cap = captaincy_lab(gameweek=None, limit=3, db=db)
+        chip = chip_planner(gameweek=brief["gameweek"], horizon=6, db=db)
 
         final = brief["final"]
         safe_top3 = cap.get("safe_captains", [])[:3]
         upside_top3 = cap.get("upside_captains", [])[:3]
 
         lines = [
-            f"📊 GW{brief['gameweek']} Weekly Digest ({mode})",
-            f"🧢 Captain: {final['captain']} | Vice: {final['vice_captain']}",
-            f"🔁 Transfer: {final['transfer_out']} → {final['transfer_in']}",
-            f"🧩 Chip: {chip.get('recommendation')} (alt: {chip.get('alternative')}, conf: {chip.get('confidence')})",
-            "✅ Safe C picks: " + ", ".join(p.get("name", "") for p in safe_top3),
-            "🎯 Upside C picks: " + ", ".join(p.get("name", "") for p in upside_top3),
+            f"GW{brief['gameweek']} Weekly Digest ({mode})",
+            f"Captain: {final['captain']} | Vice: {final['vice_captain']}",
+            f"Transfer: {final['transfer_out']} -> {final['transfer_in']}",
+            f"Chip: {chip.get('recommendation')} (alt: {chip.get('alternative')}, conf: {chip.get('confidence')})",
+            "Safe C picks: " + ", ".join(p.get("name", "") for p in safe_top3),
+            "Upside C picks: " + ", ".join(p.get("name", "") for p in upside_top3),
         ]
 
         return {
@@ -63,54 +67,25 @@ def weekly_digest_card(
             "rationale": brief.get("rationale", [])[:4],
             "card": {
                 "version": "v3",
-                "emoji_header": "📊",
                 "sections": {
                     "captaincy": {
-                        "icon": "🧢",
                         "captain": final["captain"],
                         "vice": final["vice_captain"],
                     },
                     "transfer": {
-                        "icon": "🔁",
                         "out": final["transfer_out"],
                         "in": final["transfer_in"],
                     },
                     "chip": {
-                        "icon": "🧩",
                         "play": chip.get("recommendation"),
                         "alternative": chip.get("alternative"),
                         "confidence": chip.get("confidence"),
                     },
                 },
                 "lines": lines,
-                "telegram_text": "\n".join(lines),
-                "image_renderer": {
-                    "schema": "weekly-digest-card-v3",
-                    "theme": {
-                        "bg": "#37003c",
-                        "accent": "#00ff87",
-                        "text": "#ffffff",
-                        "muted": "#b9a7bf",
-                    },
-                    "header": {
-                        "title": f"GW{brief['gameweek']} Weekly Digest",
-                        "subtitle": f"Mode: {mode}",
-                        "badge": chip.get("recommendation"),
-                    },
-                    "rows": [
-                        {"label": "Captain", "value": final["captain"]},
-                        {"label": "Vice", "value": final["vice_captain"]},
-                        {"label": "Transfer", "value": f"{final['transfer_out']} → {final['transfer_in']}"},
-                        {"label": "Chip", "value": f"{chip.get('recommendation')} (alt: {chip.get('alternative')})"},
-                    ],
-                    "captain_options": {
-                        "safe_top3": [p.get("name") for p in safe_top3],
-                        "upside_top3": [p.get("name") for p in upside_top3],
-                    },
-                    "meta": {
-                        "gameweek": brief["gameweek"],
-                        "generated_at": brief.get("generated_at"),
-                    },
+                "meta": {
+                    "gameweek": brief["gameweek"],
+                    "generated_at": brief.get("generated_at"),
                 },
             },
             "summary": "Rich weekly digest payload for messaging cards and Telegram reminders.",
@@ -124,15 +99,16 @@ def weekly_brief(
     gameweek: Optional[int] = Query(default=None, ge=1, le=38),
     mode: str = Query(default="balanced", pattern="^(safe|balanced|aggressive)$"),
     model_version: str = Query(default=DEFAULT_MODEL_VERSION, pattern="^(xgb_v1|xgb_hist_v1)$"),
+    db: Session = Depends(get_db),
 ):
     cache_key = ("weekly_brief", gameweek, mode, model_version)
 
     def _build() -> dict:
-        base = recommendation(gameweek=gameweek)
+        base = recommendation(gameweek=gameweek, db=db)
 
         ml = None
         try:
-            ml = recommendation_ml(gameweek=gameweek, force_train=False, model_version=model_version)
+            ml = recommendation_ml(gameweek=gameweek, force_train=False, model_version=model_version, db=db)
         except HTTPException:
             ml = None
 
@@ -182,31 +158,27 @@ def weekly_brief(
             "transfer_in": "SGW",
         }
         try:
-            db = SessionLocal()
-            try:
-                fixtures = db.query(Fixture).all()
-                players = db.query(Player).all()
-                by_name = {p.web_name: p for p in players}
+            fixtures = db.query(Fixture).all()
+            players = db.query(Player).all()
+            by_name = {p.web_name: p for p in players}
 
-                def badge_for_name(name: str) -> str:
-                    p = by_name.get(name)
-                    if not p:
-                        return "SGW"
-                    count = _fixture_count_for_gw(p, fixtures, base.gameweek)
-                    if count >= 2:
-                        return "DGW"
-                    if count == 0:
-                        return "BLANK"
+            def badge_for_name(name: str) -> str:
+                p = by_name.get(name)
+                if not p:
                     return "SGW"
+                count = _fixture_count_for_gw(p, fixtures, base.gameweek)
+                if count >= 2:
+                    return "DGW"
+                if count == 0:
+                    return "BLANK"
+                return "SGW"
 
-                badge_map = {
-                    "captain": badge_for_name(final_captain),
-                    "vice_captain": badge_for_name(final_vice),
-                    "transfer_out": badge_for_name(transfer_out),
-                    "transfer_in": badge_for_name(transfer_in),
-                }
-            finally:
-                db.close()
+            badge_map = {
+                "captain": badge_for_name(final_captain),
+                "vice_captain": badge_for_name(final_vice),
+                "transfer_out": badge_for_name(transfer_out),
+                "transfer_in": badge_for_name(transfer_in),
+            }
         except Exception:  # noqa: BLE001
             pass
 

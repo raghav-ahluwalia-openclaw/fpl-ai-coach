@@ -3,11 +3,13 @@ from __future__ import annotations
 import json
 from datetime import datetime, timedelta, timezone
 
-from fastapi import HTTPException, Query
+from fastapi import Depends, HTTPException, Query
+from sqlalchemy.orm import Session
 
 from .base import (
     FPL_BOOTSTRAP_URL,
     SessionLocal,
+    get_db,
     _get_meta,
     _int,
     _set_meta,
@@ -22,36 +24,34 @@ from app.services.ttl_cache import api_ttl_cache
 
 
 @router.get("/api/fpl/deadline-next")
-def deadline_next(lead_hours: int = Query(default=6, ge=1, le=72)):
-    db = SessionLocal()
-    try:
-        next_gw = _int(_get_meta(db, "next_gw"), 0) or None
-        next_deadline_utc = _get_meta(db, "next_deadline_utc")
-        if not next_deadline_utc:
-            raise HTTPException(
-                status_code=404,
-                detail="next_deadline_utc not available. Run POST /api/fpl/ingest/bootstrap first.",
-            )
+def deadline_next(lead_hours: int = Query(default=6, ge=1, le=72), db: Session = Depends(get_db)):
+    next_gw = _int(_get_meta(db, "next_gw"), 0) or None
+    next_deadline_utc = _get_meta(db, "next_deadline_utc")
+    if not next_deadline_utc:
+        raise HTTPException(
+            status_code=404,
+            detail="next_deadline_utc not available. Run POST /api/fpl/ingest/bootstrap first.",
+        )
 
-        deadline_dt = datetime.fromisoformat(next_deadline_utc.replace("Z", "+00:00"))
-        reminder_dt = deadline_dt - timedelta(hours=lead_hours)
-        now_dt = datetime.now(timezone.utc)
+    deadline_dt = datetime.fromisoformat(next_deadline_utc.replace("Z", "+00:00"))
+    reminder_dt = deadline_dt - timedelta(hours=lead_hours)
+    now_dt = datetime.now(timezone.utc)
 
-        return {
-            "next_gw": next_gw,
-            "deadline_utc": deadline_dt.isoformat(),
-            "lead_hours": lead_hours,
-            "reminder_utc": reminder_dt.isoformat(),
-            "seconds_until_deadline": int((deadline_dt - now_dt).total_seconds()),
-            "seconds_until_reminder": int((reminder_dt - now_dt).total_seconds()),
-            "is_reminder_due": reminder_dt <= now_dt,
-        }
-    finally:
-        db.close()
+    return {
+        "next_gw": next_gw,
+        "deadline_utc": deadline_dt.isoformat(),
+        "lead_hours": lead_hours,
+        "reminder_utc": reminder_dt.isoformat(),
+        "seconds_until_deadline": int((deadline_dt - now_dt).total_seconds()),
+        "seconds_until_reminder": int((reminder_dt - now_dt).total_seconds()),
+        "is_reminder_due": reminder_dt <= now_dt,
+    }
 
 
 @router.get("/api/fpl/gameweek-status")
 def gameweek_status():
+    # The builder uses its own session because it is passed to the TTL cache
+    # and cannot receive a dependency-injected session from the request scope.
     def _build() -> dict:
         db = SessionLocal()
         try:
@@ -99,8 +99,6 @@ def gameweek_status():
                     if nd:
                         deadline_dt = datetime.fromisoformat(str(nd).replace("Z", "+00:00"))
 
-                # Product rule: once a GW is finished, shift planning current GW to the upcoming GW,
-                # and surface "next_gw" as the GW after that.
                 if current_gw_finished and next_gw:
                     planning_gw = next_gw
                     following_event = next((e for e in events if _int(e.get("id"), 0) == planning_gw + 1), None)
@@ -157,26 +155,24 @@ def gameweek_status():
 
 
 @router.get("/api/fpl/notification-status")
-def notification_status():
-    settings = notification_settings_get()
+def notification_status(db: Session = Depends(get_db)):
+    settings = notification_settings_get(db=db)
     reminder = deadline_reminder(
         lead_hours=settings["lead_hours"],
         mode=settings["mode"],
         model_version=settings["model_version"],
+        db=db,
     )
 
     now_dt = datetime.now(timezone.utc)
     next_check_dt = now_dt + timedelta(minutes=max(1, NOTIF_CHECK_INTERVAL_MINUTES))
 
-    db = SessionLocal()
     try:
         _set_meta(db, "notif_last_check_at", now_dt.isoformat())
         _set_meta(db, "notif_next_check_eta", next_check_dt.isoformat())
         db.commit()
     except Exception:  # noqa: BLE001
         db.rollback()
-    finally:
-        db.close()
 
     last_sent = None
     if REMINDER_STATE_PATH.exists():
@@ -202,12 +198,13 @@ def notification_status():
 
 
 @router.get("/api/fpl/notification-test")
-def notification_test():
-    settings = notification_settings_get()
+def notification_test(db: Session = Depends(get_db)):
+    settings = notification_settings_get(db=db)
     reminder = deadline_reminder(
         lead_hours=settings["lead_hours"],
         mode=settings["mode"],
         model_version=settings["model_version"],
+        db=db,
     )
     return {
         "ok": True,
@@ -225,11 +222,12 @@ def deadline_reminder(
     lead_hours: int = Query(default=6, ge=1, le=72),
     mode: str = Query(default="balanced", pattern="^(safe|balanced|aggressive)$"),
     model_version: str = Query(default=DEFAULT_MODEL_VERSION, pattern="^(xgb_v1|xgb_hist_v1)$"),
+    db: Session = Depends(get_db),
 ):
     from .insights_brief import weekly_brief
 
-    deadline = deadline_next(lead_hours=lead_hours)
-    brief = weekly_brief(gameweek=None, mode=mode, model_version=model_version)
+    deadline = deadline_next(lead_hours=lead_hours, db=db)
+    brief = weekly_brief(gameweek=None, mode=mode, model_version=model_version, db=db)
 
     return {
         "next_gw": deadline["next_gw"],

@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from fastapi_limiter import FastAPILimiter
+from prometheus_fastapi_instrumentator import Instrumentator
 from redis import Redis
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -154,6 +155,9 @@ register_error_handlers(app)
 
 # Include API routes
 app.include_router(fpl_router)
+
+# Prometheus metrics — exposes /metrics for Prometheus scraping
+Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
 
 # =============================================================================

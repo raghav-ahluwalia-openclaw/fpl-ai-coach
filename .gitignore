@@ -42,3 +42,6 @@ yarn-error.log*
 coverage/
 build/
 dist/
+backend/.coverage
+backend/htmlcov/
+backend/test_fpl.db

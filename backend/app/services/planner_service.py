@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Dict, List, Optional
 
 from app.api.routes.base import (
@@ -9,6 +10,8 @@ from app.api.routes.base import (
 )
 from app.db.models import Fixture, Player
 from app.services.http_client import fetch_json
+
+logger = logging.getLogger(__name__)
 
 
 def build_chip_planner(
@@ -130,7 +133,7 @@ def build_chip_planner(
 
             chip_history.sort(key=lambda x: (_int(x.get("gameweek"), 0), str(x.get("time") or "")))
         except Exception:  # noqa: BLE001
-            pass
+            logger.warning("Failed to fetch chip history for entry %s", entry_id, exc_info=True)
 
     # Exclude fully used chips from recommendations.
     available_scores = {
@@ -252,6 +255,7 @@ def build_rival_intelligence(
             )
             return _int(entry.get("summary_overall_rank"), 0) or None
         except Exception:  # noqa: BLE001
+            logger.warning("Failed to fetch overall rank for entry %s", team_entry_id, exc_info=True)
             return None
 
     my_overall_rank = _overall_rank_for_entry(entry_id)

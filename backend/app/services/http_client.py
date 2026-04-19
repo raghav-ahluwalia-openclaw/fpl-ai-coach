@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import httpx
@@ -13,23 +14,7 @@ async def fetch_json_async(
     not_found_detail: str | None = None,
     upstream_error_prefix: str = "Upstream request failed",
 ) -> Any:
-    """
-    Async HTTP GET request with proper error handling.
-    
-    Uses httpx for non-blocking I/O, improving performance under load.
-    
-    Args:
-        url: Target URL to fetch
-        timeout: Request timeout in seconds
-        not_found_detail: Custom 404 error message
-        upstream_error_prefix: Prefix for upstream error messages
-    
-    Returns:
-        Parsed JSON response
-    
-    Raises:
-        HTTPException: With appropriate status code and detail
-    """
+    """Async HTTP GET — use this in async route handlers."""
     async with httpx.AsyncClient() as client:
         try:
             response = await client.get(url, timeout=timeout)
@@ -42,21 +27,20 @@ async def fetch_json_async(
         except httpx.TimeoutException as exc:
             raise HTTPException(
                 status_code=504,
-                detail=f"{upstream_error_prefix}: Request timed out after {timeout}s"
+                detail=f"{upstream_error_prefix}: Request timed out after {timeout}s",
             ) from exc
         except httpx.RequestError as exc:
             raise HTTPException(
                 status_code=502,
-                detail=f"{upstream_error_prefix}: {exc}"
+                detail=f"{upstream_error_prefix}: {exc}",
             ) from exc
         except httpx.HTTPStatusError as exc:
             raise HTTPException(
                 status_code=exc.response.status_code,
-                detail=f"{upstream_error_prefix}: {exc.response.status_code}"
+                detail=f"{upstream_error_prefix}: {exc.response.status_code}",
             ) from exc
 
 
-# Backward compatibility wrapper for sync code (deprecated - migrate to async)
 def fetch_json(
     url: str,
     *,
@@ -64,34 +48,27 @@ def fetch_json(
     not_found_detail: str | None = None,
     upstream_error_prefix: str = "Upstream request failed",
 ) -> Any:
+    """Synchronous HTTP GET for use in sync route handlers (runs in FastAPI threadpool).
+
+    Uses asyncio.run() which is safe in threadpool threads (no running event loop).
+    Do NOT call from within an async function — use fetch_json_async() there.
     """
-    DEPRECATED: Synchronous wrapper for backward compatibility.
-    
-    Migrate to fetch_json_async() for better performance.
-    """
-    import asyncio
     try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    
-    if loop.is_running():
-        # If we're in an async context, we can't use run_until_complete
-        # This shouldn't happen in properly migrated code
-        raise RuntimeError(
-            "fetch_json() called from async context. "
-            "Use fetch_json_async() instead."
+        return asyncio.run(
+            fetch_json_async(
+                url,
+                timeout=timeout,
+                not_found_detail=not_found_detail,
+                upstream_error_prefix=upstream_error_prefix,
+            )
         )
-    
-    return loop.run_until_complete(
-        fetch_json_async(
-            url,
-            timeout=timeout,
-            not_found_detail=not_found_detail,
-            upstream_error_prefix=upstream_error_prefix,
-        )
-    )
+    except RuntimeError as exc:
+        if "running event loop" in str(exc):
+            raise RuntimeError(
+                "fetch_json() cannot be called from an async context. "
+                "Use fetch_json_async() instead."
+            ) from exc
+        raise
 
 
 __all__ = ["fetch_json_async", "fetch_json"]

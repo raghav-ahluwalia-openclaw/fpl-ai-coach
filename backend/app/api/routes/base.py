@@ -9,7 +9,7 @@ from typing import List, Optional, Tuple
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.db import SessionLocal, engine
+from app.db import SessionLocal, engine, get_db
 from app.db.models import Fixture, Meta, Player, Team, UserSquadPick
 from app.schemas import (
     POSITION_MAP,
